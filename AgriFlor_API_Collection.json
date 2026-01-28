@@ -1,0 +1,1878 @@
+{
+	"info": {
+		"_postman_id": "agriflor-api-collection",
+		"name": "AgriFlor API",
+		"description": "Complete API collection for AgriFlor inventory management system",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "agriflor"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global pre-request script",
+					"if (pm.collectionVariables.get('token')) {",
+					"    pm.request.headers.add({",
+					"        key: 'Authorization',",
+					"        value: 'Bearer ' + pm.collectionVariables.get('token')",
+					"    });",
+					"}"
+				]
+			}
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.token) {",
+									"        pm.collectionVariables.set('token', jsonData.token);",
+									"        console.log('Token saved:', jsonData.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@agriflor.com\",\n    \"password\": \"Admin123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/auth/login",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"login"
+							]
+						},
+						"description": "Authenticate user and receive access token"
+					},
+					"response": []
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/auth/logout",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"logout"
+							]
+						},
+						"description": "Logout current user and invalidate token"
+					},
+					"response": []
+				},
+				{
+					"name": "Refresh Token",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    if (jsonData.token) {",
+									"        pm.collectionVariables.set('token', jsonData.token);",
+									"        console.log('Token refreshed:', jsonData.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/auth/refresh",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"refresh"
+							]
+						},
+						"description": "Refresh the current access token"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/auth/me",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"auth",
+								"me"
+							]
+						},
+						"description": "Get currently authenticated user information"
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints for login, logout, and token management"
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "Get All Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						},
+						"description": "Get list of all users (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Create User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"John Doe\",\n    \"email\": \"john.doe@agriflor.com\",\n    \"password\": \"Password123!\",\n    \"password_confirmation\": \"Password123!\",\n    \"role\": \"employee\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/users",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users"
+							]
+						},
+						"description": "Create a new user (Admin only). Roles: admin, manager, employee"
+					},
+					"response": []
+				},
+				{
+					"name": "Get User by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "User ID"
+								}
+							]
+						},
+						"description": "Get specific user details by ID (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update User",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"John Doe Updated\",\n    \"email\": \"john.doe.updated@agriflor.com\",\n    \"role\": \"manager\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/users/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "User ID"
+								}
+							]
+						},
+						"description": "Update user information (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete User",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "User ID"
+								}
+							]
+						},
+						"description": "Delete a user (Admin only)"
+					},
+					"response": []
+				},
+				{
+					"name": "Update User Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"inactive\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/users/:id/status",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"users",
+								":id",
+								"status"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "User ID"
+								}
+							]
+						},
+						"description": "Update user status (active/inactive) - Admin only"
+					},
+					"response": []
+				}
+			],
+			"description": "User management endpoints (Admin only)"
+		},
+		{
+			"name": "Products",
+			"item": [
+				{
+					"name": "Get All Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/products",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"products"
+							],
+							"query": [
+								{
+									"key": "category",
+									"value": "fertilizante",
+									"description": "Filter by category",
+									"disabled": true
+								},
+								{
+									"key": "status",
+									"value": "active",
+									"description": "Filter by status (active/inactive)",
+									"disabled": true
+								},
+								{
+									"key": "brand_id",
+									"value": "1",
+									"description": "Filter by brand ID",
+									"disabled": true
+								},
+								{
+									"key": "search",
+									"value": "NPK",
+									"description": "Search in name, SKU, or description",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all products with optional filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Product",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Fertilizante NPK 10-10-10\",\n    \"sku\": \"FRT-NPK-101010\",\n    \"category\": \"fertilizante\",\n    \"description\": \"Fertilizante balanceado NPK para uso general\",\n    \"brand_id\": 1,\n    \"unit_price\": 25.50,\n    \"min_stock_level\": 100,\n    \"max_stock_level\": 1000,\n    \"status\": \"active\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/products",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"products"
+							]
+						},
+						"description": "Create a new product"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/products/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"products",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Product ID"
+								}
+							]
+						},
+						"description": "Get specific product details by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Fertilizante NPK 10-10-10 Premium\",\n    \"sku\": \"FRT-NPK-101010\",\n    \"category\": \"fertilizante\",\n    \"description\": \"Fertilizante balanceado NPK premium para uso general\",\n    \"brand_id\": 1,\n    \"unit_price\": 28.50,\n    \"min_stock_level\": 150,\n    \"max_stock_level\": 1200,\n    \"status\": \"active\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/products/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"products",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Product ID"
+								}
+							]
+						},
+						"description": "Update product information"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Product",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/products/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"products",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Product ID"
+								}
+							]
+						},
+						"description": "Delete a product"
+					},
+					"response": []
+				}
+			],
+			"description": "Product management endpoints"
+		},
+		{
+			"name": "Brands",
+			"item": [
+				{
+					"name": "Get All Brands",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/brands",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"brands"
+							]
+						},
+						"description": "Get list of all brands"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Brand",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"AgroTech Solutions\",\n    \"description\": \"Leading provider of agricultural products\",\n    \"country\": \"Colombia\",\n    \"website\": \"https://agrotech.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/brands",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"brands"
+							]
+						},
+						"description": "Create a new brand"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Brand by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/brands/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"brands",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Brand ID"
+								}
+							]
+						},
+						"description": "Get specific brand details by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Brand",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"AgroTech Solutions International\",\n    \"description\": \"Leading provider of agricultural products worldwide\",\n    \"country\": \"Colombia\",\n    \"website\": \"https://agrotech-international.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/brands/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"brands",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Brand ID"
+								}
+							]
+						},
+						"description": "Update brand information"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Brand",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/brands/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"brands",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Brand ID"
+								}
+							]
+						},
+						"description": "Delete a brand"
+					},
+					"response": []
+				}
+			],
+			"description": "Brand management endpoints"
+		},
+		{
+			"name": "Suppliers",
+			"item": [
+				{
+					"name": "Get All Suppliers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/suppliers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"suppliers"
+							]
+						},
+						"description": "Get list of all suppliers"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Supplier",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Distribuidora Agro Colombia\",\n    \"tax_id\": \"900123456-7\",\n    \"email\": \"ventas@agrocolombia.com\",\n    \"phone\": \"+57 1 234 5678\",\n    \"address\": \"Calle 123 #45-67, Bogota\",\n    \"city\": \"Bogota\",\n    \"country\": \"Colombia\",\n    \"payment_terms\": \"Net 30\",\n    \"credit_limit\": 50000.00,\n    \"status\": \"active\",\n    \"contacts\": [\n        {\n            \"name\": \"Juan Perez\",\n            \"position\": \"Sales Manager\",\n            \"email\": \"jperez@agrocolombia.com\",\n            \"phone\": \"+57 300 123 4567\",\n            \"is_primary\": true\n        },\n        {\n            \"name\": \"Maria Rodriguez\",\n            \"position\": \"Account Representative\",\n            \"email\": \"mrodriguez@agrocolombia.com\",\n            \"phone\": \"+57 310 987 6543\",\n            \"is_primary\": false\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/suppliers",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"suppliers"
+							]
+						},
+						"description": "Create a new supplier with contacts"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Supplier by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/suppliers/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"suppliers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Supplier ID"
+								}
+							]
+						},
+						"description": "Get specific supplier details by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Supplier",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Distribuidora Agro Colombia S.A.S.\",\n    \"tax_id\": \"900123456-7\",\n    \"email\": \"ventas@agrocolombia.com\",\n    \"phone\": \"+57 1 234 5678\",\n    \"address\": \"Calle 123 #45-67, Edificio Norte, Bogota\",\n    \"city\": \"Bogota\",\n    \"country\": \"Colombia\",\n    \"payment_terms\": \"Net 45\",\n    \"credit_limit\": 75000.00,\n    \"status\": \"active\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/suppliers/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"suppliers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Supplier ID"
+								}
+							]
+						},
+						"description": "Update supplier information"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Supplier",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/suppliers/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"suppliers",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Supplier ID"
+								}
+							]
+						},
+						"description": "Delete a supplier"
+					},
+					"response": []
+				}
+			],
+			"description": "Supplier management endpoints"
+		},
+		{
+			"name": "Locations",
+			"item": [
+				{
+					"name": "Get All Locations",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/locations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations"
+							]
+						},
+						"description": "Get list of all locations"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Warehouses Only",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/locations/type/warehouses",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations",
+								"type",
+								"warehouses"
+							]
+						},
+						"description": "Get list of warehouse locations only"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Farms Only",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/locations/type/farms",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations",
+								"type",
+								"farms"
+							]
+						},
+						"description": "Get list of farm locations only"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Location",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Bodega Central Bogota\",\n    \"code\": \"BCB-001\",\n    \"type\": \"warehouse\",\n    \"address\": \"Carrera 50 #45-30\",\n    \"city\": \"Bogota\",\n    \"state\": \"Cundinamarca\",\n    \"country\": \"Colombia\",\n    \"postal_code\": \"110111\",\n    \"capacity\": 5000,\n    \"manager_name\": \"Carlos Mendoza\",\n    \"phone\": \"+57 1 456 7890\",\n    \"status\": \"active\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/locations",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations"
+							]
+						},
+						"description": "Create a new location (warehouse or farm)"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Location by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/locations/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Location ID"
+								}
+							]
+						},
+						"description": "Get specific location details by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Location",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Bodega Central Bogota - Ampliada\",\n    \"code\": \"BCB-001\",\n    \"type\": \"warehouse\",\n    \"address\": \"Carrera 50 #45-30\",\n    \"city\": \"Bogota\",\n    \"state\": \"Cundinamarca\",\n    \"country\": \"Colombia\",\n    \"postal_code\": \"110111\",\n    \"capacity\": 7500,\n    \"manager_name\": \"Carlos Mendoza\",\n    \"phone\": \"+57 1 456 7890\",\n    \"status\": \"active\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/locations/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Location ID"
+								}
+							]
+						},
+						"description": "Update location information"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Location",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/locations/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"locations",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Location ID"
+								}
+							]
+						},
+						"description": "Delete a location"
+					},
+					"response": []
+				}
+			],
+			"description": "Location management endpoints (warehouses and farms)"
+		},
+		{
+			"name": "Inventory",
+			"item": [
+				{
+					"name": "Get All Inventory",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"inventory"
+							]
+						},
+						"description": "Get all inventory records across all locations"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inventory by Product",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory/:productId",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"inventory",
+								":productId"
+							],
+							"variable": [
+								{
+									"key": "productId",
+									"value": "1",
+									"description": "Product ID"
+								}
+							]
+						},
+						"description": "Get inventory levels for a specific product across all locations"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inventory by Location",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory/location/:locationId",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"inventory",
+								"location",
+								":locationId"
+							],
+							"variable": [
+								{
+									"key": "locationId",
+									"value": "1",
+									"description": "Location ID"
+								}
+							]
+						},
+						"description": "Get all inventory in a specific location"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inventory Movements",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory/movements",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"inventory",
+								"movements"
+							],
+							"query": [
+								{
+									"key": "product_id",
+									"value": "1",
+									"description": "Filter by product ID",
+									"disabled": true
+								},
+								{
+									"key": "location_id",
+									"value": "1",
+									"description": "Filter by location ID",
+									"disabled": true
+								},
+								{
+									"key": "movement_type",
+									"value": "entrada",
+									"description": "Filter by movement type (entrada/salida/ajuste/transferencia)",
+									"disabled": true
+								},
+								{
+									"key": "date_from",
+									"value": "2024-01-01",
+									"description": "Filter from date",
+									"disabled": true
+								},
+								{
+									"key": "date_to",
+									"value": "2024-12-31",
+									"description": "Filter to date",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get inventory movement history with optional filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Inventory Adjustment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"product_id\": 1,\n    \"location_id\": 1,\n    \"quantity\": 50,\n    \"movement_type\": \"entrada\",\n    \"reason\": \"Recepción de compra - Orden #12345\",\n    \"reference_number\": \"PO-12345\",\n    \"unit_cost\": 25.50\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/inventory/adjustments",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"inventory",
+								"adjustments"
+							]
+						},
+						"description": "Create an inventory adjustment (entrada/salida/ajuste). Movement types: entrada, salida, ajuste, transferencia"
+					},
+					"response": []
+				}
+			],
+			"description": "Inventory management and tracking endpoints"
+		},
+		{
+			"name": "Packaging Units",
+			"item": [
+				{
+					"name": "Get All Packaging Units",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/packaging-units",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"packaging-units"
+							]
+						},
+						"description": "Get list of all packaging units"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Packaging Unit",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Saco 50kg\",\n    \"abbreviation\": \"S50\",\n    \"base_unit\": \"kg\",\n    \"conversion_factor\": 50.0,\n    \"description\": \"Saco estándar de 50 kilogramos\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/packaging-units",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"packaging-units"
+							]
+						},
+						"description": "Create a new packaging unit"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Packaging Unit by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/packaging-units/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"packaging-units",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Packaging Unit ID"
+								}
+							]
+						},
+						"description": "Get specific packaging unit details by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Packaging Unit",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Saco Premium 50kg\",\n    \"abbreviation\": \"SP50\",\n    \"base_unit\": \"kg\",\n    \"conversion_factor\": 50.0,\n    \"description\": \"Saco premium reforzado de 50 kilogramos\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/packaging-units/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"packaging-units",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Packaging Unit ID"
+								}
+							]
+						},
+						"description": "Update packaging unit information"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Packaging Unit",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/packaging-units/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"packaging-units",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Packaging Unit ID"
+								}
+							]
+						},
+						"description": "Delete a packaging unit"
+					},
+					"response": []
+				}
+			],
+			"description": "Packaging unit management endpoints"
+		},
+		{
+			"name": "Alerts",
+			"item": [
+				{
+					"name": "Get All Alerts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/alerts",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"alerts"
+							],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "Filter by status (pending/resolved/dismissed)",
+									"disabled": true
+								},
+								{
+									"key": "type",
+									"value": "low_stock",
+									"description": "Filter by alert type",
+									"disabled": true
+								},
+								{
+									"key": "priority",
+									"value": "high",
+									"description": "Filter by priority (low/medium/high/critical)",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all alerts with optional filters"
+					},
+					"response": []
+				},
+				{
+					"name": "Create Alert",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"type\": \"low_stock\",\n    \"priority\": \"high\",\n    \"title\": \"Stock bajo: Fertilizante NPK 10-10-10\",\n    \"message\": \"El producto ha alcanzado el nivel mínimo de stock. Cantidad actual: 50 unidades\",\n    \"product_id\": 1,\n    \"location_id\": 1,\n    \"metadata\": {\n        \"current_quantity\": 50,\n        \"min_level\": 100,\n        \"reorder_suggested\": 200\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/alerts",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"alerts"
+							]
+						},
+						"description": "Create a new alert. Types: low_stock, expiring_soon, expired, quality_issue, system. Priorities: low, medium, high, critical"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Alert by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/alerts/:id",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"alerts",
+								":id"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Get specific alert details by ID"
+					},
+					"response": []
+				},
+				{
+					"name": "Resolve Alert",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"resolution_notes\": \"Stock repuesto mediante orden de compra #12345. Nuevo nivel: 250 unidades\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/alerts/:id/resolve",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"alerts",
+								":id",
+								"resolve"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Mark alert as resolved with resolution notes"
+					},
+					"response": []
+				},
+				{
+					"name": "Dismiss Alert",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"dismissal_reason\": \"Alerta duplicada, ya gestionada en alerta #45\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/alerts/:id/dismiss",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"api",
+								"alerts",
+								":id",
+								"dismiss"
+							],
+							"variable": [
+								{
+									"key": "id",
+									"value": "1",
+									"description": "Alert ID"
+								}
+							]
+						},
+						"description": "Dismiss alert with reason"
+					},
+					"response": []
+				}
+			],
+			"description": "Alert and notification management endpoints"
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "token",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

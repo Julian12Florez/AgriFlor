@@ -1,0 +1,300 @@
+================================================================================
+AGRIFLOR - RESUMEN EJECUTIVO DE MÓDULOS
+================================================================================
+Fecha: 2025-12-03
+Proyecto: Sistema de Gestión de Inventario para Productos Químicos Agrícolas
+
+================================================================================
+1. MÓDULO DE PRODUCTO (PRODUCTS)
+================================================================================
+
+BACKEND (5 archivos):
+  - Models:        /home/julian/Documentos/AgriFlor/backend/app/Models/Product.php
+  - Controller:    /home/julian/Documentos/AgriFlor/backend/app/Http/Controllers/Api/ProductController.php
+  - Validation:    /home/julian/Documentos/AgriFlor/backend/app/Http/Requests/StoreProductRequest.php
+  - Validation:    /home/julian/Documentos/AgriFlor/backend/app/Http/Requests/UpdateProductRequest.php
+  - Migration:     /home/julian/Documentos/AgriFlor/backend/database/migrations/2025_11_14_195347_create_products_table.php
+
+FRONTEND (5 archivos):
+  - Page:          /home/julian/Documentos/AgriFlor/frontend/src/pages/master/Products.tsx
+  - API Service:   /home/julian/Documentos/AgriFlor/frontend/src/services/api.ts (productsApi)
+  - Types:         /home/julian/Documentos/AgriFlor/frontend/src/data/types.ts
+  - Component:     /home/julian/Documentos/AgriFlor/frontend/src/components/ResponsiveTable.tsx
+  - Theme:         /home/julian/Documentos/AgriFlor/frontend/src/config/theme.ts
+
+FUNCIONALIDADES:
+  • CRUD completo (Create, Read, Update, Delete)
+  • Filtrado por: nombre, categoría, estado
+  • Categorías: fertilizante, pesticida, herbicida, fungicida
+  • Campos: nombre, marca, unidad base, principio activo, stock mínimo
+  • Estados: activo, inactivo
+  • Tabla responsiva (móvil/desktop)
+  • Modal para creación/edición
+  • Manejo de errores de validación
+
+ENDPOINTS API:
+  GET     /api/products              - Listar con filtros
+  GET     /api/products/{id}         - Obtener específico
+  POST    /api/products              - Crear
+  PUT     /api/products/{id}         - Actualizar
+  DELETE  /api/products/{id}         - Eliminar
+  POST    /api/products/search-with-inventory - Búsqueda avanzada
+
+================================================================================
+2. MÓDULO DE COMPRA (PURCHASES)
+================================================================================
+
+BACKEND (10 archivos):
+  - Models:        /home/julian/Documentos/AgriFlor/backend/app/Models/Purchase.php
+  - Models:        /home/julian/Documentos/AgriFlor/backend/app/Models/PurchaseItem.php
+  - Models:        /home/julian/Documentos/AgriFlor/backend/app/Models/PurchaseAttachment.php
+  - Controller:    /home/julian/Documentos/AgriFlor/backend/app/Http/Controllers/Api/PurchaseController.php
+  - Validation:    /home/julian/Documentos/AgriFlor/backend/app/Http/Requests/StorePurchaseRequest.php
+  - Validation:    /home/julian/Documentos/AgriFlor/backend/app/Http/Requests/UpdatePurchaseRequest.php
+  - Resource:      /home/julian/Documentos/AgriFlor/backend/app/Http/Resources/PurchaseResource.php
+  - Migration:     /home/julian/Documentos/AgriFlor/backend/database/migrations/2025_11_14_195400_create_purchases_table.php
+  - Migration:     /home/julian/Documentos/AgriFlor/backend/database/migrations/2025_11_14_195401_create_purchase_items_table.php
+  - Migration:     /home/julian/Documentos/AgriFlor/backend/database/migrations/2025_11_14_195402_create_purchase_attachments_table.php
+
+FRONTEND (8 archivos):
+  - Page:          /home/julian/Documentos/AgriFlor/frontend/src/pages/purchases/Purchases.tsx
+  - API Service:   /home/julian/Documentos/AgriFlor/frontend/src/services/api.ts (purchasesApi)
+  - PDF Utils:     /home/julian/Documentos/AgriFlor/frontend/src/utils/pdfGenerator.ts
+  - Mock Data:     /home/julian/Documentos/AgriFlor/frontend/src/mock/purchases.ts
+  - Component:     /home/julian/Documentos/AgriFlor/frontend/src/components/ResponsiveTable.tsx
+  - Types:         /home/julian/Documentos/AgriFlor/frontend/src/data/types.ts
+  - Theme:         /home/julian/Documentos/AgriFlor/frontend/src/config/theme.ts
+  - Router:        /home/julian/Documentos/AgriFlor/frontend/src/main.tsx
+
+FUNCIONALIDADES:
+  • CRUD completo para compras
+  • Gestión de items (productos, cantidades, precios)
+  • Adjuntos (upload, descarga, eliminación de documentos)
+  • Cambio de estado: ordered → in_transit → received → cancelled
+  • Cálculo automático de subtotal, impuestos, total
+  • Filtrado por: número de orden, estado, proveedor
+  • Generación de PDF de orden de compra
+  • Tabla responsiva con vista detallada
+  • Validación de datos en frontend y backend
+  • Integración con Receptions para actualizar inventario
+
+CAMPOS PRINCIPALES:
+  • Número de orden (único)
+  • Proveedor (selección)
+  • Ubicación destino
+  • Fecha de compra y entrega esperada
+  • Estado de la compra
+  • Items: producto, cantidad, unidad, precio unitario
+  • Observaciones
+
+ENDPOINTS API:
+  GET     /api/purchases              - Listar con filtros
+  GET     /api/purchases/{id}         - Obtener específico
+  POST    /api/purchases              - Crear
+  PUT     /api/purchases/{id}         - Actualizar
+  DELETE  /api/purchases/{id}         - Eliminar
+  POST    /api/purchases/{id}/attachments              - Agregar adjunto
+  DELETE  /api/purchases/{id}/attachments/{attachId}  - Eliminar adjunto
+
+================================================================================
+3. MÓDULO DE SALIDA (PRODUCT OUTPUTS)
+================================================================================
+
+BACKEND (9 archivos):
+  - Models:        /home/julian/Documentos/AgriFlor/backend/app/Models/ProductOutput.php
+  - Models:        /home/julian/Documentos/AgriFlor/backend/app/Models/OutputProduct.php
+  - Controller:    /home/julian/Documentos/AgriFlor/backend/app/Http/Controllers/Api/ProductOutputController.php
+  - Validation:    /home/julian/Documentos/AgriFlor/backend/app/Http/Requests/StoreProductOutputRequest.php
+  - Validation:    /home/julian/Documentos/AgriFlor/backend/app/Http/Requests/UpdateProductOutputRequest.php
+  - Resource:      /home/julian/Documentos/AgriFlor/backend/app/Http/Resources/ProductOutputResource.php
+  - Observer:      /home/julian/Documentos/AgriFlor/backend/app/Observers/ProductOutputObserver.php
+  - Migration:     /home/julian/Documentos/AgriFlor/backend/database/migrations/2025_11_14_195403_create_product_outputs_table.php
+  - Migration:     /home/julian/Documentos/AgriFlor/backend/database/migrations/2025_11_14_195404_create_output_products_table.php
+
+FRONTEND (8 archivos):
+  - Page:          /home/julian/Documentos/AgriFlor/frontend/src/pages/outputs/Outputs.tsx
+  - API Service:   /home/julian/Documentos/AgriFlor/frontend/src/services/api.ts (outputsApi)
+  - Component:     /home/julian/Documentos/AgriFlor/frontend/src/components/ResponsiveTable.tsx
+  - Types:         /home/julian/Documentos/AgriFlor/frontend/src/data/types.ts
+  - Theme:         /home/julian/Documentos/AgriFlor/frontend/src/config/theme.ts
+  - Mock Data:     /home/julian/Documentos/AgriFlor/frontend/src/mock/movements.ts
+  - Inventory:     /home/julian/Documentos/AgriFlor/frontend/src/pages/inventory/Inventory.tsx
+  - Router:        /home/julian/Documentos/AgriFlor/frontend/src/main.tsx
+
+FUNCIONALIDADES:
+  • CRUD completo para salidas
+  • Gestión de productos a sacar (con validación de disponibilidad)
+  • Cambio de estado: pending → partial → completed / cancelled
+  • Validación de inventario antes de aprobar (FIFO - First In First Out)
+  • Cálculo automático de costos
+  • Filtrado por: número de salida, estado, ubicación origen
+  • Tabla responsiva con vista detallada
+  • Aprobación automática genera InventoryMovements
+  • Integración automática con inventario
+  • Generación automática de número de salida
+
+CAMPOS PRINCIPALES:
+  • Número de salida (único, generado automático)
+  • Orden técnica (referencia)
+  • Ubicación origen y destino
+  • Fecha de salida
+  • Estado de la salida
+  • Items: producto, cantidad, unidad, costo
+  • Usuario responsable
+  • Observaciones
+
+ESTADOS Y FLUJOS:
+  • pending    - Salida creada, en espera de aprobación
+  • partial    - Parcialmente completada
+  • completed  - Finalizada, inventario actualizado
+  • cancelled  - Cancelada
+
+ENDPOINTS API:
+  GET     /api/product-outputs                       - Listar con filtros
+  GET     /api/product-outputs/{id}                  - Obtener específico
+  POST    /api/product-outputs                       - Crear
+  PUT     /api/product-outputs/{id}                  - Actualizar
+  DELETE  /api/product-outputs/{id}                  - Eliminar
+  POST    /api/product-outputs/validate-inventory   - Validar disponibilidad
+  POST    /api/product-outputs/{id}/approve         - Aprobar (aplica FIFO)
+  POST    /api/product-outputs/{id}/mark-in-transit - Marcar en tránsito
+  POST    /api/product-outputs/{id}/complete        - Completar
+
+================================================================================
+4. RESUMEN COMPARATIVO DE MÓDULOS
+================================================================================
+
+                    PRODUCTO        COMPRA          SALIDA
+  ────────────────────────────────────────────────────────────
+  Modelos           1               3               2
+  Controladores     1               1               1
+  Validaciones      2               2               2
+  Resources         1               1               1
+  Migraciones       1               3               2
+  Frontend Pages    1               1               1
+  Total Files       10              18              17
+
+  Estados           2 (A/I)         4               4
+  
+  Relaciones        Brand, User,    Supplier,       TechnicalOrder,
+                    Packaging,      Location, User, Location, User,
+                    Inventory       Inventory       Inventory
+
+  Eventos Automáticos  -            -               ProductOutputObserver
+
+================================================================================
+5. ARCHIVOS COMPARTIDOS ENTRE MÓDULOS
+================================================================================
+
+BACKEND - Modelos Comunes:
+  • Location.php           - Ubicaciones (usada en Compra y Salida)
+  • Supplier.php           - Proveedores (usada en Compra)
+  • Brand.php              - Marcas (usada en Producto)
+  • Inventory.php          - Control de stock (afectada por Compra y Salida)
+  • InventoryMovement.php  - Historial (generada por Compra y Salida)
+  • Reception.php          - Recepción (vincula Compra/Salida con Inventory)
+  • TechnicalOrder.php     - Órdenes técnicas (vinculadas a Salida)
+
+FRONTEND - Servicios Compartidos:
+  • /services/api.ts       - Todas las APIs centralizadas
+  • ResponsiveTable.tsx    - Componente tabla usado en todos
+  • types.ts               - Interfaces de todos los módulos
+  • theme.ts               - Estilos y colores
+  • main.tsx               - Routing de aplicación
+
+================================================================================
+6. INTEGRACIÓN Y FLUJOS
+================================================================================
+
+COMPRA → INVENTARIO:
+  1. Usuario crea compra (Purchases.tsx)
+  2. Compra se guarda con items
+  3. Estado: ordered → in_transit → received
+  4. Al recibir, se crea Reception
+  5. Reception actualiza Inventory
+
+SALIDA → INVENTARIO:
+  1. Usuario crea salida (Outputs.tsx)
+  2. Frontend valida inventario disponible
+  3. Usuario aprueba salida
+  4. ProductOutputObserver ejecuta automáticamente
+  5. Inventario se actualiza con FIFO
+  6. Se generan InventoryMovements
+
+PRODUCTO → TODOS LOS MÓDULOS:
+  • Se usa en Compra como item a comprar
+  • Se usa en Salida como item a sacar
+  • Se usa en Inventory para control de stock
+  • Se relaciona con Brand y Location
+
+================================================================================
+7. TECNOLOGÍAS UTILIZADAS
+================================================================================
+
+BACKEND:
+  • Framework: Laravel 11
+  • ORM: Eloquent
+  • Validación: Form Requests
+  • API: RESTful JSON
+  • BD: MySQL/PostgreSQL (con migraciones)
+  • Patrones: Repository, Observer, Resource
+
+FRONTEND:
+  • Framework: React + TypeScript
+  • UI: Ant Design
+  • Queries: React Query (@tanstack/react-query)
+  • Routing: React Router
+  • HTTP: Fetch API
+  • Utilities: dayjs (fechas), pdfkit (PDF)
+
+================================================================================
+8. PUNTOS CLAVE DE IMPLEMENTACIÓN
+================================================================================
+
+VALIDACIÓN:
+  • Backend: Form Requests validan antes de guardar
+  • Frontend: Validación inmediata + backend errors handling
+  • Inventario: Validación antes de aprobar salidas (cantidad disponible)
+
+AUTOMÁTICA:
+  • Números de referencia se generan automáticamente
+  • Cálculos: subtotal, impuestos, totales
+  • FIFO en salidas: el inventario más antiguo sale primero
+  • InventoryMovements se generan automáticamente
+
+SEGURIDAD:
+  • JWT Bearer token authentication
+  • Rutas protegidas con PrivateRoute
+  • Validación de permisos en backend
+  • CORS configurado
+
+RESPONSIVIDAD:
+  • Tablas se adaptan a móvil/desktop
+  • Componentes usables en cualquier resolución
+  • Modal y Drawer para formularios
+
+================================================================================
+9. CÓMO NAVEGAR EL CÓDIGO
+================================================================================
+
+PARA ENTENDER UN MÓDULO:
+  1. Inicia por el archivo de Página Frontend (ej: Products.tsx)
+  2. Revisa los tipos en /data/types.ts
+  3. Mira el servicio API en /services/api.ts
+  4. Ve al controlador Backend (/Controllers/Api/)
+  5. Revisa el Modelo (/Models/)
+  6. Consulta las Validaciones (/Requests/)
+  7. Verifica las Migraciones (database/migrations/)
+
+PARA AGREGAR UN CAMPO NUEVO:
+  1. Agregar a migración y ejecutar: php artisan migrate
+  2. Agregar al Model fillable y casts
+  3. Agregar a validación (Request)
+  4. Agregar a Resource
+  5. Agregar a interfaz TypeScript (types.ts)
+  6. Agregar al formulario Frontend
+  7. Agregar columna a tabla Frontend
+
+================================================================================
+FIN DEL RESUMEN
+================================================================================

@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env files
+.env
+.env.local
+.env.production
+
+# Generated docs
+ANALISIS_ACTUAL.md
+CORRECCIONES_APLICADAS.md
+REPORTE_PRUEBAS.md
+
+# Node
+node_modules/

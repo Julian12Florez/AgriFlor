@@ -1,0 +1,74 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                 VALIDACIÓN DE PUERTOS - AGRIFLOR BACKEND                 ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+✅ VALIDACIÓN COMPLETADA EXITOSAMENTE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 PUERTOS DETECTADOS EN USO (Otros Proyectos):
+
+   Puerto  │ Servicio       │ Proyecto      │ IP
+   ─────────┼────────────────┼───────────────┼──────────────
+   80       │ HTTP           │ Invima        │ 127.0.0.40
+   3306     │ MariaDB        │ Invima        │ 127.0.0.40
+   6379     │ Redis          │ Invima        │ 127.0.0.40
+   8080 ❌  │ Adminer        │ Invima        │ 127.0.0.40
+   8081     │ Desconocido    │ -             │ -
+   8082     │ Desconocido    │ -             │ -
+   9000     │ SonarQube      │ -             │ 0.0.0.0 (detenido)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ PUERTOS CONFIGURADOS PARA AGRIFLOR (Sin conflictos):
+
+   Puerto  │ Servicio       │ URL/Acceso                  │ Estado
+   ─────────┼────────────────┼─────────────────────────────┼────────
+   8000 ✓  │ Laravel API    │ http://localhost:8000       │ LIBRE
+   3307 ✓  │ MySQL          │ localhost:3307              │ LIBRE
+   6380 ✓  │ Redis          │ localhost:6380              │ LIBRE
+   8083 ✓  │ phpMyAdmin     │ http://localhost:8083       │ LIBRE
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🔧 CAMBIOS REALIZADOS:
+
+   ✅ Puerto phpMyAdmin cambiado: 8080 → 8083
+      Razón: Puerto 8080 ocupado por Adminer (proyecto Invima)
+
+   📝 Archivos actualizados:
+      ✓ docker-compose.yml (línea 84)
+      ✓ README.md (2 ubicaciones)
+      ✓ install.sh (1 ubicación)
+      ✓ PUERTOS.md (nuevo archivo de documentación)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 SERVICIOS LISTOS PARA INICIAR:
+
+   docker-compose up -d
+
+   Una vez iniciados, estarán disponibles en:
+
+   🌐 API Laravel:    http://localhost:8000
+   🗄️  phpMyAdmin:    http://localhost:8083
+   💾 MySQL:          localhost:3307 (user: agriflor, pass: secret)
+   🔴 Redis:          localhost:6380
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📋 VERIFICACIÓN FINAL:
+
+   ✅ Puertos verificados en sistema
+   ✅ Conflictos resueltos
+   ✅ Archivos de configuración actualizados
+   ✅ Documentación generada (PUERTOS.md)
+   ✅ Red Docker configurada (agriflor)
+   ✅ Volúmenes persistentes configurados
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Fecha de validación: 2025-11-14
+Sistema: Linux 6.8.0-87-generic
+Docker: Activo
+

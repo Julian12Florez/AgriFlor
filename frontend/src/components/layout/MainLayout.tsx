@@ -1,0 +1,305 @@
+import React, { useState, useMemo } from 'react';
+import { Layout, Menu, Button, Avatar, Dropdown, Badge } from 'antd';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+  DashboardOutlined,
+  DatabaseOutlined,
+  ExperimentOutlined,
+  ShoppingCartOutlined,
+  BankOutlined,
+  BarChartOutlined,
+  SettingOutlined,
+  UserOutlined,
+  BellOutlined,
+  LogoutOutlined,
+} from '@ant-design/icons';
+import type { MenuProps } from 'antd';
+import usePermissions from '../../hooks/usePermissions';
+import { setAuthToken } from '../../services/api';
+
+const { Header, Sider, Content } = Layout;
+
+interface MainLayoutProps {
+  children: React.ReactNode;
+}
+
+const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+  const [collapsed, setCollapsed] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const queryClient = useQueryClient();
+  const { user, hasModuleAccess, getRoleDisplayName } = usePermissions();
+
+  // Build menu dynamically based on user permissions
+  const menuItems: MenuProps['items'] = useMemo(() => {
+    const items: MenuProps['items'] = [
+      {
+        key: '/dashboard',
+        icon: <DashboardOutlined />,
+        label: 'Dashboard',
+      },
+    ];
+
+    // Datos Maestros - module: 'master'
+    if (hasModuleAccess('master')) {
+      items.push({
+        key: 'sub1',
+        icon: <DatabaseOutlined />,
+        label: 'Datos Maestros',
+        children: [
+          { key: '/master/products', label: 'Productos' },
+          { key: '/master/base-units', label: 'Unidades Base' },
+          { key: '/master/packaging-units', label: 'Unidades de Empaque' },
+          { key: '/master/brands', label: 'Marcas' },
+          { key: '/master/suppliers', label: 'Proveedores' },
+          { key: '/master/locations', label: 'Ubicaciones' },
+          { key: '/master/output-types', label: 'Tipos de Salida' },
+        ],
+      });
+    }
+
+    // Procesos Técnicos - module: 'technical'
+    if (hasModuleAccess('technical')) {
+      items.push({
+        key: 'sub2',
+        icon: <ExperimentOutlined />,
+        label: 'Procesos Técnicos',
+        children: [
+          { key: '/technical/recipes', label: 'Recetas Técnicas' },
+          { key: '/technical/orders', label: 'Órdenes Técnicas' },
+        ],
+      });
+    }
+
+    // Gestión de Compras y Operaciones - module: 'purchases'
+    const purchaseChildren: any[] = [];
+    if (hasModuleAccess('purchases')) {
+      purchaseChildren.push({ key: '/purchases', label: 'Compras' });
+    }
+    if (hasModuleAccess('outputs')) {
+      purchaseChildren.push({ key: '/outputs', label: 'Salidas' });
+    }
+    if (hasModuleAccess('reception')) {
+      purchaseChildren.push({ key: '/reception', label: 'Recepción' });
+    }
+
+    if (purchaseChildren.length > 0) {
+      items.push({
+        key: 'sub3',
+        icon: <ShoppingCartOutlined />,
+        label: 'Gestión de Compras',
+        children: purchaseChildren,
+      });
+    }
+
+    // Inventario - module: 'inventory'
+    if (hasModuleAccess('inventory')) {
+      items.push({
+        key: 'sub4',
+        icon: <BankOutlined />,
+        label: 'Inventario',
+        children: [
+          { key: '/inventory', label: 'Inventario y Kardex' },
+        ],
+      });
+    }
+
+    // Reportes y Alertas - module: 'reports'
+    if (hasModuleAccess('reports')) {
+      items.push({
+        key: 'sub5',
+        icon: <BarChartOutlined />,
+        label: 'Reportes y Alertas',
+        children: [
+          { key: '/reports/stock', label: 'Stock Actual' },
+          { key: '/reports/consumption', label: 'Consumo de Productos' },
+          { key: '/reports/movements', label: 'Movimientos de Inventario' },
+          { key: '/reports/consolidated', label: 'Análisis Consolidado' },
+          { key: '/reports/kardex', label: 'Kardex de Inventario' },
+          { key: '/reports/audit', label: 'Auditoría de Inventario' },
+        ],
+      });
+    }
+
+    // Administración - module: 'admin'
+    if (hasModuleAccess('admin')) {
+      items.push({
+        key: 'sub6',
+        icon: <SettingOutlined />,
+        label: 'Administración',
+        children: [
+          { key: '/admin/users', label: 'Usuarios' },
+        ],
+      });
+    }
+
+    return items;
+  }, [hasModuleAccess]);
+
+  // Dropdown del usuario
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: 'Mi Perfil',
+    },
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: 'Configuración',
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: 'Cerrar Sesión',
+      danger: true,
+    },
+  ];
+
+  const handleMenuClick: MenuProps['onClick'] = (e) => {
+    if (e.key.startsWith('/')) {
+      navigate(e.key);
+    }
+  };
+
+  const handleUserMenuClick = (info: { key: string }) => {
+    if (info.key === 'logout') {
+      // Clear token and invalidate all queries
+      setAuthToken(null);
+      queryClient.clear();
+      navigate('/login');
+    }
+  };
+
+  return (
+    <Layout style={{ minHeight: '100vh' }}>
+      <Sider
+        trigger={null}
+        collapsible
+        collapsed={collapsed}
+        style={{
+          background: '#2E7D32',
+        }}
+        width={280}
+      >
+        {/* Logo */}
+        <div
+          style={{
+            height: 64,
+            margin: 16,
+            background: 'rgba(255, 255, 255, 0.1)',
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            fontSize: collapsed ? 16 : 18,
+            fontWeight: 'bold',
+          }}
+        >
+          {collapsed ? '🌿' : '🌿 AgriFlor'}
+        </div>
+
+        {/* Menu */}
+        <Menu
+          theme="dark"
+          mode="inline"
+          selectedKeys={[location.pathname]}
+          defaultOpenKeys={[]}
+          items={menuItems}
+          onClick={handleMenuClick}
+        />
+      </Sider>
+
+      <Layout>
+        {/* Header */}
+        <Header
+          style={{
+            padding: '0 24px',
+            background: '#4CAF50',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={() => setCollapsed(!collapsed)}
+              style={{
+                fontSize: '16px',
+                width: 64,
+                height: 64,
+                color: 'white',
+              }}
+            />
+            <h2 style={{ color: 'white', margin: 0, marginLeft: 16 }}>
+              Dashboard
+            </h2>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {/* Notificaciones */}
+            <Badge count={3} size="small">
+              <Button
+                type="text"
+                icon={<BellOutlined />}
+                style={{ color: 'white', fontSize: '16px' }}
+              />
+            </Badge>
+
+            {/* Usuario */}
+            <Dropdown
+              menu={{ items: userMenuItems, onClick: handleUserMenuClick }}
+              placement="bottomRight"
+            >
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                cursor: 'pointer',
+                color: 'white',
+                gap: 8,
+              }}>
+                <Avatar
+                  size="small"
+                  icon={<UserOutlined />}
+                  style={{ background: '#2E7D32' }}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.3, gap: 0 }}>
+                  <span style={{ fontSize: '14px', fontWeight: 500 }}>
+                    {user?.name || 'Usuario'}
+                  </span>
+                  <span style={{ fontSize: '12px', opacity: 0.8 }}>
+                    {getRoleDisplayName()}
+                  </span>
+                </div>
+              </div>
+            </Dropdown>
+          </div>
+        </Header>
+
+        {/* Content */}
+        <Content
+          style={{
+            margin: '24px',
+            padding: 24,
+            background: '#fff',
+            borderRadius: 8,
+            minHeight: 280,
+          }}
+        >
+          {children}
+        </Content>
+      </Layout>
+    </Layout>
+  );
+};
+
+export default MainLayout;

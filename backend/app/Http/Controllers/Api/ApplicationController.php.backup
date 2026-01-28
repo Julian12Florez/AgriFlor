@@ -1,0 +1,318 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\{Application, ApplicationProduct, Inventory, InventoryMovement};
+use Illuminate\Http\{JsonResponse, Request};
+use Illuminate\Support\Facades\{DB, Log, Validator};
+
+class ApplicationController extends Controller
+{
+    /**
+     * Listar aplicaciones con filtros
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $query = Application::with([
+            'applicationProducts.product',
+            'applicationProducts.brand',
+            'originLocation',
+            'destinationLocation',
+            'responsibleUser'
+        ]);
+
+        // Filtros
+        if ($request->location_id) {
+            $query->where('origin_location_id', $request->location_id);
+        }
+
+        if ($request->status) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->date_from) {
+            $query->where('application_date', '>=', $request->date_from);
+        }
+
+        if ($request->date_to) {
+            $query->where('application_date', '<=', $request->date_to);
+        }
+
+        if ($request->search) {
+            $query->where(function($q) use ($request) {
+                $q->where('application_number', 'like', "%{$request->search}%")
+                  ->orWhere('notes', 'like', "%{$request->search}%")
+                  ->orWhere('farm_lot_names', 'like', "%{$request->search}%");
+            });
+        }
+
+        $applications = $query->latest('application_date')
+            ->paginate($request->per_page ?? 15);
+
+        return response()->json([
+            'success' => true,
+            'data' => $applications,
+        ]);
+    }
+
+    /**
+     * Ver detalle de una aplicación
+     */
+    public function show(string $id): JsonResponse
+    {
+        $application = Application::with([
+            'applicationProducts.product',
+            'applicationProducts.brand',
+            'originLocation',
+            'destinationLocation',
+            'responsibleUser'
+        ])->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => $application,
+        ]);
+    }
+
+    /**
+     * Crear nueva aplicación
+     */
+    public function store(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'application_date' => 'required|date',
+            'origin_location_id' => 'required|uuid|exists:locations,id',
+            'destination_location_id' => 'nullable|uuid|exists:locations,id',
+            'farm_lot_ids' => 'nullable|array',
+            'farm_lot_names' => 'nullable|string',
+            'products' => 'required|array|min:1',
+            'products.*.product_id' => 'required|uuid|exists:products,id',
+            'products.*.brand_id' => 'required|uuid|exists:brands,id',
+            'products.*.quantity_applied' => 'required|numeric|min:0.01',
+            'products.*.unit' => 'required|string',
+            'products.*.dose_per_hectare' => 'nullable|numeric',
+            'products.*.area_applied' => 'nullable|numeric',
+            'products.*.application_method' => 'nullable|string',
+            'notes' => 'nullable|string',
+            'weather_conditions' => 'nullable|string',
+            'temperature' => 'nullable|numeric',
+            'application_method' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Errores de validación',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Validar stock disponible ANTES de crear
+            foreach ($request->products as $productData) {
+                $available = Inventory::where('product_id', $productData['product_id'])
+                    ->where('brand_id', $productData['brand_id'])
+                    ->where('location_id', $request->origin_location_id)
+                    ->where('status', 'good')
+                    ->sum('quantity');
+
+                if ($available < $productData['quantity_applied']) {
+                    throw new \Exception(
+                        "Stock insuficiente para {$productData['product_id']}. " .
+                        "Disponible: {$available}, Solicitado: {$productData['quantity_applied']}"
+                    );
+                }
+            }
+
+            // Crear aplicación
+            $application = Application::create([
+                'application_number' => Application::generateApplicationNumber(),
+                'application_date' => $request->application_date,
+                'origin_location_id' => $request->origin_location_id,
+                'destination_location_id' => $request->destination_location_id,
+                'farm_lot_ids' => $request->farm_lot_ids,
+                'farm_lot_names' => $request->farm_lot_names,
+                'responsible_user_id' => $request->user()->id,
+                'status' => 'pending',
+                'notes' => $request->notes,
+                'weather_conditions' => $request->weather_conditions,
+                'temperature' => $request->temperature,
+                'application_method' => $request->application_method,
+            ]);
+
+            // Crear productos de la aplicación
+            foreach ($request->products as $productData) {
+                $application->applicationProducts()->create($productData);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Aplicación creada exitosamente',
+                'data' => $application->load('applicationProducts', 'originLocation', 'responsibleUser'),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error creando aplicación', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear aplicación: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Aprobar aplicación - AQUÍ SE DESCUENTA EL STOCK
+     */
+    public function approve(string $id): JsonResponse
+    {
+        $application = Application::with('applicationProducts')->findOrFail($id);
+
+        if ($application->status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo se pueden aprobar aplicaciones pendientes',
+            ], 422);
+        }
+
+        DB::beginTransaction();
+        try {
+            // Procesar cada producto aplicado
+            foreach ($application->applicationProducts as $appProduct) {
+                // Reducir inventario usando FIFO
+                $this->reduceInventoryFIFO(
+                    $appProduct->product_id,
+                    $appProduct->brand_id,
+                    $application->origin_location_id,
+                    $appProduct->quantity_applied
+                );
+
+                // Crear movimiento de inventario tipo APPLICATION
+                InventoryMovement::create([
+                    'type' => 'exit',
+                    'product_id' => $appProduct->product_id,
+                    'brand_id' => $appProduct->brand_id,
+                    'location_id' => $application->origin_location_id,
+                    'quantity' => $appProduct->quantity_applied,
+                    'unit' => $appProduct->unit,
+                    'movement_date' => $application->application_date,
+                    'unit_price' => 0, // Se puede calcular si es necesario
+                    'total_price' => 0,
+                    'related_document_type' => Application::class,
+                    'related_document_id' => $application->id,
+                    'responsible_user' => auth()->id(),
+                    'observations' => "Aplicación {$application->application_number}" .
+                                    ($application->farm_lot_names ? " en {$application->farm_lot_names}" : ""),
+                ]);
+
+                Log::info('Stock reducido por aplicación', [
+                    'application_id' => $application->id,
+                    'product_id' => $appProduct->product_id,
+                    'quantity' => $appProduct->quantity_applied,
+                ]);
+            }
+
+            // Cambiar estado
+            $application->update(['status' => 'approved']);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Aplicación aprobada y stock actualizado',
+                'data' => $application->fresh(['applicationProducts', 'originLocation']),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error aprobando aplicación', [
+                'application_id' => $application->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al aprobar aplicación: ' . $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Cancelar aplicación
+     */
+    public function cancel(string $id): JsonResponse
+    {
+        $application = Application::findOrFail($id);
+
+        if ($application->status !== 'pending') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo se pueden cancelar aplicaciones pendientes',
+            ], 422);
+        }
+
+        $application->update(['status' => 'cancelled']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Aplicación cancelada',
+            'data' => $application,
+        ]);
+    }
+
+    /**
+     * Reducir inventario usando FIFO
+     */
+    private function reduceInventoryFIFO(
+        string $productId,
+        string $brandId,
+        string $locationId,
+        float $quantity
+    ): void {
+        $inventoryBatches = Inventory::where('product_id', $productId)
+            ->where('brand_id', $brandId)
+            ->where('location_id', $locationId)
+            ->where('status', 'good')
+            ->where('quantity', '>', 0)
+            ->orderBy('expiration_date', 'asc')
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        $totalAvailable = $inventoryBatches->sum('quantity');
+        if ($totalAvailable < $quantity) {
+            throw new \Exception(
+                "Inventario insuficiente. Disponible: {$totalAvailable}, Solicitado: {$quantity}"
+            );
+        }
+
+        $remainingQuantity = $quantity;
+
+        foreach ($inventoryBatches as $batch) {
+            if ($remainingQuantity <= 0) break;
+
+            $quantityToTake = min($batch->quantity, $remainingQuantity);
+            $batch->quantity -= $quantityToTake;
+            $batch->total_value = $batch->quantity * $batch->unit_price;
+
+            if ($batch->quantity > 0) {
+                $batch->save();
+            } else {
+                $batch->delete();
+            }
+
+            $remainingQuantity -= $quantityToTake;
+        }
+
+        if ($remainingQuantity > 0) {
+            throw new \Exception("Error en reducción FIFO. Faltan {$remainingQuantity} unidades.");
+        }
+    }
+}
