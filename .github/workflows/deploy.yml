@@ -1,0 +1,192 @@
+name: Deploy AgriFlor
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'Que desplegar'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - frontend
+          - backend
+
+jobs:
+  # -----------------------------------------------------------
+  # Detectar que cambio para decidir que desplegar
+  # -----------------------------------------------------------
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.changes.outputs.frontend }}
+      backend: ${{ steps.changes.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TARGET="${{ github.event.inputs.deploy_target }}"
+            if [ "$TARGET" = "all" ] || [ "$TARGET" = "frontend" ]; then
+              echo "frontend=true" >> $GITHUB_OUTPUT
+            else
+              echo "frontend=false" >> $GITHUB_OUTPUT
+            fi
+            if [ "$TARGET" = "all" ] || [ "$TARGET" = "backend" ]; then
+              echo "backend=true" >> $GITHUB_OUTPUT
+            else
+              echo "backend=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Auto-detect from changed files
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+            if echo "$CHANGED" | grep -q "^frontend/"; then
+              echo "frontend=true" >> $GITHUB_OUTPUT
+            else
+              echo "frontend=false" >> $GITHUB_OUTPUT
+            fi
+            if echo "$CHANGED" | grep -q "^backend/"; then
+              echo "backend=true" >> $GITHUB_OUTPUT
+            else
+              echo "backend=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+      - name: Summary
+        run: |
+          echo "### Deploy Detection" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: ${{ steps.changes.outputs.frontend }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: ${{ steps.changes.outputs.backend }}" >> $GITHUB_STEP_SUMMARY
+
+  # -----------------------------------------------------------
+  # Deploy Frontend a Cloudflare Pages
+  # -----------------------------------------------------------
+  deploy-frontend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://agriflor-api.onrender.com/api
+        run: npx vite build
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name agriflor --branch main
+
+  # -----------------------------------------------------------
+  # Deploy Backend a Render (trigger rebuild)
+  # -----------------------------------------------------------
+  deploy-backend:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy
+        run: |
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+            -H "Accept: application/json" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          if [ "$HTTP_CODE" = "201" ]; then
+            DEPLOY_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+            echo "### Backend Deploy Triggered" >> $GITHUB_STEP_SUMMARY
+            echo "- Deploy ID: $DEPLOY_ID" >> $GITHUB_STEP_SUMMARY
+            echo "- Dashboard: https://dashboard.render.com/web/${{ secrets.RENDER_SERVICE_ID }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Deploy trigger failed with HTTP $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+
+      - name: Wait for deploy
+        run: |
+          echo "Waiting for Render deploy to complete..."
+          for i in $(seq 1 20); do
+            sleep 30
+            STATUS=$(curl -s \
+              "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys?limit=1" \
+              -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
+              -H "Accept: application/json" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['deploy']['status'])" 2>/dev/null)
+
+            echo "Check $i: $STATUS"
+
+            if [ "$STATUS" = "live" ]; then
+              echo "### Backend Deploy Successful" >> $GITHUB_STEP_SUMMARY
+              exit 0
+            elif [ "$STATUS" = "build_failed" ] || [ "$STATUS" = "update_failed" ]; then
+              echo "### Backend Deploy FAILED ($STATUS)" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          done
+          echo "Deploy timed out after 10 minutes"
+          exit 1
+
+  # -----------------------------------------------------------
+  # Verificacion post-deploy
+  # -----------------------------------------------------------
+  verify:
+    needs: [deploy-frontend, deploy-backend]
+    if: always() && (needs.deploy-frontend.result == 'success' || needs.deploy-backend.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify Frontend
+        if: needs.deploy-frontend.result == 'success'
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://agriflor.pages.dev)
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Frontend OK ($HTTP_CODE)"
+          else
+            echo "Frontend FAILED ($HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Verify Backend
+        if: needs.deploy-backend.result == 'success'
+        run: |
+          # Wait for potential cold start
+          sleep 5
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://agriflor-api.onrender.com/up)
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Backend OK ($HTTP_CODE)"
+          else
+            echo "Backend FAILED ($HTTP_CODE)"
+            exit 1
+          fi
+
+      - name: Summary
+        run: |
+          echo "### Deployment Verification" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend: https://agriflor.pages.dev" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: https://agriflor-api.onrender.com" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: Verified" >> $GITHUB_STEP_SUMMARY
