@@ -38,6 +38,14 @@ Sistema completo de gestion agricola con control de inventario, compras, transfe
         │                       │                       │
         ▼                       ▼                       ▼
  ANALISIS_ACTUAL.md    CORRECCIONES.md      REPORTE_PRUEBAS.md
+
+┌─────────────────────────────────────────────────────────────────┐
+│                     /migrate-to-vps                             │
+│                                                                 │
+│  Migra backend de Render → VPS (Hetzner/DigitalOcean/Contabo)  │
+│  Configura Docker, Nginx, SSL, CI/CD automaticamente           │
+│  Lee plan de: MIGRACION_VPS.md                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -157,6 +165,39 @@ Archivo `REPORTE_PRUEBAS.md` con:
 
 ---
 
+## /migrate-to-vps - Agente de Migracion a VPS
+
+### Caracteristicas
+- Migra el backend desde **Render free tier** a un **VPS de produccion**
+- Soporta **Hetzner**, **DigitalOcean** y **Contabo**
+- Configura **Docker, Nginx, SSL y CI/CD** automaticamente
+- Lee el plan completo desde `MIGRACION_VPS.md`
+- Permite elegir entre **TiDB Cloud** o **MySQL local**
+
+### Ejemplos de Uso
+
+```bash
+# Migrar (pregunta proveedor)
+/migrate-to-vps
+
+# Especificar proveedor
+/migrate-to-vps hetzner
+/migrate-to-vps digitalocean
+/migrate-to-vps contabo
+
+# Especificar proveedor + base de datos
+/migrate-to-vps "hetzner con mysql local"
+/migrate-to-vps "digitalocean manteniendo tidb"
+```
+
+### Output
+- Backend desplegado en VPS con Docker + Nginx + SSL
+- CI/CD actualizado en `.github/workflows/deploy.yml`
+- Frontend recompilado apuntando al nuevo backend
+- `DEPLOY.md` actualizado con nueva arquitectura
+
+---
+
 ## Mapa de Relaciones entre Modulos
 
 ```
@@ -188,6 +229,7 @@ Cuando analizas un modulo, automaticamente se incluyen sus dependencias.
 | `ANALISIS_ACTUAL.md` | /analyze | /fix | Lista de problemas |
 | `CORRECCIONES_APLICADAS.md` | /fix | /test | Log de cambios |
 | `REPORTE_PRUEBAS.md` | /test | - | Resultados de pruebas |
+| `MIGRACION_VPS.md` | manual | /migrate-to-vps | Plan de migracion a VPS |
 
 ---
 
@@ -216,7 +258,9 @@ AgriFlor/
 ├── .claude/commands/            # Agentes
 │   ├── analyze.md
 │   ├── fix.md
-│   └── test.md
+│   ├── test.md
+│   └── migrate-to-vps.md
+├── MIGRACION_VPS.md             # Plan de migracion a VPS
 └── CLAUDE.md                    # Este archivo
 ```
 
