@@ -293,7 +293,7 @@ class ReceptionController extends Controller
         // Get purchases destined to managed locations
         $purchases = Purchase::whereNotIn('status', ['received', 'cancelled'])
             ->whereIn('destination_location_id', $managedLocationIds)
-            ->with(['supplier', 'destinationLocation', 'originLocation', 'purchaseItems'])
+            ->with(['supplier', 'destinationLocation.responsibleUser', 'originLocation', 'purchaseItems'])
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -316,6 +316,7 @@ class ReceptionController extends Controller
                     'id' => $purchase->destinationLocation->id,
                     'name' => $purchase->destinationLocation->name,
                     'responsible_user_id' => $purchase->destinationLocation->responsible_user_id,
+                    'responsible_user_name' => $purchase->destinationLocation->responsibleUser?->name,
                 ],
                 'supplier_name' => $purchase->supplier->name ?? null,
                 'total' => $purchase->total,
@@ -335,7 +336,7 @@ class ReceptionController extends Controller
         // Get outputs destined to managed locations
         $outputs = ProductOutput::whereNotIn('status', ['completed'])
             ->whereIn('destination_location_id', $managedLocationIds)
-            ->with(['originLocation', 'destinationLocation', 'outputProducts'])
+            ->with(['originLocation', 'destinationLocation.responsibleUser', 'outputProducts'])
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -358,6 +359,7 @@ class ReceptionController extends Controller
                     'id' => $output->destinationLocation->id,
                     'name' => $output->destinationLocation->name,
                     'responsible_user_id' => $output->destinationLocation->responsible_user_id,
+                    'responsible_user_name' => $output->destinationLocation->responsibleUser?->name,
                 ],
                 'supplier_name' => null,
                 'total' => null,
