@@ -555,7 +555,7 @@ const ReceptionPage: React.FC = () => {
               {record.receptionNumber}
             </div>
             <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
-              <Tag color={getSourceTypeColor(record.sourceType)} size="small" icon={getSourceTypeIcon(record.sourceType)}>
+              <Tag color={getSourceTypeColor(record.sourceType)} icon={getSourceTypeIcon(record.sourceType)}>
                 {getSourceTypeText(record.sourceType)}
               </Tag>
               <span style={{ marginLeft: 8, fontWeight: 500, color: '#1890ff' }}>
@@ -579,7 +579,7 @@ const ReceptionPage: React.FC = () => {
       key: 'status',
       width: 80,
       render: (status: string) => (
-        <Tag color={getStatusColor(status)} size="small" icon={getStatusIcon(status)}>
+        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)}>
           {getStatusText(status)}
         </Tag>
       ),
@@ -618,7 +618,7 @@ const ReceptionPage: React.FC = () => {
               {record.receptionNumber}
             </div>
             <div style={{ color: '#666', fontSize: 12, marginBottom: 4 }}>
-              <Tag color={getSourceTypeColor(record.sourceType)} size="small" icon={getSourceTypeIcon(record.sourceType)}>
+              <Tag color={getSourceTypeColor(record.sourceType)} icon={getSourceTypeIcon(record.sourceType)}>
                 {getSourceTypeText(record.sourceType)}
               </Tag>
             </div>
@@ -728,7 +728,7 @@ const ReceptionPage: React.FC = () => {
             {record.document_number}
           </div>
           <div>
-            <Tag color={getSourceTypeColor(record.source_type)} size="small" icon={getSourceTypeIcon(record.source_type)}>
+            <Tag color={getSourceTypeColor(record.source_type)} icon={getSourceTypeIcon(record.source_type)}>
               {getSourceTypeText(record.source_type)}
             </Tag>
           </div>
@@ -787,7 +787,7 @@ const ReceptionPage: React.FC = () => {
               status={status === 'completed' ? 'success' : 'active'}
             />
             <div style={{ marginTop: 4, fontSize: 11 }}>
-              <Tag color={statusColors[status]} size="small">
+              <Tag color={statusColors[status]}>
                 {status === 'pending' ? 'Pendiente' : status === 'partial' ? 'Parcial' : 'Completada'}
               </Tag>
             </div>
@@ -984,7 +984,7 @@ const ReceptionPage: React.FC = () => {
                     return (
                       <div key={batchItem.id} style={{ fontSize: 12, marginBottom: 4 }}>
                         • {receptionItem?.product?.name || 'N/A'}: {formatQuantity(batchItem.quantityReceived)} {receptionItem?.unit || 'kg'}
-                        <Tag color={getConditionColor(batchItem.condition)} size="small" style={{ marginLeft: 8 }}>
+                        <Tag color={getConditionColor(batchItem.condition)} style={{ marginLeft: 8 }}>
                           {getConditionText(batchItem.condition)}
                         </Tag>
                       </div>
@@ -1346,6 +1346,7 @@ const ReceptionPage: React.FC = () => {
                             style={{ width: '100%' }}
                             format="DD/MM/YYYY"
                             placeholder="Vencimiento"
+                            disabled={selectedSource?.source_type !== 'purchase'}
                             disabledDate={(current) => {
                               return current && current.isBefore(dayjs().startOf('day'));
                             }}
@@ -1596,6 +1597,7 @@ const ReceptionPage: React.FC = () => {
                           style={{ width: '100%' }}
                           format="DD/MM/YYYY"
                           placeholder="Vencimiento"
+                          disabled={selectedReception?.sourceType !== 'purchase'}
                           disabledDate={(current) => {
                             return current && current.isBefore(dayjs().startOf('day'));
                           }}
@@ -2215,7 +2217,7 @@ const ReceptionPage: React.FC = () => {
                                     return (
                                       <div key={itemIdx} style={{ fontSize: 12, color: '#666', marginLeft: 12 }}>
                                         • {productName || 'Producto'}: <strong>{formatQuantity(batchItem.quantity_received)}</strong> unidades
-                                        <Tag color={batchItem.condition === 'good' ? 'success' : batchItem.condition === 'damaged' ? 'warning' : 'error'} size="small" style={{ marginLeft: 4 }}>
+                                        <Tag color={batchItem.condition === 'good' ? 'success' : batchItem.condition === 'damaged' ? 'warning' : 'error'} style={{ marginLeft: 4 }}>
                                           {batchItem.condition === 'good' ? 'Bueno' : batchItem.condition === 'damaged' ? 'Dañado' : 'Vencido'}
                                         </Tag>
                                       </div>

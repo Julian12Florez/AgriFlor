@@ -1,4 +1,4 @@
-import { ApiResponse, PaginatedResponse } from '../types/index';
+import type { ApiResponse } from '../types/index';
 
 class MockApiService {
   private delay = (ms: number = 500) => new Promise(resolve => setTimeout(resolve, ms));

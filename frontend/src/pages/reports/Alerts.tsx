@@ -7,23 +7,11 @@ import { alertsApi } from '../../services/api';
 const { Option } = Select;
 const { TabPane } = Tabs;
 
-interface AlertItem {
-  id: string;
-  type: 'error' | 'warning' | 'info' | 'success';
-  title: string;
-  description: string;
-  location?: string;
-  product?: string;
-  severity: 'high' | 'medium' | 'low';
-  timestamp: Date;
-  status: 'active' | 'resolved' | 'dismissed';
-}
-
 const Alerts: React.FC = () => {
   const queryClient = useQueryClient();
   const [filterType, setFilterType] = useState<string | undefined>();
   const [filterSeverity, setFilterSeverity] = useState<string | undefined>();
-  const [filterStatus, setFilterStatus] = useState<string>('active');
+  const [filterStatus] = useState<string>('active');
 
   // Fetch alerts from API
   const { data: alertsData, isLoading: alertsLoading } = useQuery({
@@ -234,7 +222,7 @@ const Alerts: React.FC = () => {
                     title={
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <span>{alert.title}</span>
-                        <Tag color={getSeverityColor(alert.severity)} size="small">
+                        <Tag color={getSeverityColor(alert.severity)}>
                           {getSeverityText(alert.severity)}
                         </Tag>
                       </div>

@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, Tabs, Badge, Steps, InputNumber, Drawer, Descriptions } from 'antd';
+import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, Tabs, Steps, InputNumber, Drawer, Descriptions } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined, EnvironmentOutlined, ExperimentOutlined, CheckCircleOutlined, ClockCircleOutlined, FileTextOutlined, PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi, recipesApi, productsApi, brandsApi, locationsApi } from '../../services/api';
-import type { TechnicalOrder, OrderProduct } from '../../data/types';
+import type { TechnicalOrder } from '../../data/types';
 
 // Interfaces importadas desde types.ts
 
@@ -181,7 +181,7 @@ const Orders: React.FC = () => {
     const selectedRecipe = mockRecipes.find(recipe => recipe.id === recipeId);
     if (selectedRecipe && selectedRecipe.products) {
       // Precargar productos de la receta seleccionada
-      const preloadedProducts = selectedRecipe.products.map(recipeProduct => ({
+      const preloadedProducts = selectedRecipe.products.map((recipeProduct: any) => ({
         productId: recipeProduct.productId,
         productName: recipeProduct.productName,
         brandId: recipeProduct.brandId,
@@ -242,7 +242,7 @@ const Orders: React.FC = () => {
             {record.orderNumber}
           </div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            <Tag color={getStatusColor(record.status)} size="small" icon={getStatusIcon(record.status)}>
+            <Tag color={getStatusColor(record.status)} icon={getStatusIcon(record.status)}>
               {getStatusText(record.status)}
             </Tag>
             <span style={{ marginLeft: 8 }}>{new Date(record.scheduledDate).toLocaleDateString('es-CO')}</span>
@@ -421,8 +421,8 @@ const Orders: React.FC = () => {
             <strong>{product.productName}</strong> - {product.brandName}
             <br />
             <span style={{ color: '#666', fontSize: 12 }}>
-              Dosis: {product.dosage} {product.unit} | Cantidad: {product.quantity} {product.unit}
-              {product.applicationMethod && ` | Método: ${product.applicationMethod}`}
+              Dosis: {(product as any).dosage} {product.unit} | Cantidad: {product.quantity} {product.unit}
+              {(product as any).applicationMethod && ` | Método: ${(product as any).applicationMethod}`}
             </span>
           </div>
         ))}

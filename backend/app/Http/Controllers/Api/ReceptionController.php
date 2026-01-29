@@ -105,9 +105,10 @@ class ReceptionController extends Controller
                         ];
                     }),
                     'items' => $reception->receptionItems->map(function($item) use ($reception) {
-                        // Get suggested expiration date from origin inventory for outputs
-                        $suggestedExpirationDate = null;
-                        if ($reception->source_type === 'output' && $reception->origin_location_id) {
+                        // Use stored expiration_date first, fallback to inventory query
+                        $suggestedExpirationDate = $item->expiration_date;
+
+                        if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
                             $inventory = \App\Models\Inventory::where('product_id', $item->product_id)
                                 ->where('brand_id', $item->brand_id)
                                 ->where('location_id', $reception->origin_location_id)
@@ -204,9 +205,10 @@ class ReceptionController extends Controller
                         ];
                     }),
                     'items' => $reception->receptionItems->map(function($item) use ($reception) {
-                        // Get suggested expiration date from origin inventory for outputs
-                        $suggestedExpirationDate = null;
-                        if ($reception->source_type === 'output' && $reception->origin_location_id) {
+                        // Use stored expiration_date first, fallback to inventory query
+                        $suggestedExpirationDate = $item->expiration_date;
+
+                        if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
                             $inventory = \App\Models\Inventory::where('product_id', $item->product_id)
                                 ->where('brand_id', $item->brand_id)
                                 ->where('location_id', $reception->origin_location_id)
@@ -1052,6 +1054,19 @@ class ReceptionController extends Controller
             }
         } elseif ($sourceType === 'output') {
             foreach ($source->outputProducts as $outputProduct) {
+                // Obtain expiration date from origin inventory (FIFO)
+                $expirationDate = null;
+                if ($reception->origin_location_id) {
+                    $inventory = Inventory::where('product_id', $outputProduct->product_id)
+                        ->where('brand_id', $outputProduct->brand_id)
+                        ->where('location_id', $reception->origin_location_id)
+                        ->whereNotIn('status', ['expired'])
+                        ->where('quantity', '>', 0)
+                        ->orderBy('expiration_date', 'asc')
+                        ->first();
+                    $expirationDate = $inventory?->expiration_date;
+                }
+
                 ReceptionItem::create([
                     'reception_id' => $reception->id,
                     'product_id' => $outputProduct->product_id,
@@ -1060,6 +1075,7 @@ class ReceptionController extends Controller
                     'quantity_received' => 0,
                     'quantity_pending' => $outputProduct->quantity_delivered,
                     'unit' => $outputProduct->unit,
+                    'expiration_date' => $expirationDate,
                 ]);
             }
         }

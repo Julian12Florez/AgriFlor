@@ -189,14 +189,6 @@ const ConsumptionReport: React.FC = () => {
   const byProduct = reportData?.by_product || [];
   const byLocation = reportData?.by_location || [];
 
-  // Helper function to get full packaging unit name
-  const getFullPackagingUnitName = (unit: string, baseQuantity?: number, baseUnit?: string) => {
-    if (baseQuantity && baseQuantity > 1 && baseUnit) {
-      return `${unit} de ${baseQuantity} ${baseUnit}`;
-    }
-    return unit || 'unidades';
-  };
-
   // Columns for consumption table
   const consumptionMobileColumns: ColumnsType<ConsumptionItem> = [
     {
@@ -595,7 +587,7 @@ const ConsumptionReport: React.FC = () => {
                         fill="#8884d8"
                         dataKey="value"
                       >
-                        {locationData.map((entry, index) => (
+                        {locationData.map((_entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>

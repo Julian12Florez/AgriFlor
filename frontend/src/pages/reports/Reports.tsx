@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, Select, DatePicker, Button, Tag, Statistic, Progress, Descriptions } from 'antd';
+import { Card, Row, Col, Select, DatePicker, Button, Statistic, Progress, Descriptions } from 'antd';
 import { BarChartOutlined, FileExcelOutlined, FilePdfOutlined, PrinterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';

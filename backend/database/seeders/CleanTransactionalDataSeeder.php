@@ -4,83 +4,79 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class CleanTransactionalDataSeeder extends Seeder
 {
     /**
      * Clean all transactional data while keeping master data intact.
      * This allows for fresh testing with proper master data.
+     *
+     * Tables cleaned (in dependency order - children first):
+     *   Level 4: reception_batch_attachments, reception_batch_items, purchase_attachments
+     *   Level 3: reception_batches, reception_items, purchase_items, output_products,
+     *            output_farm_lots, application_products, technical_order_farms,
+     *            technical_order_products
+     *   Level 2: inventory_movements, inventory, applications, receptions,
+     *            product_outputs, purchases, technical_orders
+     *   Level 1: alerts
+     *
+     * Tables preserved (master data):
+     *   users, roles, permissions, role_permission,
+     *   products, brands, base_units, packaging_units, product_packaging_units,
+     *   suppliers, supplier_contacts,
+     *   locations, farm_lots,
+     *   output_types,
+     *   technical_recipes, recipe_products
      */
     public function run(): void
     {
-        $this->command->info('🧹 Cleaning transactional data...');
+        $this->command->info('Cleaning transactional data...');
 
-        // Disable foreign key checks temporarily
+        $tablesToClean = [
+            // Level 4: Deepest children
+            'reception_batch_attachments',
+            'reception_batch_items',
+            'purchase_attachments',
+
+            // Level 3: Children of main transactional tables
+            'reception_batches',
+            'reception_items',
+            'purchase_items',
+            'output_products',
+            'output_farm_lots',
+            'application_products',
+            'technical_order_farms',
+            'technical_order_products',
+
+            // Level 2: Main transactional tables
+            'inventory_movements',
+            'inventory',
+            'applications',
+            'receptions',
+            'product_outputs',
+            'purchases',
+            'technical_orders',
+
+            // Level 1: System tables
+            'alerts',
+        ];
+
         DB::statement('SET FOREIGN_KEY_CHECKS=0');
 
         try {
-            // 1. Clean inventory movements (must be first due to foreign keys)
-            $this->command->info('  → Cleaning inventory_movements...');
-            DB::table('inventory_movements')->truncate();
-
-            // 2. Clean inventory
-            $this->command->info('  → Cleaning inventory...');
-            DB::table('inventory')->truncate();
-
-            // 3. Clean receptions
-            $this->command->info('  → Cleaning receptions...');
-            DB::table('receptions')->truncate();
-
-            // 4. Clean output products
-            $this->command->info('  → Cleaning output_products...');
-            DB::table('output_products')->truncate();
-
-            // 5. Clean product outputs
-            $this->command->info('  → Cleaning product_outputs...');
-            DB::table('product_outputs')->truncate();
-
-            // 6. Clean purchase products (if exists)
-            if (DB::getSchemaBuilder()->hasTable('purchase_products')) {
-                $this->command->info('  → Cleaning purchase_products...');
-                DB::table('purchase_products')->truncate();
+            foreach ($tablesToClean as $table) {
+                if (Schema::hasTable($table)) {
+                    $count = DB::table($table)->count();
+                    DB::table($table)->truncate();
+                    $this->command->info("  Cleaned {$table}: {$count} records removed");
+                }
             }
 
-            // 7. Clean purchases (if exists)
-            if (DB::getSchemaBuilder()->hasTable('purchases')) {
-                $this->command->info('  → Cleaning purchases...');
-                DB::table('purchases')->truncate();
-            }
-
-            // 8. Clean technical order products (if exists)
-            if (DB::getSchemaBuilder()->hasTable('technical_order_products')) {
-                $this->command->info('  → Cleaning technical_order_products...');
-                DB::table('technical_order_products')->truncate();
-            }
-
-            // 9. Clean technical orders (if exists)
-            if (DB::getSchemaBuilder()->hasTable('technical_orders')) {
-                $this->command->info('  → Cleaning technical_orders...');
-                DB::table('technical_orders')->truncate();
-            }
-
-            // 10. Clean recipe products (if exists)
-            if (DB::getSchemaBuilder()->hasTable('recipe_products')) {
-                $this->command->info('  → Cleaning recipe_products...');
-                DB::table('recipe_products')->truncate();
-            }
-
-            // 11. Clean recipes (if exists)
-            if (DB::getSchemaBuilder()->hasTable('recipes')) {
-                $this->command->info('  → Cleaning recipes...');
-                DB::table('recipes')->truncate();
-            }
-
-            $this->command->info('✅ Transactional data cleaned successfully!');
+            $this->command->info('Transactional data cleaned successfully!');
             $this->command->newLine();
-            $this->command->info('📋 Master data (users, products, brands, etc.) has been preserved.');
-
+            $this->command->info('Master data (users, products, brands, locations, suppliers, etc.) preserved.');
         } finally {
-            // Re-enable foreign key checks
             DB::statement('SET FOREIGN_KEY_CHECKS=1');
         }
     }

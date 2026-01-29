@@ -25,14 +25,23 @@ El parametro puede ser:
 
 ## Prerequisito
 
-DEBE existir `ANALISIS_ACTUAL.md` generado por `/analyze`.
-Si no existe, informar al usuario que ejecute `/analyze` primero.
+DEBE existir al menos un archivo `ANALISIS_{ID}.md` generado por `/analyze`.
+Si no existe ninguno, informar al usuario que ejecute `/analyze` primero.
 
 ## Instrucciones para Claude
 
+### PASO 0: Identificar Archivo de Analisis
+
+1. Buscar todos los archivos `ANALISIS_*.md` en la raiz del proyecto
+2. Si hay **un solo archivo**: usarlo automaticamente
+3. Si hay **multiples archivos**: mostrar la lista al usuario y preguntar cual usar
+4. Si **no hay archivos**: informar que ejecute `/analyze` primero
+5. Extraer el `{ID}` del nombre del archivo seleccionado (ej: `ANALISIS_20260128_143052.md` → ID = `20260128_143052`)
+6. Este ID se usara para nombrar el archivo de correcciones: `CORRECCIONES_{ID}.md`
+
 ### PASO 1: Leer y Parsear Analisis
 
-1. Leer `ANALISIS_ACTUAL.md` completo
+1. Leer el archivo `ANALISIS_{ID}.md` seleccionado en el Paso 0
 2. Extraer todos los hallazgos con sus IDs:
    - ERR-XXX: Errores
    - INC-XXX: Inconsistencias
@@ -249,12 +258,13 @@ Despues de aplicar cada correccion:
 
 ### PASO 7: Generar Reporte de Correcciones
 
-Crear/actualizar `CORRECCIONES_APLICADAS.md`:
+Crear `CORRECCIONES_{ID}.md` (usando el mismo ID del archivo de analisis):
 
 ```markdown
 # Correcciones Aplicadas
+ID: {ID}
 Fecha: [FECHA]
-Basado en: ANALISIS_ACTUAL.md del [FECHA_ANALISIS]
+Basado en: ANALISIS_{ID}.md
 Parametro del usuario: "[parametro]"
 Interpretacion: [que filtro se aplico]
 
@@ -357,10 +367,17 @@ LOG-002 (corregido)
 
 ---
 
+## Identificador de Sesion
+ID: `{ID}`
+Archivos relacionados:
+- Analisis: `ANALISIS_{ID}.md`
+- Correcciones: `CORRECCIONES_{ID}.md`
+- Pruebas (pendiente): `REPORTE_PRUEBAS_{ID}.md`
+
 ## Proximos Pasos
 
 1. Revisar correcciones marcadas como "PENDIENTE_REVISION"
-2. Ejecutar `/test` para verificar que todo funciona
+2. Ejecutar `/test` para verificar que todo funciona (se detectara automaticamente `CORRECCIONES_{ID}.md`)
 3. Si hay fallos, ejecutar `/analyze` nuevamente
 4. Hacer commit de los cambios
 
@@ -418,4 +435,11 @@ Entonces:
 ## Output
 
 1. Archivos del proyecto corregidos
-2. Archivo `CORRECCIONES_APLICADAS.md` con el detalle completo
+2. Archivo `CORRECCIONES_{ID}.md` con el detalle completo (mismo ID del analisis)
+
+Al finalizar, mostrar al usuario:
+```
+Correcciones completadas. Archivo: CORRECCIONES_{ID}.md
+Basado en: ANALISIS_{ID}.md
+Para probar: /test (se detectara automaticamente este archivo)
+```

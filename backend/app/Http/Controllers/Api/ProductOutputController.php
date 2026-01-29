@@ -112,10 +112,7 @@ class ProductOutputController extends Controller
             $totalCost = 0;
 
             foreach ($products as $productData) {
-                // Create output product
-                $outputProduct = $output->outputProducts()->create($productData);
-
-                // Calculate cost based on inventory
+                // Calculate cost and get expiration date from inventory
                 $inventoryQuery = Inventory::where('location_id', $output->origin_location_id)
                     ->where('product_id', $productData['product_id'])
                     ->where('brand_id', $productData['brand_id'])
@@ -125,7 +122,18 @@ class ProductOutputController extends Controller
                     $inventoryQuery->where('batch_number', $productData['batch_number']);
                 }
 
-                $inventory = $inventoryQuery->first();
+                $inventory = $inventoryQuery->where('quantity', '>', 0)
+                    ->orderBy('expiration_date', 'asc')
+                    ->first();
+
+                // Store expiration_date from inventory if not provided
+                if (!isset($productData['expiration_date']) && $inventory?->expiration_date) {
+                    $productData['expiration_date'] = $inventory->expiration_date;
+                }
+
+                // Create output product
+                $outputProduct = $output->outputProducts()->create($productData);
+
                 if ($inventory) {
                     $cost = $inventory->unit_price * $productData['quantity_delivered'];
                     $totalCost += $cost;
@@ -227,10 +235,7 @@ class ProductOutputController extends Controller
                 $totalCost = 0;
 
                 foreach ($products as $productData) {
-                    // Create output product
-                    $outputProduct = $output->outputProducts()->create($productData);
-
-                    // Calculate cost based on inventory
+                    // Calculate cost and get expiration date from inventory
                     $inventoryQuery = Inventory::where('location_id', $output->origin_location_id)
                         ->where('product_id', $productData['product_id'])
                         ->where('brand_id', $productData['brand_id'])
@@ -240,7 +245,18 @@ class ProductOutputController extends Controller
                         $inventoryQuery->where('batch_number', $productData['batch_number']);
                     }
 
-                    $inventory = $inventoryQuery->first();
+                    $inventory = $inventoryQuery->where('quantity', '>', 0)
+                        ->orderBy('expiration_date', 'asc')
+                        ->first();
+
+                    // Store expiration_date from inventory if not provided
+                    if (!isset($productData['expiration_date']) && $inventory?->expiration_date) {
+                        $productData['expiration_date'] = $inventory->expiration_date;
+                    }
+
+                    // Create output product
+                    $outputProduct = $output->outputProducts()->create($productData);
+
                     if ($inventory) {
                         $cost = $inventory->unit_price * $productData['quantity_delivered'];
                         $totalCost += $cost;

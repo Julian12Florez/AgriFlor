@@ -156,13 +156,6 @@ const InventoryMovementsReport: React.FC = () => {
     return <Tag color={config.color}>{config.label}</Tag>;
   };
 
-  const getFullPackagingUnitName = (unit: string, baseQuantity?: number, baseUnit?: string) => {
-    if (baseQuantity && baseQuantity > 1 && baseUnit) {
-      return `${unit} de ${baseQuantity} ${baseUnit}`;
-    }
-    return unit || 'unidades';
-  };
-
   const mobileColumns: ColumnsType<Movement> = [
     {
       title: 'Movimiento',

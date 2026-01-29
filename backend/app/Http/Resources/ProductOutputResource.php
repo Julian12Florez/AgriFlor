@@ -112,6 +112,20 @@ class ProductOutputResource extends JsonResource
                 $this->relationLoaded('outputProducts'),
                 function () {
                     return $this->outputProducts->map(function ($outputProduct) {
+                        // Use stored expiration_date, fallback to inventory query
+                        $suggestedExpirationDate = $outputProduct->expiration_date;
+
+                        if (!$suggestedExpirationDate && $this->origin_location_id) {
+                            $inventory = \App\Models\Inventory::where('product_id', $outputProduct->product_id)
+                                ->where('brand_id', $outputProduct->brand_id)
+                                ->where('location_id', $this->origin_location_id)
+                                ->whereNotIn('status', ['expired'])
+                                ->where('quantity', '>', 0)
+                                ->orderBy('expiration_date', 'asc')
+                                ->first();
+                            $suggestedExpirationDate = $inventory?->expiration_date;
+                        }
+
                         return [
                             'id' => $outputProduct->id,
                             'productId' => $outputProduct->product_id,
@@ -143,6 +157,7 @@ class ProductOutputResource extends JsonResource
                             'unit' => $outputProduct->unit,
                             'batchNumber' => $outputProduct->batch_number,
                             'expirationDate' => $outputProduct->expiration_date?->format('Y-m-d'),
+                            'suggestedExpirationDate' => $suggestedExpirationDate?->format('Y-m-d'),
                         ];
                     });
                 }

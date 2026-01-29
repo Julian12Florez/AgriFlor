@@ -120,7 +120,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
     enabled: shouldFetch,
   });
 
-  const report: ReportData | null = reportData || null;
+  const report: ReportData | null = (reportData as unknown as ReportData) || null;
 
   const handleGenerateReport = () => {
     if (!dateRange || !dateRange[0] || !dateRange[1]) {

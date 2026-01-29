@@ -29,15 +29,24 @@ Sistema completo de gestion agricola con control de inventario, compras, transfe
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │    /analyze     │ ──▶ │      /fix       │ ──▶ │     /test       │
 │                 │     │                 │     │                 │
-│ Detecta         │     │ Corrige         │     │ Verifica        │
-│ problemas       │     │ errores         │     │ integridad      │
-│                 │     │                 │     │                 │
-│ Entiende        │     │ Backend +       │     │ API real +      │
-│ relaciones      │     │ Frontend        │     │ Flujos completos│
+│ Detecta         │     │ Corrige         │     │ Fase 1: API     │
+│ problemas       │     │ errores         │     │ Fase 2: Front↔  │
+│                 │     │                 │     │   Back integrac. │
+│ Entiende        │     │ Backend +       │     │ Fase 3: E2E     │
+│ relaciones      │     │ Frontend        │     │   flujos completos│
 └─────────────────┘     └─────────────────┘     └─────────────────┘
         │                       │                       │
         ▼                       ▼                       ▼
- ANALISIS_ACTUAL.md    CORRECCIONES.md      REPORTE_PRUEBAS.md
+ ANALISIS_{ID}.md     CORRECCIONES_{ID}.md  REPORTE_PRUEBAS_{ID}.md
+ (ID = timestamp unico compartido entre los 3 archivos de una sesion)
+
+┌─────────────────────────────────────────────────────────────────┐
+│                        /deploy                                   │
+│                                                                 │
+│  Despliega a produccion (Cloudflare Pages + Render)             │
+│  Verifica estado, dispara CI/CD, valida servicios               │
+│  Soporta: status, frontend, backend, all, verify                │
+└─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │                     /migrate-to-vps                             │
@@ -77,7 +86,7 @@ Sistema completo de gestion agricola con control de inventario, compras, transfe
 ```
 
 ### Output
-Archivo `ANALISIS_ACTUAL.md` con:
+Archivo `ANALISIS_{ID}.md` con:
 - Modulos analizados y sus relaciones
 - ERR-XXX: Errores criticos
 - INC-XXX: Inconsistencias backend/frontend
@@ -91,7 +100,7 @@ Archivo `ANALISIS_ACTUAL.md` con:
 ## /fix - Agente de Correccion Inteligente
 
 ### Caracteristicas
-- Lee `ANALISIS_ACTUAL.md` generado por /analyze
+- Lee `ANALISIS_{ID}.md` generado por /analyze
 - Acepta **filtros en lenguaje natural**
 - Corrige **backend y frontend**
 - Respeta **dependencias entre correcciones**
@@ -120,16 +129,22 @@ Archivo `ANALISIS_ACTUAL.md` con:
 
 ### Output
 - Archivos corregidos en el proyecto
-- Archivo `CORRECCIONES_APLICADAS.md` con detalle de cambios
+- Archivo `CORRECCIONES_{ID}.md` con detalle de cambios
 
 ---
 
-## /test - Agente de Pruebas Funcionales
+## /test - Agente de Pruebas de Integracion y End-to-End
 
 ### Caracteristicas
-- Ejecuta pruebas **contra la API real**
-- Simula **exactamente** las peticiones del frontend
-- Verifica **integridad de datos** (stock, transacciones)
+- **3 fases de pruebas**: API Backend, Integracion Front↔Back, End-to-End
+- **Lee el codigo frontend** antes de probar (tipos, servicios, componentes)
+- Verifica **contratos**: interfaces TypeScript vs respuestas reales de la API
+- Verifica **mapeo de campos**: camelCase ↔ snake_case en ambas direcciones
+- Verifica **validacion sincronizada**: reglas frontend vs reglas backend
+- Verifica **manejo de errores**: formato backend compatible con frontend
+- Verifica **permisos**: roles y acceso a modulos con multiples usuarios
+- Simula **flujos E2E completos** como los ejecutaria un usuario real
+- Verifica **consistencia de datos** entre modulos (stock, totales, conteos)
 - Acepta **lenguaje natural**
 
 ### Prerequisitos
@@ -140,28 +155,70 @@ cd backend && php artisan serve  # Backend en puerto 8000
 ### Ejemplos de Uso
 
 ```bash
-# Probar todo
+# Probar todo (3 fases)
 /test
 
-# Probar modulo/funcionalidad
-/test "autenticacion"
+# Probar modulo completo (API + integracion + E2E)
+/test "productos"
 /test "el flujo completo de compras"
 /test "transferencias entre bodegas"
+
+# Probar solo una fase
+/test "integracion"              # Solo contratos, mapeo, validacion
+/test "e2e"                      # Solo flujos end-to-end
+/test "api"                      # Solo endpoints backend
 
 # Probar correcciones
 /test "lo que se corrigio"
 
 # Probar flujos especificos
 /test "crear un producto y usarlo en inventario"
-/test "que no permita stock negativo"
+/test "permisos de usuario admin"
 ```
 
 ### Output
-Archivo `REPORTE_PRUEBAS.md` con:
-- Estado por modulo (PASS/FAIL)
-- Pruebas de integridad
-- Detalle de cada prueba
-- Problemas encontrados
+Archivo `REPORTE_PRUEBAS_{ID}.md` con:
+- Estado por fase (API, Integracion, E2E)
+- Contratos TypeScript vs API (campos faltantes, tipos incorrectos)
+- Mapeo camelCase ↔ snake_case (formularios y tablas)
+- Validacion sincronizada (gaps entre frontend y backend)
+- Flujos E2E completos paso a paso
+- Problemas encontrados con ubicacion en frontend Y backend
+
+---
+
+## /deploy - Agente de Despliegue
+
+### Caracteristicas
+- Despliega a **Cloudflare Pages** (frontend) y **Render** (backend)
+- Verifica **estado de servicios** en produccion
+- Dispara **GitHub Actions CI/CD** manual o automaticamente
+- Valida **salud post-deploy** (health checks + login funcional)
+- Instala y configura `gh` CLI si no esta disponible
+
+### Ejemplos de Uso
+
+```bash
+# Verificar estado + deploy si hay cambios
+/deploy
+
+# Solo verificar servicios
+/deploy status
+/deploy verify
+
+# Desplegar componente especifico
+/deploy frontend
+/deploy backend
+/deploy all
+
+# Diagnosticar
+/deploy "que esta pasando"
+```
+
+### Output
+- Estado de servicios (Frontend, Backend, API)
+- Estado de GitHub Actions (ultimos runs)
+- Resultado del deploy con verificacion post-deploy
 
 ---
 
@@ -226,10 +283,14 @@ Cuando analizas un modulo, automaticamente se incluyen sus dependencias.
 
 | Archivo | Generado por | Leido por | Proposito |
 |---------|--------------|-----------|-----------|
-| `ANALISIS_ACTUAL.md` | /analyze | /fix | Lista de problemas |
-| `CORRECCIONES_APLICADAS.md` | /fix | /test | Log de cambios |
-| `REPORTE_PRUEBAS.md` | /test | - | Resultados de pruebas |
+| `ANALISIS_{ID}.md` | /analyze | /fix | Lista de problemas |
+| `CORRECCIONES_{ID}.md` | /fix | /test | Log de cambios |
+| `REPORTE_PRUEBAS_{ID}.md` | /test | - | Resultados de pruebas |
 | `MIGRACION_VPS.md` | manual | /migrate-to-vps | Plan de migracion a VPS |
+
+> **Nota**: `{ID}` es un timestamp unico (formato `YYYYMMDD_HHMMSS`) generado por `/analyze`.
+> Los tres archivos de una sesion comparten el mismo ID, permitiendo ejecutar multiples analisis en paralelo.
+> Ejemplo: `ANALISIS_20260128_143052.md` → `CORRECCIONES_20260128_143052.md` → `REPORTE_PRUEBAS_20260128_143052.md`
 
 ---
 
@@ -259,6 +320,7 @@ AgriFlor/
 │   ├── analyze.md
 │   ├── fix.md
 │   ├── test.md
+│   ├── deploy.md
 │   └── migrate-to-vps.md
 ├── MIGRACION_VPS.md             # Plan de migracion a VPS
 └── CLAUDE.md                    # Este archivo

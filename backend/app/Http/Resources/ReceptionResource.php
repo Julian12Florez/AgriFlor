@@ -69,13 +69,14 @@ class ReceptionResource extends JsonResource
             'items' => $this->when(
                 $this->relationLoaded('receptionItems'),
                 fn() => $this->receptionItems->map(function ($item) {
-                    // Get suggested expiration date from origin inventory for outputs
-                    $suggestedExpirationDate = null;
-                    if ($this->source_type === 'output' && $this->origin_location_id) {
+                    // Use stored expiration_date first, fallback to inventory query
+                    $suggestedExpirationDate = $item->expiration_date;
+
+                    if (!$suggestedExpirationDate && $this->source_type === 'output' && $this->origin_location_id) {
                         $inventory = \App\Models\Inventory::where('product_id', $item->product_id)
                             ->where('brand_id', $item->brand_id)
                             ->where('location_id', $this->origin_location_id)
-                            ->where('status', 'good')
+                            ->whereNotIn('status', ['expired'])
                             ->where('quantity', '>', 0)
                             ->orderBy('expiration_date', 'asc') // FIFO: earliest expiration
                             ->first();

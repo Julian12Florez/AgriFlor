@@ -237,12 +237,23 @@ Categorizar hallazgos:
 - Eventos no propagados entre modulos
 - Datos inconsistentes entre tablas relacionadas
 
-### PASO 6: Generar Reporte Detallado
+### PASO 6: Generar Identificador Unico
 
-Crear `ANALISIS_ACTUAL.md`:
+Antes de crear el reporte, generar un ID unico basado en timestamp:
+
+```bash
+ID=$(date +%Y%m%d_%H%M%S)
+```
+
+Este ID se usara para nombrar el archivo de salida y vincular con `/fix` y `/test`.
+
+### PASO 7: Generar Reporte Detallado
+
+Crear `ANALISIS_{ID}.md` (ejemplo: `ANALISIS_20260128_143052.md`):
 
 ```markdown
 # Analisis del Proyecto AgriFlor
+ID: {ID}
 Fecha: [FECHA]
 Solicitud del usuario: "[parametro original]"
 Interpretacion: [que entendio Claude]
@@ -422,9 +433,16 @@ Interpretacion: [que entendio Claude]
 
 ## Proximos Pasos
 
-1. Ejecutar `/fix` para corregir automaticamente
+1. Ejecutar `/fix` para corregir automaticamente (se leera este archivo: `ANALISIS_{ID}.md`)
 2. Ejecutar `/fix ERR-001` para corregir uno especifico
 3. Ejecutar `/test [modulo]` para verificar correcciones
+
+## Identificador de Sesion
+ID: `{ID}`
+Archivos relacionados:
+- Analisis: `ANALISIS_{ID}.md`
+- Correcciones (pendiente): `CORRECCIONES_{ID}.md`
+- Pruebas (pendiente): `REPORTE_PRUEBAS_{ID}.md`
 ```
 
 ## IMPORTANTE
@@ -432,7 +450,14 @@ Interpretacion: [que entendio Claude]
 - Siempre analizar modulos relacionados, no solo el solicitado
 - Incluir codigo actual Y codigo corregido para cada hallazgo
 - Priorizar por impacto en el sistema
-- El archivo ANALISIS_ACTUAL.md debe tener suficiente detalle para que /fix funcione
+- El archivo de analisis debe tener suficiente detalle para que /fix funcione
+- **IMPORTANTE**: Al finalizar, informar al usuario el ID generado y el nombre del archivo creado
 
 ## Output
-Archivo `ANALISIS_ACTUAL.md` en la raiz del proyecto.
+Archivo `ANALISIS_{ID}.md` en la raiz del proyecto (ejemplo: `ANALISIS_20260128_143052.md`).
+
+Al finalizar, mostrar al usuario:
+```
+Analisis completado. Archivo: ANALISIS_{ID}.md
+Para corregir: /fix (se detectara automaticamente este archivo)
+```
