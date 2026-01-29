@@ -69,17 +69,25 @@ class ReceptionResource extends JsonResource
             'items' => $this->when(
                 $this->relationLoaded('receptionItems'),
                 fn() => $this->receptionItems->map(function ($item) {
-                    // Use stored expiration_date first, fallback to inventory query
+                    // Use stored expiration_date first, fallback to inventory query with batch_number
                     $suggestedExpirationDate = $item->expiration_date;
 
                     if (!$suggestedExpirationDate && $this->source_type === 'output' && $this->origin_location_id) {
-                        $inventory = \App\Models\Inventory::where('product_id', $item->product_id)
+                        // Find the matching output product to get batch_number
+                        $outputProduct = \App\Models\OutputProduct::where('product_output_id', $this->source_id)
+                            ->where('product_id', $item->product_id)
+                            ->where('brand_id', $item->brand_id)
+                            ->first();
+
+                        $inventoryQuery = \App\Models\Inventory::where('product_id', $item->product_id)
                             ->where('brand_id', $item->brand_id)
                             ->where('location_id', $this->origin_location_id)
                             ->whereNotIn('status', ['expired'])
-                            ->where('quantity', '>', 0)
-                            ->orderBy('expiration_date', 'asc') // FIFO: earliest expiration
-                            ->first();
+                            ->where('quantity', '>', 0);
+                        if ($outputProduct?->batch_number) {
+                            $inventoryQuery->where('batch_number', $outputProduct->batch_number);
+                        }
+                        $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
 
                         $suggestedExpirationDate = $inventory?->expiration_date;
                     }

@@ -116,13 +116,15 @@ class ProductOutputResource extends JsonResource
                         $suggestedExpirationDate = $outputProduct->expiration_date;
 
                         if (!$suggestedExpirationDate && $this->origin_location_id) {
-                            $inventory = \App\Models\Inventory::where('product_id', $outputProduct->product_id)
+                            $inventoryQuery = \App\Models\Inventory::where('product_id', $outputProduct->product_id)
                                 ->where('brand_id', $outputProduct->brand_id)
                                 ->where('location_id', $this->origin_location_id)
                                 ->whereNotIn('status', ['expired'])
-                                ->where('quantity', '>', 0)
-                                ->orderBy('expiration_date', 'asc')
-                                ->first();
+                                ->where('quantity', '>', 0);
+                            if ($outputProduct->batch_number) {
+                                $inventoryQuery->where('batch_number', $outputProduct->batch_number);
+                            }
+                            $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
                             $suggestedExpirationDate = $inventory?->expiration_date;
                         }
 

@@ -105,17 +105,25 @@ class ReceptionController extends Controller
                         ];
                     }),
                     'items' => $reception->receptionItems->map(function($item) use ($reception) {
-                        // Use stored expiration_date first, fallback to inventory query
+                        // Use stored expiration_date first, fallback to inventory query with batch_number
                         $suggestedExpirationDate = $item->expiration_date;
 
                         if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
-                            $inventory = \App\Models\Inventory::where('product_id', $item->product_id)
+                            // Find the matching output product to get batch_number
+                            $outputProduct = \App\Models\OutputProduct::where('product_output_id', $reception->source_id)
+                                ->where('product_id', $item->product_id)
+                                ->where('brand_id', $item->brand_id)
+                                ->first();
+
+                            $inventoryQuery = \App\Models\Inventory::where('product_id', $item->product_id)
                                 ->where('brand_id', $item->brand_id)
                                 ->where('location_id', $reception->origin_location_id)
                                 ->whereNotIn('status', ['expired'])
-                                ->where('quantity', '>', 0)
-                                ->orderBy('expiration_date', 'asc') // FIFO: earliest expiration
-                                ->first();
+                                ->where('quantity', '>', 0);
+                            if ($outputProduct?->batch_number) {
+                                $inventoryQuery->where('batch_number', $outputProduct->batch_number);
+                            }
+                            $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
 
                             $suggestedExpirationDate = $inventory?->expiration_date;
                         }
@@ -205,17 +213,25 @@ class ReceptionController extends Controller
                         ];
                     }),
                     'items' => $reception->receptionItems->map(function($item) use ($reception) {
-                        // Use stored expiration_date first, fallback to inventory query
+                        // Use stored expiration_date first, fallback to inventory query with batch_number
                         $suggestedExpirationDate = $item->expiration_date;
 
                         if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
-                            $inventory = \App\Models\Inventory::where('product_id', $item->product_id)
+                            // Find the matching output product to get batch_number
+                            $outputProduct = \App\Models\OutputProduct::where('product_output_id', $reception->source_id)
+                                ->where('product_id', $item->product_id)
+                                ->where('brand_id', $item->brand_id)
+                                ->first();
+
+                            $inventoryQuery = \App\Models\Inventory::where('product_id', $item->product_id)
                                 ->where('brand_id', $item->brand_id)
                                 ->where('location_id', $reception->origin_location_id)
                                 ->whereNotIn('status', ['expired'])
-                                ->where('quantity', '>', 0)
-                                ->orderBy('expiration_date', 'asc') // FIFO: earliest expiration
-                                ->first();
+                                ->where('quantity', '>', 0);
+                            if ($outputProduct?->batch_number) {
+                                $inventoryQuery->where('batch_number', $outputProduct->batch_number);
+                            }
+                            $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
 
                             $suggestedExpirationDate = $inventory?->expiration_date;
                         }
@@ -1054,16 +1070,18 @@ class ReceptionController extends Controller
             }
         } elseif ($sourceType === 'output') {
             foreach ($source->outputProducts as $outputProduct) {
-                // Obtain expiration date from origin inventory (FIFO)
-                $expirationDate = null;
-                if ($reception->origin_location_id) {
-                    $inventory = Inventory::where('product_id', $outputProduct->product_id)
+                // Obtain expiration date from origin inventory using batch_number for exact match
+                $expirationDate = $outputProduct->expiration_date;
+                if (!$expirationDate && $reception->origin_location_id) {
+                    $inventoryQuery = Inventory::where('product_id', $outputProduct->product_id)
                         ->where('brand_id', $outputProduct->brand_id)
                         ->where('location_id', $reception->origin_location_id)
                         ->whereNotIn('status', ['expired'])
-                        ->where('quantity', '>', 0)
-                        ->orderBy('expiration_date', 'asc')
-                        ->first();
+                        ->where('quantity', '>', 0);
+                    if ($outputProduct->batch_number) {
+                        $inventoryQuery->where('batch_number', $outputProduct->batch_number);
+                    }
+                    $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
                     $expirationDate = $inventory?->expiration_date;
                 }
 
