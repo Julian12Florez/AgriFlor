@@ -598,12 +598,14 @@ const Products: React.FC = () => {
                 rules={[{ required: true, message: 'El IVA es requerido' }]}
                 initialValue={19}
               >
-                <Select placeholder="Seleccione el IVA">
-                  <Option value={0}>0% - Exento</Option>
-                  <Option value={5}>5%</Option>
-                  <Option value={16}>16%</Option>
-                  <Option value={19}>19% - General</Option>
-                </Select>
+                <InputNumber
+                  min={0}
+                  max={100}
+                  precision={0}
+                  style={{ width: '100%' }}
+                  placeholder="Ingrese el porcentaje de IVA"
+                  addonAfter="%"
+                />
               </Form.Item>
             </Col>
             <Col span={12}>

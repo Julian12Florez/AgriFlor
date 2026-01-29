@@ -1,0 +1,525 @@
+/* ==============================
+   Login Page - AgriFlor
+   Paleta Aguacate Hass Premium
+   ============================== */
+
+:root {
+  /* Verdes Aguacate */
+  --avocado-dark: #4a6b1a;
+  --avocado-primary: #6B8E23;
+  --avocado-medium: #88A84E;
+  --avocado-light: #A8C97F;
+  --avocado-pale: #d4e8b8;
+  --avocado-bg: #f0f7e6;
+
+  /* Verdes Sistema */
+  --system-green: #4CAF50;
+  --system-green-dark: #2E7D32;
+  --system-green-darker: #1B5E20;
+
+  /* Acentos */
+  --accent-warm: #F4A460;
+  --accent-gold: #FFD700;
+
+  /* Neutros */
+  --neutral-white: #FFFFFF;
+  --neutral-light: #F8F9FA;
+  --neutral-dark: #2C3E50;
+  --neutral-text: #4a5568;
+  --neutral-muted: #718096;
+}
+
+/* ==============================
+   Login Container - Split Screen
+   ============================== */
+
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+  background: var(--neutral-white);
+}
+
+/* ==============================
+   Left Side - Login Form (40%)
+   ============================== */
+
+.login-side {
+  width: 40%;
+  min-width: 420px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 48px 40px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafff5 100%);
+  position: relative;
+  z-index: 2;
+}
+
+.login-form-wrapper {
+  width: 100%;
+  max-width: 380px;
+}
+
+/* Logo Section */
+.login-logo {
+  text-align: center;
+  margin-bottom: 36px;
+}
+
+.login-logo-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, var(--avocado-primary) 0%, var(--system-green-dark) 100%);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(107, 142, 35, 0.3);
+}
+
+.login-logo-icon svg {
+  width: 40px;
+  height: 40px;
+}
+
+.login-title {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: var(--system-green-dark) !important;
+  margin: 0 0 4px 0 !important;
+  letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+  font-size: 14px;
+  color: var(--neutral-muted);
+  display: block;
+}
+
+/* Form Inputs */
+.login-form .ant-form-item-label > label {
+  font-weight: 500;
+  color: var(--neutral-dark);
+  font-size: 13px;
+}
+
+.login-form .ant-input-affix-wrapper {
+  border-radius: 12px;
+  border: 1.5px solid #e2e8f0;
+  padding: 10px 14px;
+  transition: all 0.3s ease;
+  background: var(--neutral-white);
+}
+
+.login-form .ant-input-affix-wrapper:hover {
+  border-color: var(--avocado-medium);
+}
+
+.login-form .ant-input-affix-wrapper:focus,
+.login-form .ant-input-affix-wrapper-focused {
+  border-color: var(--avocado-primary);
+  box-shadow: 0 0 0 3px rgba(107, 142, 35, 0.15);
+}
+
+.login-form .ant-input-affix-wrapper .ant-input {
+  font-size: 15px;
+}
+
+/* CTA Button */
+.login-cta-btn {
+  height: 48px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  border-radius: 12px !important;
+  border: none !important;
+  background: linear-gradient(135deg, var(--avocado-primary) 0%, var(--system-green) 100%) !important;
+  box-shadow: 0 4px 16px rgba(107, 142, 35, 0.35) !important;
+  transition: all 0.3s ease !important;
+}
+
+.login-cta-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(107, 142, 35, 0.45) !important;
+  background: linear-gradient(135deg, var(--avocado-dark) 0%, var(--system-green-dark) 100%) !important;
+}
+
+.login-cta-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(107, 142, 35, 0.3) !important;
+}
+
+/* Remember & Forgot */
+.login-remember-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.login-remember-row .ant-checkbox-wrapper {
+  color: var(--neutral-text);
+  font-size: 13px;
+}
+
+.login-forgot-link {
+  color: var(--avocado-primary) !important;
+  font-weight: 500;
+  font-size: 13px;
+  transition: color 0.2s;
+}
+
+.login-forgot-link:hover {
+  color: var(--avocado-dark) !important;
+}
+
+/* Test Credentials (DEV only) */
+.login-test-credentials {
+  margin-top: 24px;
+  padding: 12px 16px;
+  background: rgba(107, 142, 35, 0.06);
+  border: 1px dashed rgba(107, 142, 35, 0.25);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.login-test-credentials .ant-typography {
+  font-size: 12px !important;
+}
+
+/* Footer */
+.login-footer {
+  margin-top: 32px;
+  text-align: center;
+}
+
+.login-footer-text {
+  font-size: 12px;
+  color: var(--neutral-muted);
+}
+
+/* ==============================
+   Right Side - Landing (60%)
+   ============================== */
+
+.landing-side {
+  flex: 1;
+  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 40%, #a5d6a7 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 48px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Landing Hero */
+.landing-hero {
+  text-align: center;
+  margin-bottom: 40px;
+  position: relative;
+  z-index: 2;
+}
+
+.landing-tagline {
+  font-size: 32px !important;
+  font-weight: 700 !important;
+  color: var(--system-green-darker) !important;
+  margin: 0 0 12px 0 !important;
+  line-height: 1.2 !important;
+  letter-spacing: -0.5px;
+}
+
+.landing-description {
+  font-size: 16px;
+  color: var(--system-green-dark);
+  opacity: 0.85;
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* ==============================
+   Animated Cards
+   ============================== */
+
+.animated-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  cursor: default;
+  transition: box-shadow 0.3s ease;
+  width: 100%;
+}
+
+.animated-card:hover {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+
+.animated-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  font-size: 24px;
+}
+
+.animated-card-title {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--neutral-dark) !important;
+  margin: 0 0 6px 0 !important;
+}
+
+.animated-card-description {
+  font-size: 13px;
+  color: var(--neutral-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ==============================
+   Carousel Benefits
+   ============================== */
+
+.carousel-benefits {
+  width: 100%;
+  max-width: 520px;
+  position: relative;
+  z-index: 2;
+  margin-bottom: 40px;
+}
+
+.carousel-viewport {
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.carousel-container {
+  display: flex;
+  gap: 16px;
+}
+
+.carousel-slide {
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.carousel-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(46, 125, 50, 0.25);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.3s ease;
+}
+
+.carousel-dot.active {
+  background: var(--system-green-dark);
+  width: 24px;
+  border-radius: 4px;
+}
+
+/* ==============================
+   Stats Counter
+   ============================== */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  width: 100%;
+  max-width: 560px;
+  position: relative;
+  z-index: 2;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 16px 8px;
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.stat-value {
+  font-size: 28px !important;
+  font-weight: 700 !important;
+  color: var(--system-green-darker) !important;
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--system-green-dark);
+  opacity: 0.75;
+  margin-top: 4px;
+  display: block;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ==============================
+   Floating Elements
+   ============================== */
+
+.floating-elements {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.floating-leaf {
+  position: absolute;
+  opacity: 0.12;
+  font-size: 32px;
+}
+
+/* ==============================
+   Responsive Design
+   ============================== */
+
+/* Tablet */
+@media (max-width: 1024px) {
+  .login-side {
+    width: 45%;
+    min-width: 360px;
+    padding: 36px 32px;
+  }
+
+  .landing-side {
+    padding: 40px 32px;
+  }
+
+  .landing-tagline {
+    font-size: 26px !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    max-width: 360px;
+  }
+
+  .stat-value {
+    font-size: 24px !important;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .login-page {
+    flex-direction: column-reverse;
+  }
+
+  .login-side {
+    width: 100%;
+    min-width: unset;
+    padding: 32px 24px;
+    flex: 1;
+  }
+
+  .landing-side {
+    padding: 32px 24px;
+    min-height: 220px;
+    flex: unset;
+  }
+
+  .landing-hero {
+    margin-bottom: 20px;
+  }
+
+  .landing-tagline {
+    font-size: 22px !important;
+  }
+
+  .landing-description {
+    font-size: 14px;
+  }
+
+  .carousel-benefits {
+    margin-bottom: 20px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    max-width: 320px;
+  }
+
+  .stat-value {
+    font-size: 22px !important;
+  }
+
+  .stat-label {
+    font-size: 10px;
+  }
+
+  .login-logo-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+  }
+
+  .login-logo-icon svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .login-title {
+    font-size: 24px !important;
+  }
+}
+
+/* Small Mobile */
+@media (max-width: 480px) {
+  .login-side {
+    padding: 24px 20px;
+  }
+
+  .landing-side {
+    padding: 24px 20px;
+    min-height: 180px;
+  }
+
+  .landing-tagline {
+    font-size: 20px !important;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+  }
+
+  .stat-value {
+    font-size: 18px !important;
+  }
+
+  .stat-item {
+    padding: 10px 4px;
+  }
+}

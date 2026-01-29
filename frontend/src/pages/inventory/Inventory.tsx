@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, Statistic, Tag, Input, Select, Space, Alert, Descriptions, Modal, Table, Spin } from 'antd';
-import { DatabaseOutlined, WarningOutlined, CheckCircleOutlined, ExclamationCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Statistic, Tag, Input, Select, Space, Alert, Descriptions, Modal, Table, Spin, Button, message } from 'antd';
+import { DatabaseOutlined, WarningOutlined, CheckCircleOutlined, ExclamationCircleOutlined, InboxOutlined, ArrowUpOutlined, ArrowDownOutlined, FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import ResponsiveTable from '../../components/ResponsiveTable';
-import { inventoryApi, locationsApi } from '../../services/api';
+import { inventoryApi, locationsApi, reportExportsApi } from '../../services/api';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
 const { Search } = Input;
@@ -157,6 +157,32 @@ const Inventory: React.FC = () => {
     setSelectedProduct(null);
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const params: Record<string, string> = {};
+      if (locationFilter) params.location_id = locationFilter;
+      if (statusFilter) params.status = statusFilter;
+      if (searchText) params.search = searchText;
+      await reportExportsApi.exportKardexListExcel(params);
+      message.success('Excel descargado correctamente');
+    } catch {
+      message.error('Error al exportar a Excel');
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      const params: Record<string, string> = {};
+      if (locationFilter) params.location_id = locationFilter;
+      if (statusFilter) params.status = statusFilter;
+      if (searchText) params.search = searchText;
+      await reportExportsApi.exportKardexListPdf(params);
+      message.success('PDF descargado correctamente');
+    } catch {
+      message.error('Error al exportar a PDF');
+    }
+  };
+
   const mobileColumns: ColumnsType<KardexItem> = [
     {
       title: 'Producto',
@@ -201,7 +227,7 @@ const Inventory: React.FC = () => {
         <div onClick={() => showKardexModal(record)} style={{ cursor: 'pointer' }}>
           <div style={{ fontWeight: 500, fontSize: 14 }}>{record.product_name}</div>
           <div style={{ color: '#666', fontSize: 12 }}>
-            Código: {record.product_code} | Categoría: {record.category}
+            Código: {record.product_code} | Categoría: {record.category ? record.category.charAt(0).toUpperCase() + record.category.slice(1) : 'Sin categoría'}
           </div>
         </div>
       ),
@@ -309,9 +335,16 @@ const Inventory: React.FC = () => {
       dataIndex: 'quantity_in',
       key: 'quantity_in',
       render: (qty: number, record) => qty > 0 ? (
-        <span style={{ color: '#52c41a', fontWeight: 500 }}>
-          +{formatQuantity(qty)} {record.unit}
-        </span>
+        <div>
+          <span style={{ color: '#52c41a', fontWeight: 500 }}>
+            +{formatQuantity(qty)} {record.unit}
+          </span>
+          {record.original_unit && record.original_unit !== record.unit && (
+            <div style={{ fontSize: 11, color: '#999' }}>
+              ({formatQuantity(record.original_quantity)} {record.original_unit})
+            </div>
+          )}
+        </div>
       ) : '-',
     },
     {
@@ -319,9 +352,16 @@ const Inventory: React.FC = () => {
       dataIndex: 'quantity_out',
       key: 'quantity_out',
       render: (qty: number, record) => qty > 0 ? (
-        <span style={{ color: '#f5222d', fontWeight: 500 }}>
-          -{formatQuantity(qty)} {record.unit}
-        </span>
+        <div>
+          <span style={{ color: '#f5222d', fontWeight: 500 }}>
+            -{formatQuantity(qty)} {record.unit}
+          </span>
+          {record.original_unit && record.original_unit !== record.unit && (
+            <div style={{ fontSize: 11, color: '#999' }}>
+              ({formatQuantity(record.original_quantity)} {record.original_unit})
+            </div>
+          )}
+        </div>
       ) : '-',
     },
     {
@@ -330,7 +370,7 @@ const Inventory: React.FC = () => {
       key: 'balance',
       render: (balance: number, record) => (
         <span style={{ fontWeight: 500 }}>
-          {formatQuantity(balance)} {record.unit}
+          {formatQuantity(balance)} {record.balance_unit || record.unit}
         </span>
       ),
     },
@@ -364,7 +404,9 @@ const Inventory: React.FC = () => {
             <Card key={location.location_id} size="small" style={{ marginBottom: 12 }}>
               <div style={{ marginBottom: 8 }}>
                 <strong>{location.location_name}</strong>
-                <Tag color="blue" style={{ marginLeft: 8 }}>{location.location_type}</Tag>
+                <Tag color="blue" style={{ marginLeft: 8 }}>
+                  {location.location_type === 'warehouse' ? 'Bodega' : 'Finca'}
+                </Tag>
               </div>
               <div style={{ marginBottom: 8 }}>
                 <span style={{ marginRight: 16 }}>
@@ -482,7 +524,7 @@ const Inventory: React.FC = () => {
 
       {/* Filtros y Tabla */}
       <Card>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <Space wrap>
             <Search
               placeholder="Buscar productos..."
@@ -518,6 +560,14 @@ const Inventory: React.FC = () => {
               <Option value="expired">Expirado</Option>
             </Select>
           </Space>
+          <Space>
+            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
+              Exportar Excel
+            </Button>
+            <Button icon={<FilePdfOutlined />} onClick={handleExportPdf}>
+              Exportar PDF
+            </Button>
+          </Space>
         </div>
 
         <ResponsiveTable
@@ -550,7 +600,7 @@ const Inventory: React.FC = () => {
             </div>
             {selectedProduct && (
               <div style={{ fontSize: 12, color: '#666', fontWeight: 'normal' }}>
-                Código: {selectedProduct.product_code} | Categoría: {selectedProduct.category}
+                Código: {selectedProduct.product_code} | Categoría: {selectedProduct.category ? selectedProduct.category.charAt(0).toUpperCase() + selectedProduct.category.slice(1) : 'Sin categoría'}
               </div>
             )}
           </div>

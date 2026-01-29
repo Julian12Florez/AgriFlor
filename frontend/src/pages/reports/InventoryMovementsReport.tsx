@@ -197,19 +197,19 @@ const InventoryMovementsReport: React.FC = () => {
         const sign = record.type === 'exit' ? '-' : '+';
         const color = record.type === 'exit' ? '#cf1322' : '#3f8600';
         const hasPackaging = record.base_quantity && record.base_quantity > 1;
-        const fullUnitName = getFullPackagingUnitName(record.unit, record.base_quantity, record.base_unit);
+        const displayQty = hasPackaging
+          ? (record.total_quantity_in_base_unit || 0)
+          : (record.quantity || 0);
+        const displayUnit = record.base_unit || record.unit;
 
         return (
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontWeight: 600, fontSize: '13px', color, marginBottom: 2 }}>
-              {sign}{(record.quantity || 0).toLocaleString()} {record.unit}
-            </div>
-            <div style={{ fontSize: '11px', color: '#666', marginBottom: 4 }}>
-              {fullUnitName}
+              {sign}{displayQty.toLocaleString()} {displayUnit}
             </div>
             {hasPackaging && (
-              <div style={{ fontSize: '12px', color: '#2E7D32', fontWeight: 500, marginBottom: 4 }}>
-                = {sign}{(record.total_quantity_in_base_unit || 0).toLocaleString()} {record.base_unit}
+              <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>
+                ({record.quantity} {record.unit})
               </div>
             )}
             <div style={{ fontSize: '11px', color: '#999' }}>
@@ -278,49 +278,28 @@ const InventoryMovementsReport: React.FC = () => {
     },
     {
       title: 'Cantidad',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 120,
+      key: 'quantity_standardized',
+      width: 160,
       align: 'right',
-      render: (qty: number, record) => {
+      render: (_, record) => {
         const sign = record.type === 'exit' ? '-' : '+';
         const color = record.type === 'exit' ? '#cf1322' : '#3f8600';
-
-        return (
-          <span style={{ color, fontWeight: 600, fontSize: '14px' }}>
-            {sign}{(qty || 0).toLocaleString()}
-          </span>
-        );
-      },
-    },
-    {
-      title: 'Unidad',
-      key: 'unit',
-      width: 150,
-      render: (_, record) => {
-        const fullUnitName = getFullPackagingUnitName(record.unit, record.base_quantity, record.base_unit);
-        return (
-          <div style={{ fontSize: '13px' }}>
-            {fullUnitName}
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Cantidad Total',
-      key: 'total_quantity',
-      width: 140,
-      align: 'right',
-      render: (_, record) => {
         const hasPackaging = record.base_quantity && record.base_quantity > 1;
-        if (!hasPackaging) return '-';
-
-        const sign = record.type === 'exit' ? '-' : '+';
-        const color = record.type === 'exit' ? '#cf1322' : '#3f8600';
+        const displayQty = hasPackaging
+          ? (record.total_quantity_in_base_unit || 0)
+          : (record.quantity || 0);
+        const displayUnit = record.base_unit || record.unit;
 
         return (
-          <div style={{ textAlign: 'right', fontWeight: 500, color, fontSize: '14px' }}>
-            {sign}{(record.total_quantity_in_base_unit || 0).toLocaleString()} {record.base_unit}
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ color, fontWeight: 600, fontSize: '14px' }}>
+              {sign}{displayQty.toLocaleString()} {displayUnit}
+            </div>
+            {hasPackaging && (
+              <div style={{ fontSize: 11, color: '#999' }}>
+                ({record.quantity} {record.unit})
+              </div>
+            )}
           </div>
         );
       },

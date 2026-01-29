@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Table, Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Avatar } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, MailOutlined, PhoneOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Avatar, Checkbox } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, MailOutlined, PhoneOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../../services/api';
@@ -25,6 +25,7 @@ const Users: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [roleFilter, setRoleFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
   const [form] = Form.useForm();
 
   // Fetch users from API
@@ -104,6 +105,7 @@ const Users: React.FC = () => {
 
   const handleEdit = (record: User) => {
     setEditingUser(record);
+    setShowPasswordFields(false);
     form.setFieldsValue({
       name: record.name,
       email: record.email,
@@ -119,12 +121,18 @@ const Users: React.FC = () => {
 
   const handleSave = (values: any) => {
     // Format data for backend API (snake_case)
-    const userData = {
+    const userData: Record<string, any> = {
       email: values.email,
       name: values.name,
       role: values.role,
       status: values.status || 'active',
     };
+
+    // Include password fields when creating or when editing with password change
+    if (!editingUser || (editingUser && showPasswordFields && values.password)) {
+      userData.password = values.password;
+      userData.password_confirmation = values.password_confirmation;
+    }
 
     if (editingUser) {
       updateUserMutation.mutate({ id: editingUser.id, data: userData });
@@ -246,6 +254,7 @@ const Users: React.FC = () => {
           icon={<PlusOutlined />}
           onClick={() => {
             setEditingUser(null);
+            setShowPasswordFields(false);
             form.resetFields();
             setIsModalVisible(true);
           }}
@@ -313,6 +322,7 @@ const Users: React.FC = () => {
           setIsModalVisible(false);
           form.resetFields();
           setEditingUser(null);
+          setShowPasswordFields(false);
         }}
         footer={null}
         width={600}
@@ -394,6 +404,70 @@ const Users: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          {/* Password fields - required on create, optional on edit */}
+          {editingUser && (
+            <Row gutter={16}>
+              <Col span={24}>
+                <Checkbox
+                  checked={showPasswordFields}
+                  onChange={(e) => {
+                    setShowPasswordFields(e.target.checked);
+                    if (!e.target.checked) {
+                      form.setFieldsValue({ password: undefined, password_confirmation: undefined });
+                    }
+                  }}
+                  style={{ marginBottom: 16 }}
+                >
+                  <LockOutlined style={{ marginRight: 4 }} />
+                  Cambiar contraseña
+                </Checkbox>
+              </Col>
+            </Row>
+          )}
+
+          {(!editingUser || showPasswordFields) && (
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name="password"
+                  label="Contraseña"
+                  rules={[
+                    { required: !editingUser, message: 'La contraseña es requerida' },
+                    { min: 8, message: 'Mínimo 8 caracteres' }
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<LockOutlined />}
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="password_confirmation"
+                  label="Confirmar Contraseña"
+                  dependencies={['password']}
+                  rules={[
+                    { required: !editingUser, message: 'Confirme la contraseña' },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue('password') === value) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(new Error('Las contraseñas no coinciden'));
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<LockOutlined />}
+                    placeholder="Repita la contraseña"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
 
           <div style={{ textAlign: 'right', marginTop: 24 }}>
             <Space>

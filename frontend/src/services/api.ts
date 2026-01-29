@@ -25,15 +25,22 @@ class ApiService {
     this.baseURL = baseURL;
   }
 
+  private static readonly PUBLIC_ENDPOINTS = [
+    '/auth/login',
+    '/auth/forgot-password',
+    '/auth/reset-password',
+  ];
+
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
+    const isPublic = ApiService.PUBLIC_ENDPOINTS.includes(endpoint);
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
+      ...(authToken && !isPublic ? { 'Authorization': `Bearer ${authToken}` } : {}),
       ...options.headers,
     };
 
@@ -43,10 +50,13 @@ class ApiService {
         headers,
       });
 
-      // Handle 401 Unauthorized
-      if (response.status === 401) {
+      // Handle 401 Unauthorized - don't redirect if already on public pages
+      if (response.status === 401 && !isPublic) {
         setAuthToken(null);
-        window.location.href = '/login';
+        const path = window.location.pathname;
+        if (path !== '/login' && !path.startsWith('/reset-password')) {
+          window.location.href = '/login';
+        }
         throw new Error('No autenticado');
       }
 
@@ -132,6 +142,15 @@ export const authApi = {
 
   refresh: () =>
     api.post<ApiResponse<{ token: string }>>('/auth/refresh', {}),
+
+  changePassword: (data: { current_password: string; password: string; password_confirmation: string }) =>
+    api.post<ApiResponse<null>>('/auth/change-password', data),
+
+  forgotPassword: (email: string) =>
+    api.post<ApiResponse<null>>('/auth/forgot-password', { email }),
+
+  resetPassword: (data: { token: string; email: string; password: string; password_confirmation: string }) =>
+    api.post<ApiResponse<null>>('/auth/reset-password', data),
 };
 
 // Dashboard API
@@ -184,6 +203,12 @@ export const purchasesApi = {
 
   deleteAttachment: (id: string, attachmentId: string) =>
     api.delete<ApiResponse<null>>(`/purchases/${id}/attachments/${attachmentId}`),
+
+  exportPdf: (id: string, orderNumber?: string) => {
+    const url = `${API_BASE_URL}/purchases/${id}/export-pdf`;
+    const filename = orderNumber ? `orden_compra_${orderNumber}.pdf` : `orden_compra_${id}.pdf`;
+    return downloadFile(url, filename);
+  },
 };
 
 // Receptions API
@@ -499,6 +524,9 @@ export const usersApi = {
   list: (params?: Record<string, any>) =>
     api.get<PaginatedResponse<any>>('/users', params),
 
+  listSimple: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/users/simple', params),
+
   get: (id: string) =>
     api.get<ApiResponse<any>>(`/users/${id}`),
 
@@ -590,6 +618,32 @@ export const reportExportsApi = {
     const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     const url = `${API_BASE_URL}/reports/movements/export-pdf${queryString}`;
     return downloadFile(url, 'movements-report.pdf');
+  },
+
+  // Kardex Product Report Exports
+  exportKardexExcel: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/kardex/export-excel${queryString}`;
+    return downloadFile(url, 'kardex-report.xlsx');
+  },
+
+  exportKardexPdf: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/kardex/export-pdf${queryString}`;
+    return downloadFile(url, 'kardex-report.pdf');
+  },
+
+  // Kardex List (Inventory General) Exports
+  exportKardexListExcel: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/kardex-list/export-excel${queryString}`;
+    return downloadFile(url, 'inventario-actual.xlsx');
+  },
+
+  exportKardexListPdf: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/kardex-list/export-pdf${queryString}`;
+    return downloadFile(url, 'inventario-actual.pdf');
   },
 };
 

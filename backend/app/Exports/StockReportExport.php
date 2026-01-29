@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Inventory;
+use App\Services\InventoryService;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
@@ -18,10 +19,12 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
 {
     protected $filters;
     protected $groupedData;
+    protected ?InventoryService $inventoryService;
 
-    public function __construct(array $filters)
+    public function __construct(array $filters, ?InventoryService $inventoryService = null)
     {
         $this->filters = $filters;
+        $this->inventoryService = $inventoryService ?? app(InventoryService::class);
     }
 
     public function collection()
@@ -55,9 +58,8 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
                 'CÓDIGO',
                 'CATEGORÍA',
                 'MARCA',
-                'CANTIDAD',
-                'UNIDAD',
-                'CANTIDAD TOTAL',
+                'STOCK (BASE)',
+                'DETALLE EMPAQUE',
                 'VALOR TOTAL',
                 'N° UBICACIONES',
                 'ESTADO',
@@ -77,17 +79,15 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
     {
         if ($this->filters['group_by'] === 'product') {
             $hasPackaging = isset($row['base_quantity']) && $row['base_quantity'] > 1;
+            $baseUnit = $row['base_unit'] ?? $row['unit'] ?? 'unidades';
 
-            // Build full unit name
-            $fullUnitName = $row['unit'] ?? 'unidades';
+            // Always show stock in base unit
+            $stockBaseText = number_format($row['total_base_quantity'] ?? $row['total_quantity'], 0, ',', '.') . ' ' . $baseUnit;
+
+            // Packaging detail only when there's packaging
+            $packagingDetail = '';
             if ($hasPackaging) {
-                $fullUnitName = $row['unit'] . ' de ' . $row['base_quantity'] . ' ' . $row['base_unit'];
-            }
-
-            // Build total quantity text
-            $totalQuantityText = '-';
-            if ($hasPackaging && isset($row['total_base_quantity'])) {
-                $totalQuantityText = number_format($row['total_base_quantity'], 0, ',', '.') . ' ' . $row['base_unit'];
+                $packagingDetail = ($row['total_quantity'] ?? 0) . ' ' . ($row['unit'] ?? '');
             }
 
             return [
@@ -95,9 +95,8 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
                 $row['product_code'] ?? 'N/A',
                 $row['category'] ?? 'Sin categoría',
                 $row['brand_name'] ?? 'Sin marca',
-                $row['total_quantity'] ?? 0,
-                $fullUnitName,
-                $totalQuantityText,
+                $stockBaseText,
+                $packagingDetail,
                 '$' . number_format($row['total_value'] ?? 0, 0, ',', '.'),
                 count($row['locations'] ?? []),
                 $this->getStatusLabel($row['status'] ?? 'good'),
@@ -115,7 +114,9 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
 
     public function styles(Worksheet $sheet)
     {
-        $sheet->getStyle('A1:J1')->applyFromArray([
+        $lastCol = $this->filters['group_by'] === 'product' ? 'I' : 'E';
+
+        $sheet->getStyle("A1:{$lastCol}1")->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => 'FFFFFF'],
@@ -136,7 +137,7 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
         ]);
 
         // Auto-filter
-        $sheet->setAutoFilter('A1:J1');
+        $sheet->setAutoFilter("A1:{$lastCol}1");
 
         // Freeze first row
         $sheet->freezePane('A2');
@@ -152,12 +153,11 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
                 'B' => 15, // Código
                 'C' => 20, // Categoría
                 'D' => 20, // Marca
-                'E' => 12, // Cantidad
-                'F' => 20, // Unidad
-                'G' => 18, // Cantidad Total
-                'H' => 18, // Valor Total
-                'I' => 18, // N° Ubicaciones
-                'J' => 15, // Estado
+                'E' => 18, // Stock (Base)
+                'F' => 20, // Detalle Empaque
+                'G' => 18, // Valor Total
+                'H' => 18, // N° Ubicaciones
+                'I' => 15, // Estado
             ];
         } else {
             return [
@@ -182,32 +182,26 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
             foreach ($stockItems as $item) {
                 $key = $item->product_id . '-' . ($item->product->brand_id ?? 'no-brand');
 
-                // Get packaging unit info
-                $baseQuantity = 1;
-                $baseUnit = $item->unit ?? 'unidades';
+                // Convert to base unit using InventoryService
+                $qtyInBase = $this->inventoryService->toBaseUnit(
+                    floatval($item->quantity),
+                    $item->unit,
+                    $item->product_id
+                );
 
-                if ($item->product && $item->product->packagingUnits) {
-                    $packagingUnit = $item->product->packagingUnits->first(function ($pu) use ($item) {
-                        return strtolower($pu->name) === strtolower($item->unit);
-                    });
-
-                    if ($packagingUnit) {
-                        $baseQuantity = floatval($packagingUnit->base_quantity);
-                        $baseUnit = $packagingUnit->base_unit;
-                    }
-                }
+                // Get base unit from product
+                $baseUnit = $item->product->base_unit ?? $item->unit ?? 'unidades';
 
                 if (!isset($grouped[$key])) {
                     $grouped[$key] = [
                         'product_name' => $item->product->name ?? 'Sin nombre',
-                        'product_code' => $item->product->code ?? 'N/A',
+                        'product_code' => $item->product->product_code ?? 'N/A',
                         'category' => $item->product->category ?? 'Sin categoría',
                         'brand_name' => $item->product->brand->name ?? 'Sin marca',
                         'total_quantity' => 0,
                         'total_value' => 0,
                         'total_base_quantity' => 0,
                         'unit' => $item->unit ?? 'unidades',
-                        'base_quantity' => $baseQuantity,
                         'base_unit' => $baseUnit,
                         'locations' => [],
                         'status' => 'good',
@@ -216,7 +210,7 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
 
                 $grouped[$key]['total_quantity'] += $item->quantity ?? 0;
                 $grouped[$key]['total_value'] += $item->total_value ?? 0;
-                $grouped[$key]['total_base_quantity'] += ($item->quantity ?? 0) * $baseQuantity;
+                $grouped[$key]['total_base_quantity'] += $qtyInBase;
 
                 $grouped[$key]['locations'][] = [
                     'name' => $item->location->name ?? 'Sin ubicación',
@@ -232,22 +226,38 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
             }
             return array_values($grouped);
         } else {
-            // Group by location
+            // Group by location - convert each item to base before summing
             $grouped = [];
             foreach ($stockItems as $item) {
                 $key = $item->location_id;
+
+                $qtyInBase = $this->inventoryService->toBaseUnit(
+                    floatval($item->quantity),
+                    $item->unit,
+                    $item->product_id
+                );
+
                 if (!isset($grouped[$key])) {
                     $grouped[$key] = [
                         'location_name' => $item->location->name ?? 'Sin ubicación',
                         'location_type' => $item->location->type ?? 'unknown',
                         'total_items' => 0,
-                        'total_quantity' => 0,
+                        'total_quantity' => $qtyInBase,
                         'total_value' => 0,
+                        'products' => [],
                     ];
+                } else {
+                    $grouped[$key]['total_quantity'] += $qtyInBase;
                 }
                 $grouped[$key]['total_items'] += 1;
-                $grouped[$key]['total_quantity'] += $item->quantity ?? 0;
                 $grouped[$key]['total_value'] += $item->total_value ?? 0;
+                $grouped[$key]['products'][] = [
+                    'name' => $item->product->name ?? 'Sin nombre',
+                    'brand' => $item->product->brand->name ?? 'Sin marca',
+                    'quantity' => $qtyInBase,
+                    'unit' => $item->product->base_unit ?? $item->unit,
+                    'value' => $item->total_value ?? 0,
+                ];
             }
             return array_values($grouped);
         }

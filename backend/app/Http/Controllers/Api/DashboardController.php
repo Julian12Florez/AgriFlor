@@ -9,12 +9,19 @@ use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\Reception;
 use App\Models\TechnicalOrder;
+use App\Services\InventoryService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    private InventoryService $inventoryService;
+
+    public function __construct(InventoryService $inventoryService)
+    {
+        $this->inventoryService = $inventoryService;
+    }
     /**
      * Get dashboard statistics (KPIs)
      */
@@ -58,35 +65,47 @@ class DashboardController extends Controller
     public function getInventoryByCategory(Request $request)
     {
         try {
-            // Get total inventory per category
-            $inventoryByCategory = DB::table('products')
-                ->leftJoin('inventory', 'products.id', '=', 'inventory.product_id')
+            // Get inventory items with product info for base unit conversion
+            $inventoryItems = DB::table('inventory')
+                ->join('products', 'inventory.product_id', '=', 'products.id')
                 ->select(
                     'products.category',
-                    DB::raw('COALESCE(SUM(inventory.quantity), 0) as total_quantity'),
-                    DB::raw('COUNT(DISTINCT products.id) as product_count')
+                    'inventory.product_id',
+                    'inventory.quantity',
+                    'inventory.unit'
                 )
                 ->where('products.status', 'active')
-                ->groupBy('products.category')
+                ->where('inventory.quantity', '>', 0)
                 ->get();
 
-            // Calculate total for percentage
-            $totalInventory = $inventoryByCategory->sum('total_quantity');
-
-            // Format data with percentages
-            $categories = [
+            // Convert each item to base unit and sum by category
+            $categoryTotals = [
                 'fertilizante' => 0,
                 'pesticida' => 0,
                 'herbicida' => 0,
                 'fungicida' => 0,
             ];
 
-            foreach ($inventoryByCategory as $item) {
-                if (isset($categories[$item->category])) {
-                    $categories[$item->category] = $totalInventory > 0
-                        ? round(($item->total_quantity / $totalInventory) * 100, 2)
-                        : 0;
+            foreach ($inventoryItems as $item) {
+                if (isset($categoryTotals[$item->category])) {
+                    $qtyInBase = $this->inventoryService->toBaseUnit(
+                        floatval($item->quantity),
+                        $item->unit,
+                        $item->product_id
+                    );
+                    $categoryTotals[$item->category] += $qtyInBase;
                 }
+            }
+
+            // Calculate total for percentage
+            $totalInventory = array_sum($categoryTotals);
+
+            // Format data with percentages
+            $categories = [];
+            foreach ($categoryTotals as $category => $total) {
+                $categories[$category] = $totalInventory > 0
+                    ? round(($total / $totalInventory) * 100, 2)
+                    : 0;
             }
 
             return response()->json([

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreUserRequest;
 use App\Http\Requests\UpdateUserRequest;
 use App\Http\Resources\UserResource;
+use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,24 @@ use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
+    /**
+     * Lightweight user list for dropdowns (all authenticated users)
+     */
+    public function listSimple(Request $request): JsonResponse
+    {
+        $query = User::query()->select('id', 'name', 'role', 'status');
+
+        if ($request->has('status')) {
+            $query->where('status', $request->status);
+        }
+
+        $users = $query->orderBy('name')->get();
+
+        return response()->json([
+            'data' => $users
+        ]);
+    }
+
     /**
      * Display a listing of users
      */
@@ -41,7 +60,7 @@ class UserController extends Controller
         }
 
         $perPage = $request->get('per_page', 15);
-        $users = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $users = $query->with('roleRelation.permissions')->orderBy('created_at', 'desc')->paginate($perPage);
 
         return UserResource::collection($users);
     }
@@ -55,7 +74,16 @@ class UserController extends Controller
         $data['password'] = Hash::make($data['password']);
         $data['status'] = $data['status'] ?? 'active';
 
+        // Assign role_id based on role name
+        if (isset($data['role'])) {
+            $role = Role::where('name', $data['role'])->first();
+            if ($role) {
+                $data['role_id'] = $role->id;
+            }
+        }
+
         $user = User::create($data);
+        $user->load('roleRelation.permissions');
 
         return response()->json([
             'success' => true,
@@ -69,7 +97,7 @@ class UserController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $user = User::findOrFail($id);
+        $user = User::with('roleRelation.permissions')->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -90,7 +118,16 @@ class UserController extends Controller
             $data['password'] = Hash::make($data['password']);
         }
 
+        // Sync role_id when role changes
+        if (isset($data['role'])) {
+            $role = Role::where('name', $data['role'])->first();
+            if ($role) {
+                $data['role_id'] = $role->id;
+            }
+        }
+
         $user->update($data);
+        $user->load('roleRelation.permissions');
 
         return response()->json([
             'success' => true,

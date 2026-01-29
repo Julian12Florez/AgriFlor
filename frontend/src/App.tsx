@@ -34,6 +34,7 @@ import StockReport from './pages/reports/StockReport';
 import ConsumptionReport from './pages/reports/ConsumptionReport';
 import Users from './pages/admin/Users';
 import Login from './pages/auth/Login';
+import ResetPassword from './pages/auth/ResetPassword';
 
 // Create a client for React Query
 const queryClient = new QueryClient({
@@ -55,6 +56,7 @@ const App: React.FC = () => {
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
 
               {/* Protected routes - Dashboard (accessible to all authenticated users) */}
               <Route path="/dashboard" element={

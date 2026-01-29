@@ -61,9 +61,8 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             'CÓDIGO',
             'MARCA',
             'UBICACIÓN',
-            'CANTIDAD',
-            'UNIDAD',
-            'CANTIDAD TOTAL',
+            'CANTIDAD (BASE)',
+            'DETALLE EMPAQUE',
             'PRECIO UNIT.',
             'TOTAL',
             'USUARIO',
@@ -97,12 +96,9 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             $fullUnitName = $row->unit . ' de ' . $baseQuantity . ' ' . $baseUnit;
         }
 
-        // Build total quantity text
-        $totalQuantityText = '-';
-        if ($hasPackaging) {
-            $sign = $row->type === 'exit' ? '-' : '+';
-            $totalQuantityText = $sign . number_format($totalBaseQuantity, 0, ',', '.') . ' ' . $baseUnit;
-        }
+        // Always show total quantity in base unit
+        $sign = $row->type === 'exit' ? '-' : '+';
+        $totalQuantityText = $sign . number_format($totalBaseQuantity, 0, ',', '.') . ' ' . $baseUnit;
 
         return [
             Carbon::parse($row->created_at)->format('d/m/Y H:i'),
@@ -111,9 +107,8 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             $row->product->product_code ?? 'N/A',
             $row->product->brand->name ?? 'Sin marca',
             $row->location->name ?? 'N/A',
-            ($row->type === 'exit' ? '-' : '+') . ($row->quantity ?? 0),
-            $fullUnitName,
             $totalQuantityText,
+            $hasPackaging ? ($row->quantity . ' ' . ($row->unit ?? '')) : '',
             '$' . number_format($row->unit_price ?? 0, 0, ',', '.'),
             '$' . number_format($row->total_price ?? 0, 0, ',', '.'),
             $row->responsibleUser->name ?? 'N/A',
@@ -123,7 +118,7 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
 
     public function styles(Worksheet $sheet)
     {
-        $sheet->getStyle('A1:M1')->applyFromArray([
+        $sheet->getStyle('A1:L1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => 'FFFFFF'],
@@ -144,7 +139,7 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
         ]);
 
         // Auto-filter
-        $sheet->setAutoFilter('A1:M1');
+        $sheet->setAutoFilter('A1:L1');
 
         // Freeze first row
         $sheet->freezePane('A2');
@@ -161,13 +156,12 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             'D' => 12, // Código
             'E' => 18, // Marca
             'F' => 20, // Ubicación
-            'G' => 12, // Cantidad
-            'H' => 20, // Unidad
-            'I' => 18, // Cantidad Total
-            'J' => 15, // Precio Unit.
-            'K' => 15, // Total
-            'L' => 20, // Usuario
-            'M' => 30, // Observaciones
+            'G' => 18, // Cantidad (Base)
+            'H' => 20, // Detalle Empaque
+            'I' => 15, // Precio Unit.
+            'J' => 15, // Total
+            'K' => 20, // Usuario
+            'L' => 30, // Observaciones
         ];
     }
 

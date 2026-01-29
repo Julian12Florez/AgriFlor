@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, DatePicker, Button, Select, message, Spin, Descriptions, Alert } from 'antd';
+import { Card, Row, Col, DatePicker, Button, Select, message, Spin, Descriptions, Alert, Statistic } from 'antd';
 import {
   FileTextOutlined,
   FileExcelOutlined,
@@ -11,7 +11,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
-import { inventoryApi, productsApi, locationsApi, brandsApi } from '../../services/api';
+import { inventoryApi, productsApi, locationsApi, brandsApi, reportExportsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -26,7 +26,10 @@ interface KardexEntry {
   quantity_in: number;
   quantity_out: number;
   balance: number;
+  balance_unit: string;
   unit: string;
+  original_quantity: number;
+  original_unit: string;
   unit_price: number;
   total_price: number;
   responsible_user: string;
@@ -34,6 +37,27 @@ interface KardexEntry {
   related_document_type: string;
   observations: string;
 }
+
+const getTypeLabel = (type: string): string => {
+  const labels: Record<string, string> = {
+    entry: 'ENTRADA',
+    exit: 'SALIDA',
+    transfer: 'TRANSFERENCIA',
+    application: 'APLICACIÓN',
+    adjustment: 'AJUSTE',
+  };
+  return labels[type] || type.toUpperCase();
+};
+
+const getCategoryLabel = (category: string): string => {
+  const labels: Record<string, string> = {
+    fertilizante: 'Fertilizante',
+    pesticida: 'Pesticida',
+    herbicida: 'Herbicida',
+    fungicida: 'Fungicida',
+  };
+  return labels[category] || (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Sin categoría');
+};
 
 const InventoryKardex: React.FC = () => {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
@@ -81,9 +105,9 @@ const InventoryKardex: React.FC = () => {
     enabled: shouldFetch && !!productId,
   });
 
-  const kardex: KardexEntry[] = kardexData?.movements || [];
-  const productInfo = kardexData?.product || null;
-  const summary = kardexData?.summary || null;
+  const kardex: KardexEntry[] = kardexData?.data?.movements || [];
+  const productInfo = kardexData?.data?.product || null;
+  const summary = kardexData?.data?.summary || null;
 
   const handleGenerateReport = () => {
     if (!productId) {
@@ -102,12 +126,44 @@ const InventoryKardex: React.FC = () => {
     setShouldFetch(false);
   };
 
-  const handleExportExcel = () => {
-    message.info('Funcionalidad de exportación a Excel en desarrollo');
+  const handleExportExcel = async () => {
+    if (!productId) {
+      message.warning('Selecciona un producto primero');
+      return;
+    }
+    try {
+      const params: Record<string, string> = { product_id: productId };
+      if (dateRange && dateRange[0] && dateRange[1]) {
+        params.start_date = dateRange[0].format('YYYY-MM-DD');
+        params.end_date = dateRange[1].format('YYYY-MM-DD');
+      }
+      if (brandId) params.brand_id = brandId;
+      if (locationId) params.location_id = locationId;
+      await reportExportsApi.exportKardexExcel(params);
+      message.success('Excel descargado correctamente');
+    } catch {
+      message.error('Error al exportar a Excel');
+    }
   };
 
-  const handleExportPDF = () => {
-    message.info('Funcionalidad de exportación a PDF en desarrollo');
+  const handleExportPDF = async () => {
+    if (!productId) {
+      message.warning('Selecciona un producto primero');
+      return;
+    }
+    try {
+      const params: Record<string, string> = { product_id: productId };
+      if (dateRange && dateRange[0] && dateRange[1]) {
+        params.start_date = dateRange[0].format('YYYY-MM-DD');
+        params.end_date = dateRange[1].format('YYYY-MM-DD');
+      }
+      if (brandId) params.brand_id = brandId;
+      if (locationId) params.location_id = locationId;
+      await reportExportsApi.exportKardexPdf(params);
+      message.success('PDF descargado correctamente');
+    } catch {
+      message.error('Error al exportar a PDF');
+    }
   };
 
   const handlePrint = () => {
@@ -124,7 +180,7 @@ const InventoryKardex: React.FC = () => {
             {dayjs(record.date).format('DD/MM/YYYY HH:mm')}
           </div>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
-            {record.type.toUpperCase()} - {record.location_name} - {record.brand_name}
+            {getTypeLabel(record.type)} - {record.location_name} - {record.brand_name}
           </div>
           <div style={{ fontSize: '12px' }}>
             {record.quantity_in > 0 && (
@@ -171,7 +227,7 @@ const InventoryKardex: React.FC = () => {
       dataIndex: 'type',
       key: 'type',
       width: 100,
-      render: (type: string) => type.toUpperCase(),
+      render: (type: string) => getTypeLabel(type),
     },
     {
       title: 'Ubicación',
@@ -189,16 +245,18 @@ const InventoryKardex: React.FC = () => {
       title: 'Entrada',
       dataIndex: 'quantity_in',
       key: 'quantity_in',
-      width: 100,
+      width: 120,
       align: 'right' as const,
       render: (qty: number, record) => qty > 0 ? (
         <div>
           <div style={{ color: '#3f8600', fontWeight: 500 }}>
             +{qty.toLocaleString()} {record.unit}
           </div>
-          <div style={{ fontSize: '11px', color: '#999' }}>
-            ${(qty * record.unit_price).toLocaleString('es-CO')}
-          </div>
+          {record.original_unit && record.original_unit !== record.unit && (
+            <div style={{ fontSize: '11px', color: '#999' }}>
+              ({record.original_quantity} {record.original_unit})
+            </div>
+          )}
         </div>
       ) : '-',
     },
@@ -206,16 +264,18 @@ const InventoryKardex: React.FC = () => {
       title: 'Salida',
       dataIndex: 'quantity_out',
       key: 'quantity_out',
-      width: 100,
+      width: 120,
       align: 'right' as const,
       render: (qty: number, record) => qty > 0 ? (
         <div>
           <div style={{ color: '#cf1322', fontWeight: 500 }}>
             -{qty.toLocaleString()} {record.unit}
           </div>
-          <div style={{ fontSize: '11px', color: '#999' }}>
-            ${(qty * record.unit_price).toLocaleString('es-CO')}
-          </div>
+          {record.original_unit && record.original_unit !== record.unit && (
+            <div style={{ fontSize: '11px', color: '#999' }}>
+              ({record.original_quantity} {record.original_unit})
+            </div>
+          )}
         </div>
       ) : '-',
     },
@@ -228,7 +288,7 @@ const InventoryKardex: React.FC = () => {
       render: (balance: number, record) => (
         <div>
           <div style={{ fontWeight: 500 }}>
-            {balance.toLocaleString()} {record.unit}
+            {balance.toLocaleString()} {record.balance_unit || record.unit}
           </div>
           <div style={{ fontSize: '11px', color: '#2E7D32', fontWeight: 500 }}>
             ${(balance * record.unit_price).toLocaleString('es-CO')}
@@ -396,7 +456,8 @@ const InventoryKardex: React.FC = () => {
               <Descriptions column={{ xs: 1, sm: 2, md: 3 }}>
                 <Descriptions.Item label="Producto">{productInfo.name}</Descriptions.Item>
                 <Descriptions.Item label="Código">{productInfo.code}</Descriptions.Item>
-                <Descriptions.Item label="Categoría">{productInfo.category}</Descriptions.Item>
+                <Descriptions.Item label="Categoría">{getCategoryLabel(productInfo.category)}</Descriptions.Item>
+                <Descriptions.Item label="Unidad Base">{productInfo.base_unit}</Descriptions.Item>
                 {brandId && (
                   <Descriptions.Item label="Marca">
                     {brandsData?.data?.find((b: any) => b.id === brandId)?.name}
@@ -411,6 +472,46 @@ const InventoryKardex: React.FC = () => {
             </Card>
           )}
 
+          {/* Summary Cards */}
+          {summary && (
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              <Col xs={12} sm={6}>
+                <Card>
+                  <Statistic
+                    title="Total Movimientos"
+                    value={summary.total_movements}
+                  />
+                </Card>
+              </Col>
+              <Col xs={12} sm={6}>
+                <Card>
+                  <Statistic
+                    title={`Total Entradas (${productInfo?.base_unit || ''})`}
+                    value={summary.total_entries}
+                    valueStyle={{ color: '#3f8600' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={12} sm={6}>
+                <Card>
+                  <Statistic
+                    title={`Total Salidas (${productInfo?.base_unit || ''})`}
+                    value={summary.total_exits}
+                    valueStyle={{ color: '#cf1322' }}
+                  />
+                </Card>
+              </Col>
+              <Col xs={12} sm={6}>
+                <Card>
+                  <Statistic
+                    title={`Stock Actual (${productInfo?.base_unit || ''})`}
+                    value={summary.current_stock}
+                    valueStyle={{ color: '#1890ff' }}
+                  />
+                </Card>
+              </Col>
+            </Row>
+          )}
 
           {/* Kardex Table */}
           <Card title={`Kardex (${kardex.length} movimientos)`}>

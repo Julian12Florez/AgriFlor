@@ -161,7 +161,7 @@ const Recipes: React.FC = () => {
             {record.name}
           </div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            <Tag color="blue" size="small">{record.category}</Tag>
+            <Tag color="blue" size="small">{record.category ? record.category.charAt(0).toUpperCase() + record.category.slice(1) : 'Sin categoría'}</Tag>
             <span style={{ marginLeft: 8 }}>{record.products.length} producto{record.products.length !== 1 ? 's' : ''}</span>
           </div>
         </div>
@@ -225,9 +225,9 @@ const Recipes: React.FC = () => {
       dataIndex: 'category',
       key: 'category',
       render: (category: string) => (
-        <Tag color="blue">{category}</Tag>
+        <Tag color="blue">{category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Sin categoría'}</Tag>
       ),
-      filters: categories.map(cat => ({ text: cat, value: cat })),
+      filters: categories.map(cat => ({ text: cat ? cat.charAt(0).toUpperCase() + cat.slice(1) : cat, value: cat })),
       onFilter: (value, record) => record.category === value,
     },
     {

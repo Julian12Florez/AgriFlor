@@ -62,8 +62,8 @@ const Outputs: React.FC = () => {
 
   // Fetch users
   const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => usersApi.list(),
+    queryKey: ['users-simple'],
+    queryFn: () => usersApi.listSimple(),
   });
 
   // Fetch output types
@@ -150,6 +150,17 @@ const Outputs: React.FC = () => {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  const getRoleLabel = (role: string): string => {
+    const labels: Record<string, string> = {
+      admin: 'Administrador',
+      agronomist: 'Agrónomo',
+      warehouse: 'Bodeguero',
+      supervisor: 'Supervisor',
+      farm: 'Operario de Finca',
+    };
+    return labels[role] || role;
+  };
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -285,7 +296,7 @@ const Outputs: React.FC = () => {
       farmLotIds: farmLotIds,
       responsibleUser: record.responsibleUserDetails ? {
         value: record.responsibleUser,
-        label: `${record.responsibleUserDetails.name} - ${record.responsibleUserDetails.role || 'Usuario'}`
+        label: `${record.responsibleUserDetails.name} - ${getRoleLabel(record.responsibleUserDetails.role || 'Usuario')}`
       } : record.responsibleUser,
       observations: record.observations,
       products: mappedProducts
@@ -784,7 +795,7 @@ const Outputs: React.FC = () => {
                 .filter((user: any) => user.status === 'active')
                 .map((user: any) => (
                   <Option key={user.id} value={user.id}>
-                    {user.name} - {user.role}
+                    {user.name} - {getRoleLabel(user.role)}
                   </Option>
                 ))}
             </Select>

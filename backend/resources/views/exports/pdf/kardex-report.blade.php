@@ -112,6 +112,8 @@
         .type-transfer { background-color: #2196f3; color: white; }
         .type-application { background-color: #ff9800; color: white; }
         .type-adjustment { background-color: #9c27b0; color: white; }
+        .text-green { color: #4caf50; }
+        .text-red { color: #f44336; }
     </style>
 </head>
 <body>
@@ -121,20 +123,18 @@
         <p>Generado el {{ $date }} por {{ $user }}</p>
     </div>
 
-    <!-- Info Section -->
+    <!-- Product Info -->
     <div class="info-section">
-        <p><strong>Filtros aplicados:</strong></p>
-        @if($filters['start_date'] && $filters['end_date'])
-            <p>• Período: {{ \Carbon\Carbon::parse($filters['start_date'])->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($filters['end_date'])->format('d/m/Y') }}</p>
+        <p><strong>Producto:</strong> {{ $product->name }} ({{ $product->base_unit }})</p>
+        @if($product->product_code)
+            <p><strong>Código:</strong> {{ $product->product_code }}</p>
         @endif
-        @if($filters['product_id'])
-            <p>• Producto filtrado</p>
+        <p><strong>Categoría:</strong> {{ ucfirst($product->category ?? 'N/A') }}</p>
+        @if($filters['start_date'] && $filters['end_date'])
+            <p><strong>Período:</strong> {{ \Carbon\Carbon::parse($filters['start_date'])->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($filters['end_date'])->format('d/m/Y') }}</p>
         @endif
         @if($filters['location_id'])
-            <p>• Ubicación filtrada</p>
-        @endif
-        @if($filters['type'])
-            <p>• Tipo: {{ $filters['type'] }}</p>
+            <p><strong>Ubicación:</strong> Filtrada</p>
         @endif
     </div>
 
@@ -142,19 +142,19 @@
     <div class="stats">
         <div class="stat-item">
             <div class="stat-label">Total Movimientos</div>
-            <div class="stat-value">{{ $stats['total_movements'] }}</div>
+            <div class="stat-value">{{ $summary['total_movements'] }}</div>
         </div>
         <div class="stat-item">
-            <div class="stat-label">Entradas</div>
-            <div class="stat-value" style="color: #4caf50;">{{ $stats['total_entries'] }}</div>
+            <div class="stat-label">Total Entradas ({{ $product->base_unit }})</div>
+            <div class="stat-value" style="color: #4caf50;">{{ number_format($summary['total_entries'], 0, ',', '.') }}</div>
         </div>
         <div class="stat-item">
-            <div class="stat-label">Salidas</div>
-            <div class="stat-value" style="color: #f44336;">{{ $stats['total_exits'] }}</div>
+            <div class="stat-label">Total Salidas ({{ $product->base_unit }})</div>
+            <div class="stat-value" style="color: #f44336;">{{ number_format($summary['total_exits'], 0, ',', '.') }}</div>
         </div>
         <div class="stat-item">
-            <div class="stat-label">Valor Total</div>
-            <div class="stat-value">${{ number_format($stats['total_value'], 0, ',', '.') }}</div>
+            <div class="stat-label">Stock Actual ({{ $product->base_unit }})</div>
+            <div class="stat-value">{{ number_format($summary['current_stock'], 0, ',', '.') }}</div>
         </div>
     </div>
 
@@ -164,21 +164,19 @@
             <tr>
                 <th>Fecha</th>
                 <th>Tipo</th>
-                <th>Producto</th>
                 <th>Marca</th>
                 <th>Ubicación</th>
-                <th style="text-align: right;">Cantidad (base)</th>
+                <th style="text-align: right;">Entrada ({{ $product->base_unit }})</th>
+                <th style="text-align: right;">Salida ({{ $product->base_unit }})</th>
+                <th style="text-align: right;">Saldo ({{ $product->base_unit }})</th>
                 <th>Detalle Empaque</th>
-                <th style="text-align: right;">P. Unit.</th>
-                <th style="text-align: right;">Total</th>
-                <th>Usuario</th>
+                <th>Responsable</th>
             </tr>
         </thead>
         <tbody>
             @foreach($movements as $mov)
             @php
-                // Type badge configuration
-                $typeClass = match($mov->type) {
+                $typeClass = match($mov['type']) {
                     'entry' => 'type-entry',
                     'exit' => 'type-exit',
                     'transfer' => 'type-transfer',
@@ -186,62 +184,40 @@
                     'adjustment' => 'type-adjustment',
                     default => 'type-entry'
                 };
-                $typeLabel = match($mov->type) {
+                $typeLabel = match($mov['type']) {
                     'entry' => 'ENT',
                     'exit' => 'SAL',
                     'transfer' => 'TRF',
                     'application' => 'APL',
                     'adjustment' => 'AJU',
-                    default => $mov->type
+                    default => $mov['type']
                 };
 
-                // Packaging unit logic
-                $baseQuantity = 1;
-                $baseUnit = $mov->unit ?? 'unidades';
-
-                if ($mov->product && $mov->product->packagingUnits) {
-                    $packagingUnit = $mov->product->packagingUnits->first(function ($pu) use ($mov) {
-                        return strtolower($pu->name) === strtolower($mov->unit);
-                    });
-
-                    if ($packagingUnit) {
-                        $baseQuantity = floatval($packagingUnit->base_quantity);
-                        $baseUnit = $packagingUnit->base_unit;
-                    }
-                }
-
-                $hasPackaging = $baseQuantity > 1;
-                $totalBaseQuantity = ($mov->quantity ?? 0) * $baseQuantity;
-
-                // Build full unit name
-                $fullUnitName = $mov->unit ?? 'unidades';
-                if ($hasPackaging) {
-                    $fullUnitName = $mov->unit . ' de ' . $baseQuantity . ' ' . $baseUnit;
-                }
-
-                // Always show total quantity in base unit
-                $sign = $mov->type === 'exit' ? '-' : '+';
-                $totalQuantityText = $sign . number_format($totalBaseQuantity, 0, ',', '.') . ' ' . $baseUnit;
-
-                // Build packaging detail (only when there's packaging)
                 $packagingDetail = '';
-                if ($hasPackaging) {
-                    $packagingDetail = ($mov->quantity ?? 0) . ' ' . ($mov->unit ?? '') . ' x ' . $baseQuantity . ' ' . $baseUnit;
+                if ($mov['original_unit'] !== $product->base_unit) {
+                    $packagingDetail = $mov['original_quantity'] . ' ' . $mov['original_unit'];
                 }
             @endphp
             <tr>
-                <td>{{ \Carbon\Carbon::parse($mov->created_at)->format('d/m/Y H:i') }}</td>
+                <td>{{ \Carbon\Carbon::parse($mov['date'])->format('d/m/Y H:i') }}</td>
                 <td>
                     <span class="type-badge {{ $typeClass }}">{{ $typeLabel }}</span>
                 </td>
-                <td>{{ $mov->product->name ?? 'N/A' }}</td>
-                <td>{{ $mov->product->brand->name ?? 'N/A' }}</td>
-                <td>{{ $mov->location->name ?? 'N/A' }}</td>
-                <td style="text-align: right;">{{ $totalQuantityText }}</td>
+                <td>{{ $mov['brand_name'] }}</td>
+                <td>{{ $mov['location_name'] }}</td>
+                <td style="text-align: right;">
+                    @if($mov['quantity_in'] > 0)
+                        <span class="text-green">+{{ number_format($mov['quantity_in'], 0, ',', '.') }}</span>
+                    @endif
+                </td>
+                <td style="text-align: right;">
+                    @if($mov['quantity_out'] > 0)
+                        <span class="text-red">-{{ number_format($mov['quantity_out'], 0, ',', '.') }}</span>
+                    @endif
+                </td>
+                <td style="text-align: right; font-weight: bold;">{{ number_format($mov['balance'], 0, ',', '.') }}</td>
                 <td>{{ $packagingDetail }}</td>
-                <td style="text-align: right;">${{ number_format($mov->unit_price ?? 0, 0, ',', '.') }}</td>
-                <td style="text-align: right;">${{ number_format($mov->total_price ?? 0, 0, ',', '.') }}</td>
-                <td>{{ $mov->responsibleUser->name ?? 'N/A' }}</td>
+                <td>{{ $mov['responsible_user'] }}</td>
             </tr>
             @endforeach
         </tbody>

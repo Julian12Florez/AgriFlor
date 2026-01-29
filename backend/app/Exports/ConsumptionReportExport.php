@@ -161,9 +161,8 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
             'CÓDIGO',
             'CATEGORÍA',
             'MARCA',
-            'CANTIDAD',
-            'UNIDAD',
-            'CANTIDAD TOTAL',
+            'CONSUMO (BASE)',
+            'DETALLE EMPAQUE',
             'ORIGEN',
             'FINCA DESTINO',
             'OBSERVACIONES',
@@ -173,17 +172,18 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
     public function map($row): array
     {
         $hasPackaging = isset($row->base_quantity) && $row->base_quantity > 1;
+        $baseUnit = $row->base_unit ?? $row->unit ?? 'unidades';
 
-        // Build full unit name
-        $fullUnitName = $row->unit ?? 'unidades';
+        // Always show consumption in base unit
+        $totalBase = $hasPackaging
+            ? ($row->total_base_quantity ?? ($row->quantity * $row->base_quantity))
+            : ($row->quantity ?? 0);
+        $consumoBaseText = number_format($totalBase, 0, ',', '.') . ' ' . $baseUnit;
+
+        // Packaging detail only when there's packaging
+        $packagingDetail = '';
         if ($hasPackaging) {
-            $fullUnitName = $row->unit . ' de ' . $row->base_quantity . ' ' . $row->base_unit;
-        }
-
-        // Build total quantity text
-        $totalQuantityText = '-';
-        if ($hasPackaging && isset($row->total_base_quantity)) {
-            $totalQuantityText = number_format($row->total_base_quantity, 0, ',', '.') . ' ' . $row->base_unit;
+            $packagingDetail = ($row->quantity ?? 0) . ' ' . ($row->unit ?? '') . ' x ' . $row->base_quantity . ' ' . $baseUnit;
         }
 
         return [
@@ -193,9 +193,8 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
             $row->product_code ?? 'N/A',
             $row->category ?? 'Sin categoría',
             $row->brand_name ?? 'Sin marca',
-            $row->quantity ?? 0,
-            $fullUnitName,
-            $totalQuantityText,
+            $consumoBaseText,
+            $packagingDetail,
             $row->origin_location_name ?? 'N/A',
             $row->destination_location_name ?? 'N/A',
             $row->observations ?? '',
@@ -204,7 +203,7 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
 
     public function styles(Worksheet $sheet)
     {
-        $sheet->getStyle('A1:L1')->applyFromArray([
+        $sheet->getStyle('A1:K1')->applyFromArray([
             'font' => [
                 'bold' => true,
                 'color' => ['rgb' => 'FFFFFF'],
@@ -225,7 +224,7 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
         ]);
 
         // Auto-filter
-        $sheet->setAutoFilter('A1:L1');
+        $sheet->setAutoFilter('A1:K1');
 
         // Freeze first row
         $sheet->freezePane('A2');
@@ -242,12 +241,11 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
             'D' => 12, // Código
             'E' => 18, // Categoría
             'F' => 18, // Marca
-            'G' => 12, // Cantidad
-            'H' => 20, // Unidad
-            'I' => 18, // Cantidad Total
-            'J' => 20, // Origen
-            'K' => 20, // Finca Destino
-            'L' => 30, // Observaciones
+            'G' => 18, // Consumo (Base)
+            'H' => 22, // Detalle Empaque
+            'I' => 20, // Origen
+            'J' => 20, // Finca Destino
+            'K' => 30, // Observaciones
         ];
     }
 

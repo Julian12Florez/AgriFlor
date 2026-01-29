@@ -23,19 +23,30 @@ class UserSeeder extends Seeder
      * - Bodeguero: bodega@agriflor.com / bodega123
      * - Operario Finca: finca@agriflor.com / finca123
      * - Compras: compras@agriflor.com / compras123
+     * - Financiero: financiero@agriflor.com / financiero123
      */
     public function run(): void
     {
         // Get roles from database (must be seeded first)
         $adminRole = Role::where('name', 'admin')->first();
         $supervisorRole = Role::where('name', 'supervisor')->first();
-        $warehouseRole = Role::where('name', 'warehouse_operator')->first();
-        $farmRole = Role::where('name', 'farm_operator')->first();
+        $warehouseRole = Role::where('name', 'warehouse')->first();
+        $farmRole = Role::where('name', 'farm')->first();
         $purchasingRole = Role::where('name', 'purchasing')->first();
+        $financieroRole = Role::where('name', 'financiero')->first();
 
-        // Verify roles exist
-        if (!$adminRole || !$supervisorRole || !$warehouseRole || !$farmRole || !$purchasingRole) {
-            $this->command->error('ERROR: Roles not found. Please run PermissionsSeeder and RolesSeeder first.');
+        // Verify required roles exist
+        $missingRoles = [];
+        if (!$adminRole) $missingRoles[] = 'admin';
+        if (!$supervisorRole) $missingRoles[] = 'supervisor';
+        if (!$warehouseRole) $missingRoles[] = 'warehouse';
+        if (!$farmRole) $missingRoles[] = 'farm';
+        if (!$purchasingRole) $missingRoles[] = 'purchasing';
+        if (!$financieroRole) $missingRoles[] = 'financiero';
+
+        if (!empty($missingRoles)) {
+            $this->command->error('ERROR: Roles not found: ' . implode(', ', $missingRoles));
+            $this->command->info('Please run PermissionsSeeder and RolesSeeder first:');
             $this->command->info('php artisan db:seed --class=PermissionsSeeder');
             $this->command->info('php artisan db:seed --class=RolesSeeder');
             return;
@@ -46,7 +57,7 @@ class UserSeeder extends Seeder
                 'name' => 'Administrador AgriFlor',
                 'email' => 'admin@agriflor.com',
                 'password' => Hash::make('admin123'),
-                'role' => 'admin', // Legacy field for backwards compatibility
+                'role' => 'admin',
                 'role_id' => $adminRole->id,
                 'status' => 'active',
             ],
@@ -62,7 +73,7 @@ class UserSeeder extends Seeder
                 'name' => 'María González (Bodeguera)',
                 'email' => 'bodega@agriflor.com',
                 'password' => Hash::make('bodega123'),
-                'role' => 'warehouse_operator',
+                'role' => 'warehouse',
                 'role_id' => $warehouseRole->id,
                 'status' => 'active',
             ],
@@ -70,7 +81,7 @@ class UserSeeder extends Seeder
                 'name' => 'Pedro López (Operario Finca)',
                 'email' => 'finca@agriflor.com',
                 'password' => Hash::make('finca123'),
-                'role' => 'farm_operator',
+                'role' => 'farm',
                 'role_id' => $farmRole->id,
                 'status' => 'active',
             ],
@@ -80,6 +91,14 @@ class UserSeeder extends Seeder
                 'password' => Hash::make('compras123'),
                 'role' => 'purchasing',
                 'role_id' => $purchasingRole->id,
+                'status' => 'active',
+            ],
+            [
+                'name' => 'Laura Sánchez (Financiera)',
+                'email' => 'financiero@agriflor.com',
+                'password' => Hash::make('financiero123'),
+                'role' => 'financiero',
+                'role_id' => $financieroRole->id,
                 'status' => 'active',
             ],
         ];
@@ -99,7 +118,8 @@ class UserSeeder extends Seeder
                 ['supervisor@agriflor.com', 'Supervisor', 'supervisor123'],
                 ['bodega@agriflor.com', 'Bodeguero', 'bodega123'],
                 ['finca@agriflor.com', 'Operario Finca', 'finca123'],
-                ['compras@agriflor.com', 'Compras', 'compras123'],
+                ['compras@agriflor.com', 'Encargado Compras', 'compras123'],
+                ['financiero@agriflor.com', 'Financiero', 'financiero123'],
             ]
         );
     }

@@ -6,7 +6,6 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchasesApi, suppliersApi, productsApi, locationsApi } from '../../services/api';
-import { downloadPurchaseOrderPDF, openPurchaseOrderPDF } from '../../utils/pdfGenerator';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
 const { Text, Title } = Typography;
@@ -180,23 +179,10 @@ const Purchases: React.FC = () => {
   const handleDownloadPDF = async (purchase: Purchase) => {
     try {
       setLoading(true);
-      await downloadPurchaseOrderPDF(purchase);
+      await purchasesApi.exportPdf(purchase.id, purchase.orderNumber);
       message.success('PDF descargado correctamente');
     } catch (error) {
       message.error('Error al descargar PDF');
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleOpenPDF = async (purchase: Purchase) => {
-    try {
-      setLoading(true);
-      await openPurchaseOrderPDF(purchase);
-      message.success('PDF abierto en nueva ventana');
-    } catch (error) {
-      message.error('Error al abrir PDF');
       console.error(error);
     } finally {
       setLoading(false);
@@ -271,7 +257,7 @@ const Purchases: React.FC = () => {
           <Button
             type="link"
             icon={<PrinterOutlined />}
-            onClick={() => handleOpenPDF(record)}
+            onClick={() => handleDownloadPDF(record)}
             size="small"
           >
             PDF
@@ -389,7 +375,7 @@ const Purchases: React.FC = () => {
           <Button
             type="link"
             icon={<PrinterOutlined />}
-            onClick={() => handleOpenPDF(record)}
+            onClick={() => handleDownloadPDF(record)}
             size="small"
             loading={loading}
           >
@@ -551,7 +537,7 @@ const Purchases: React.FC = () => {
             <Button
               type="primary"
               icon={<PrinterOutlined />}
-              onClick={() => handleOpenPDF(selectedPurchase)}
+              onClick={() => handleDownloadPDF(selectedPurchase)}
               loading={loading}
             >
               Ver PDF

@@ -48,11 +48,21 @@ class PurchaseResource extends JsonResource
                     'id' => $this->supplier->id,
                     'name' => $this->supplier->name,
                     'nit' => $this->supplier->nit,
+                    'address' => $this->supplier->address,
+                    'city' => $this->supplier->city,
                     'phone' => $this->supplier->phone,
                     'email' => $this->supplier->email,
-                    'city' => $this->supplier->city,
-                    'contactName' => $this->supplier->contact_name ?? null,
+                    'paymentTerms' => $this->supplier->payment_terms,
                     'status' => $this->supplier->status,
+                    'contacts' => $this->supplier->relationLoaded('contacts')
+                        ? $this->supplier->contacts->map(fn($c) => [
+                            'id' => $c->id,
+                            'name' => $c->name,
+                            'position' => $c->position,
+                            'phone' => $c->phone,
+                            'email' => $c->email,
+                        ])->values()
+                        : [],
                 ] : null
             ),
 

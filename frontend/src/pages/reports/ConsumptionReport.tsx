@@ -221,17 +221,18 @@ const ConsumptionReport: React.FC = () => {
       key: 'consumption',
       width: 120,
       render: (_, record) => {
-        const fullUnitName = getFullPackagingUnitName(record.unit, record.base_quantity, record.base_unit);
         const hasPackaging = record.base_quantity && record.base_quantity > 1;
+        const baseUnit = record.base_unit || record.unit || 'unidades';
+        const baseQty = record.total_base_quantity || record.quantity || 0;
 
         return (
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: 4 }}>
-              {record.quantity.toLocaleString()} {fullUnitName}
+            <div style={{ fontWeight: 500, fontSize: '14px', color: '#2E7D32', marginBottom: 4 }}>
+              {baseQty.toLocaleString()} {baseUnit}
             </div>
             {hasPackaging && (
-              <div style={{ fontSize: '12px', color: '#2E7D32', fontWeight: 500, marginBottom: 4 }}>
-                Total: {(record.total_base_quantity || 0).toLocaleString()} {record.base_unit}
+              <div style={{ fontSize: '11px', color: '#666', marginBottom: 4 }}>
+                {record.quantity.toLocaleString()} {record.unit} x {record.base_quantity} {record.base_unit}
               </div>
             )}
             <div style={{ fontSize: '11px', color: '#999', marginTop: 4 }}>
@@ -266,7 +267,7 @@ const ConsumptionReport: React.FC = () => {
         <div>
           <div style={{ fontWeight: 500 }}>{name}</div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            {record.product_code} • {record.category}
+            {record.product_code} • {record.category ? record.category.charAt(0).toUpperCase() + record.category.slice(1) : 'Sin categoría'}
           </div>
         </div>
       ),
@@ -279,38 +280,36 @@ const ConsumptionReport: React.FC = () => {
       width: 120,
     },
     {
-      title: 'Cantidad',
-      dataIndex: 'quantity',
-      key: 'quantity',
-      width: 140,
-      align: 'right',
-      render: (qty: number, record) => {
-        const fullUnitName = getFullPackagingUnitName(record.unit, record.base_quantity, record.base_unit);
-        return (
-          <div style={{ textAlign: 'right', fontWeight: 500 }}>
-            {qty.toLocaleString()} {fullUnitName}
-          </div>
-        );
-      },
-      sorter: (a, b) => a.quantity - b.quantity,
-    },
-    {
-      title: 'Cantidad Total',
+      title: 'Consumo (Base)',
       dataIndex: 'total_base_quantity',
       key: 'total_base_quantity',
-      width: 140,
+      width: 150,
       align: 'right',
       render: (totalBase: number | undefined, record) => {
-        const hasPackaging = record.base_quantity && record.base_quantity > 1;
-        if (!hasPackaging) return '-';
-
+        const baseUnit = record.base_unit || record.unit || 'unidades';
+        const qty = totalBase || record.quantity || 0;
         return (
           <div style={{ textAlign: 'right', fontWeight: 500, color: '#2E7D32' }}>
-            {(totalBase || 0).toLocaleString()} {record.base_unit}
+            {qty.toLocaleString()} {baseUnit}
           </div>
         );
       },
       sorter: (a, b) => (a.total_base_quantity || 0) - (b.total_base_quantity || 0),
+    },
+    {
+      title: 'Detalle Empaque',
+      key: 'packaging_detail',
+      width: 160,
+      render: (_, record) => {
+        const hasPackaging = record.base_quantity && record.base_quantity > 1;
+        if (!hasPackaging) return '';
+
+        return (
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            {record.quantity.toLocaleString()} {record.unit} x {record.base_quantity} {record.base_unit}
+          </div>
+        );
+      },
     },
     {
       title: 'Finca',
@@ -370,16 +369,16 @@ const ConsumptionReport: React.FC = () => {
     </div>
   );
 
-  // Data for charts
+  // Data for charts - use base quantity for fair comparison across products
   const topProductsByQuantity =
     byProduct.length > 0
       ? [...byProduct]
-          .sort((a, b) => b.total_quantity - a.total_quantity)
+          .sort((a, b) => (b.total_quantity || 0) - (a.total_quantity || 0))
           .slice(0, 10)
           .map((item) => ({
             name: item.product_name.substring(0, 20) + (item.product_name.length > 20 ? '...' : ''),
-            value: item.total_quantity,
-            unit: item.unit,
+            value: item.consumption_count,
+            unit: 'consumos',
           }))
       : [];
 
@@ -554,8 +553,8 @@ const ConsumptionReport: React.FC = () => {
             <Col xs={24} sm={8}>
               <Card>
                 <Statistic
-                  title="Cantidad Consumida"
-                  value={summary.total_quantity_consumed.toFixed(2)}
+                  title="Total Productos"
+                  value={byProduct.length}
                   valueStyle={{ color: '#722ed1' }}
                 />
               </Card>
@@ -566,15 +565,15 @@ const ConsumptionReport: React.FC = () => {
           {topProductsByQuantity.length > 0 && (
             <Row gutter={16} style={{ marginBottom: 16 }}>
               <Col xs={24} lg={12}>
-                <Card title="Top 10 Productos Consumidos">
+                <Card title="Top 10 Productos por N° de Consumos">
                   <ResponsiveContainer width="100%" height={300}>
                     <BarChart data={topProductsByQuantity} layout="vertical" margin={{ left: 100 }}>
                       <CartesianGrid strokeDasharray="3 3" />
                       <XAxis type="number" />
                       <YAxis type="category" dataKey="name" width={100} />
                       <Tooltip
-                        formatter={(value: number, name: string, props: any) =>
-                          `${value.toLocaleString()} ${props.payload.unit || 'unidades'}`
+                        formatter={(value: number) =>
+                          `${value.toLocaleString()} consumos`
                         }
                       />
                       <Bar dataKey="value" fill="#2E7D32" />

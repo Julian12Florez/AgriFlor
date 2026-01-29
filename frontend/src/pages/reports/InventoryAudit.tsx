@@ -56,8 +56,8 @@ const InventoryAudit: React.FC = () => {
 
   // Fetch users for filter
   const { data: usersData } = useQuery({
-    queryKey: ['users-all'],
-    queryFn: () => usersApi.list({ per_page: 1000 }),
+    queryKey: ['users-simple'],
+    queryFn: () => usersApi.listSimple(),
   });
 
   // Fetch movements

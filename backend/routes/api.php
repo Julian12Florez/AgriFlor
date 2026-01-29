@@ -38,6 +38,8 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
+    Route::post('reset-password', [AuthController::class, 'resetPassword']);
 });
 
 // ============================================
@@ -53,6 +55,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::post('refresh', [AuthController::class, 'refresh']);
         Route::get('me', [AuthController::class, 'me']);
+        Route::post('change-password', [AuthController::class, 'changePassword']);
     });
 
     // ----------------------------------------
@@ -63,6 +66,11 @@ Route::middleware('auth:api')->group(function () {
         Route::get('inventory-by-category', [DashboardController::class, 'getInventoryByCategory']);
         Route::get('recent-activity', [DashboardController::class, 'getRecentActivity']);
     });
+
+    // ----------------------------------------
+    // USER LIST (All authenticated - for dropdowns)
+    // ----------------------------------------
+    Route::get('users/simple', [UserController::class, 'listSimple']);
 
     // ----------------------------------------
     // USER MANAGEMENT (Admin only)
@@ -76,40 +84,62 @@ Route::middleware('auth:api')->group(function () {
     // MASTER DATA MODULES
     // ----------------------------------------
 
-    // PRODUCTS (Admin, Agronomist, Warehouse)
-    Route::middleware('role:admin,agronomist,warehouse')->group(function () {
-        Route::post('products/search-with-inventory', [ProductController::class, 'searchWithInventory']);
-        Route::get('products-for-outputs', [ProductController::class, 'getForOutputs']);
-        Route::apiResource('products', ProductController::class);
+    // PRODUCTS - Read (All authenticated - needed for outputs/receptions)
+    Route::get('products', [ProductController::class, 'index']);
+    Route::get('products/{product}', [ProductController::class, 'show']);
+    Route::post('products/search-with-inventory', [ProductController::class, 'searchWithInventory']);
+    Route::get('products-for-outputs', [ProductController::class, 'getForOutputs']);
+
+    // PRODUCTS - Write (Admin, Purchasing, Warehouse, Agronomist)
+    Route::middleware('role:admin,purchasing,warehouse,agronomist')->group(function () {
+        Route::post('products', [ProductController::class, 'store']);
+        Route::put('products/{product}', [ProductController::class, 'update']);
+        Route::delete('products/{product}', [ProductController::class, 'destroy']);
     });
 
-    // BRANDS (Admin, Warehouse)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::apiResource('brands', BrandController::class);
+    // BRANDS - Read (All authenticated)
+    Route::get('brands', [BrandController::class, 'index']);
+    Route::get('brands/{brand}', [BrandController::class, 'show']);
+
+    // BRANDS - Write (Admin, Purchasing)
+    Route::middleware('role:admin,purchasing')->group(function () {
+        Route::post('brands', [BrandController::class, 'store']);
+        Route::put('brands/{brand}', [BrandController::class, 'update']);
+        Route::delete('brands/{brand}', [BrandController::class, 'destroy']);
     });
 
-    // SUPPLIERS (Admin, Warehouse)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::apiResource('suppliers', SupplierController::class);
+    // SUPPLIERS - Read (All authenticated)
+    Route::get('suppliers', [SupplierController::class, 'index']);
+    Route::get('suppliers/{supplier}', [SupplierController::class, 'show']);
+
+    // SUPPLIERS - Write (Admin, Purchasing)
+    Route::middleware('role:admin,purchasing')->group(function () {
+        Route::post('suppliers', [SupplierController::class, 'store']);
+        Route::put('suppliers/{supplier}', [SupplierController::class, 'update']);
+        Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy']);
         Route::post('suppliers/{id}/contacts', [SupplierController::class, 'addContact']);
         Route::delete('suppliers/{id}/contacts/{contactId}', [SupplierController::class, 'removeContact']);
     });
 
-    // LOCATIONS (Admin, Warehouse, Supervisor)
-    Route::middleware('role:admin,warehouse,supervisor')->group(function () {
-        Route::apiResource('locations', LocationController::class);
-        Route::get('locations/type/warehouses', [LocationController::class, 'warehouses']);
-        Route::get('locations/type/farms', [LocationController::class, 'farms']);
+    // LOCATIONS - Read (All authenticated - needed for outputs/receptions)
+    Route::get('locations', [LocationController::class, 'index']);
+    Route::get('locations/{location}', [LocationController::class, 'show']);
+    Route::get('locations/type/warehouses', [LocationController::class, 'warehouses']);
+    Route::get('locations/type/farms', [LocationController::class, 'farms']);
+
+    // LOCATIONS - Write (Admin, Warehouse, Supervisor, Purchasing)
+    Route::middleware('role:admin,warehouse,supervisor,purchasing')->group(function () {
+        Route::post('locations', [LocationController::class, 'store']);
+        Route::put('locations/{location}', [LocationController::class, 'update']);
+        Route::delete('locations/{location}', [LocationController::class, 'destroy']);
     });
 
-    // FARM LOTS (Admin, Warehouse, Supervisor, Agronomist)
-    Route::middleware('role:admin,warehouse,supervisor,agronomist')->group(function () {
-        Route::get('farm-lots', [FarmLotController::class, 'index']);
-        Route::get('farm-lots/{id}', [FarmLotController::class, 'show']);
-        Route::get('locations/{locationId}/farm-lots', [FarmLotController::class, 'getByLocation']);
-    });
+    // FARM LOTS - Read (All authenticated - needed for outputs/receptions)
+    Route::get('farm-lots', [FarmLotController::class, 'index']);
+    Route::get('farm-lots/{id}', [FarmLotController::class, 'show']);
+    Route::get('locations/{locationId}/farm-lots', [FarmLotController::class, 'getByLocation']);
 
-    // FARM LOTS - Write operations (Admin, Warehouse)
+    // FARM LOTS - Write (Admin, Warehouse)
     Route::middleware('role:admin,warehouse')->group(function () {
         Route::post('farm-lots', [FarmLotController::class, 'store']);
         Route::put('farm-lots/{id}', [FarmLotController::class, 'update']);
@@ -127,14 +157,26 @@ Route::middleware('auth:api')->group(function () {
         Route::delete('output-types/{id}', [OutputTypeController::class, 'destroy']);
     });
 
-    // PACKAGING UNITS (Admin, Warehouse)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::apiResource('packaging-units', PackagingUnitController::class);
+    // PACKAGING UNITS - Read (All authenticated)
+    Route::get('packaging-units', [PackagingUnitController::class, 'index']);
+    Route::get('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'show']);
+
+    // PACKAGING UNITS - Write (Admin, Purchasing)
+    Route::middleware('role:admin,purchasing')->group(function () {
+        Route::post('packaging-units', [PackagingUnitController::class, 'store']);
+        Route::put('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'update']);
+        Route::delete('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'destroy']);
     });
 
-    // BASE UNITS (Admin)
-    Route::middleware('role:admin')->group(function () {
-        Route::apiResource('base-units', BaseUnitController::class);
+    // BASE UNITS - Read (All authenticated)
+    Route::get('base-units', [BaseUnitController::class, 'index']);
+    Route::get('base-units/{base_unit}', [BaseUnitController::class, 'show']);
+
+    // BASE UNITS - Write (Admin, Purchasing)
+    Route::middleware('role:admin,purchasing')->group(function () {
+        Route::post('base-units', [BaseUnitController::class, 'store']);
+        Route::put('base-units/{base_unit}', [BaseUnitController::class, 'update']);
+        Route::delete('base-units/{base_unit}', [BaseUnitController::class, 'destroy']);
     });
 
     // ----------------------------------------
@@ -167,14 +209,13 @@ Route::middleware('auth:api')->group(function () {
     // WAREHOUSE MANAGEMENT
     // ----------------------------------------
 
-    // PURCHASES (Admin, Warehouse, Supervisor - View only)
-    Route::middleware('role:admin,warehouse,supervisor')->group(function () {
-        Route::get('purchases', [PurchaseController::class, 'index']);
-        Route::get('purchases/{id}', [PurchaseController::class, 'show']);
-    });
+    // PURCHASES - Read (All authenticated - needed for receptions from purchases)
+    Route::get('purchases', [PurchaseController::class, 'index']);
+    Route::get('purchases/{id}', [PurchaseController::class, 'show']);
+    Route::get('purchases/{id}/export-pdf', [PurchaseController::class, 'exportPdf']);
 
-    // PURCHASES - Write operations (Admin, Warehouse only)
-    Route::middleware('role:admin,warehouse')->group(function () {
+    // PURCHASES - Write operations (Admin, Purchasing, Warehouse)
+    Route::middleware('role:admin,purchasing,warehouse')->group(function () {
         Route::post('purchases', [PurchaseController::class, 'store']);
         Route::put('purchases/{id}', [PurchaseController::class, 'update']);
         Route::delete('purchases/{id}', [PurchaseController::class, 'destroy']);
@@ -182,15 +223,15 @@ Route::middleware('auth:api')->group(function () {
         Route::delete('purchases/{id}/attachments/{attachmentId}', [PurchaseController::class, 'removeAttachment']);
     });
 
-    // PRODUCT OUTPUTS (Admin, Warehouse, Supervisor)
-    Route::middleware('role:admin,warehouse,supervisor')->group(function () {
+    // PRODUCT OUTPUTS - Read (All roles - todos deben tener acceso a salidas)
+    Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
         Route::post('product-outputs/validate-inventory', [ProductOutputController::class, 'validateInventory']);
         Route::get('product-outputs', [ProductOutputController::class, 'index']);
         Route::get('product-outputs/{id}', [ProductOutputController::class, 'show']);
     });
 
-    // PRODUCT OUTPUTS - Write operations (Admin, Warehouse)
-    Route::middleware('role:admin,warehouse')->group(function () {
+    // PRODUCT OUTPUTS - Write (All roles - todos deben tener acceso a salidas)
+    Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
         Route::post('product-outputs', [ProductOutputController::class, 'store']);
         Route::put('product-outputs/{id}', [ProductOutputController::class, 'update']);
         Route::delete('product-outputs/{id}', [ProductOutputController::class, 'destroy']);
@@ -217,8 +258,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('receptions/{id}/batches', [ReceptionController::class, 'getBatches']);
     Route::get('receptions/{id}/pending-products', [ReceptionController::class, 'getPendingProducts']);
 
-    // RECEPTIONS - Write operations (Admin, Warehouse, Farm)
-    Route::middleware('role:admin,warehouse,farm')->group(function () {
+    // RECEPTIONS - Write operations (All roles - todos deben tener acceso a recepciones)
+    Route::middleware('role:admin,warehouse,farm,supervisor,agronomist,purchasing,financiero')->group(function () {
         Route::post('receptions', [ReceptionController::class, 'store']);
         Route::post('receptions/direct-reception', [ReceptionController::class, 'createReceptionWithBatch']);
         Route::post('receptions/{id}/batches', [ReceptionController::class, 'addBatch']);
@@ -274,8 +315,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('alerts', [AlertController::class, 'index']);
     Route::get('alerts/{id}', [AlertController::class, 'show']);
 
-    // ALERTS - Write operations (Admin, Supervisor, Warehouse)
-    Route::middleware('role:admin,supervisor,warehouse')->group(function () {
+    // ALERTS - Write operations (Admin, Supervisor, Warehouse, Financiero)
+    Route::middleware('role:admin,supervisor,warehouse,financiero')->group(function () {
         Route::post('alerts', [AlertController::class, 'store']);
         Route::put('alerts/{id}/resolve', [AlertController::class, 'resolve']);
         Route::put('alerts/{id}/dismiss', [AlertController::class, 'dismiss']);
@@ -298,6 +339,14 @@ Route::middleware('auth:api')->group(function () {
         // Inventory Movements Report Exports
         Route::get('reports/movements/export-excel', [ReportExportController::class, 'exportMovementsExcel']);
         Route::get('reports/movements/export-pdf', [ReportExportController::class, 'exportMovementsPdf']);
+
+        // Kardex Product Report Exports
+        Route::get('reports/kardex/export-excel', [ReportExportController::class, 'exportKardexExcel']);
+        Route::get('reports/kardex/export-pdf', [ReportExportController::class, 'exportKardexPdf']);
+
+        // Kardex List (Inventory General) Exports
+        Route::get('reports/kardex-list/export-excel', [ReportExportController::class, 'exportKardexListExcel']);
+        Route::get('reports/kardex-list/export-pdf', [ReportExportController::class, 'exportKardexListPdf']);
     });
 });
 
@@ -312,28 +361,50 @@ Route::middleware('auth:api')->group(function () {
 |   - All CRUD operations
 |   - Can approve outputs
 |
+| PURCHASING (purchasing) - Encargado de Compras:
+|   - Master data: products, brands, suppliers, locations, packaging/base units (CRUD)
+|   - Purchases (CRUD)
+|   - Product outputs (CRUD)
+|   - Receptions (CRUD)
+|
 | AGRONOMIST (agronomist):
 |   - Technical recipes (CRUD)
 |   - Technical orders (CRUD)
-|   - View products, inventory, reports
-|
-| WAREHOUSE (warehouse):
-|   - Products, brands, suppliers (CRUD)
-|   - Purchases (CRUD)
-|   - Product outputs (CRUD, except approval)
+|   - Product outputs (CRUD)
 |   - Receptions (CRUD)
-|   - Inventory management
-|   - Alerts management
+|
+| WAREHOUSE (warehouse) - Bodeguero:
+|   - Product outputs (CRUD)
+|   - Receptions (CRUD)
+|
+| FARM (farm) - Operario de Finca:
+|   - Product outputs (CRUD)
+|   - Receptions (CRUD)
 |
 | SUPERVISOR (supervisor):
-|   - View everything
-|   - Approve outputs
-|   - Manage alerts
+|   - Product outputs (CRUD + approve)
+|   - Receptions (CRUD)
+|   - Inventory (view)
+|   - Reports (view)
+|   - Alerts management
 |   - Technical orders (view only)
 |
-| FARM (farm):
-|   - Receptions in farms (add batches)
-|   - View technical orders assigned
-|   - View inventory
+| FINANCIERO (financiero):
+|   - Reports (view + export)
+|   - Inventory (view)
+|   - Product outputs (CRUD)
+|   - Receptions (CRUD)
+|   - Alerts management
+|
+| ALL AUTHENTICATED:
+|   - Dashboard
+|   - Products, locations, brands, suppliers (read)
+|   - Output types (read)
+|   - Inventory (read)
+|   - Applications (read)
+|   - Alerts (read)
+|   - Receptions (read)
+|   - Purchases (read)
+|   - Farm lots (read)
 |
 */

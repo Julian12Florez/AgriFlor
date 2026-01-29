@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api;
 use App\Exports\ConsumptionReportExport;
 use App\Exports\InventoryMovementsReportExport;
 use App\Exports\StockReportExport;
+use App\Exports\KardexReportExport;
+use App\Exports\KardexListExport;
 use App\Http\Controllers\Controller;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
+use App\Services\InventoryService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
@@ -15,6 +18,12 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class ReportExportController extends Controller
 {
+    private InventoryService $inventoryService;
+
+    public function __construct(InventoryService $inventoryService)
+    {
+        $this->inventoryService = $inventoryService;
+    }
     /**
      * Export Stock Report to Excel
      */
@@ -43,7 +52,7 @@ class ReportExportController extends Controller
         ];
 
         // Get stock data
-        $query = Inventory::with(['product.brand', 'location'])
+        $query = Inventory::with(['product.brand', 'product.packagingUnits', 'location'])
             ->where('quantity', '>', 0)
             ->whereNotIn('status', ['expired']);
 
@@ -60,10 +69,19 @@ class ReportExportController extends Controller
         // Group data
         $groupedData = $this->groupStockData($stockItems, $filters['group_by']);
 
-        // Calculate statistics
+        // Calculate statistics - convert to base units
+        $totalQuantityBase = 0;
+        foreach ($stockItems as $item) {
+            $totalQuantityBase += $this->inventoryService->toBaseUnit(
+                floatval($item->quantity),
+                $item->unit,
+                $item->product_id
+            );
+        }
+
         $stats = [
             'total_items' => $stockItems->count(),
-            'total_quantity' => $stockItems->sum('quantity'),
+            'total_quantity' => round($totalQuantityBase, 4),
             'total_value' => $stockItems->sum('total_value'),
             'low_stock' => $stockItems->where('status', 'low')->count(),
             'expired' => $stockItems->whereIn('status', ['expired', 'near_expiry'])->count(),
@@ -222,20 +240,34 @@ class ReportExportController extends Controller
             $grouped = [];
             foreach ($stockItems as $item) {
                 $key = $item->product_id . '-' . $item->product->brand_id;
+
+                // Convert to base unit
+                $qtyInBase = $this->inventoryService->toBaseUnit(
+                    floatval($item->quantity),
+                    $item->unit,
+                    $item->product_id
+                );
+
                 if (!isset($grouped[$key])) {
+                    // Get base unit from product
+                    $baseUnit = $item->product->base_unit ?? $item->unit;
+
                     $grouped[$key] = [
                         'product_name' => $item->product->name,
                         'product_code' => $item->product->product_code,
                         'category' => $item->product->category,
                         'brand_name' => $item->product->brand->name,
                         'total_quantity' => 0,
+                        'total_base_quantity' => 0,
                         'total_value' => 0,
                         'unit' => $item->unit,
+                        'base_unit' => $baseUnit,
                         'locations' => [],
                         'status' => 'good',
                     ];
                 }
                 $grouped[$key]['total_quantity'] += $item->quantity;
+                $grouped[$key]['total_base_quantity'] += $qtyInBase;
                 $grouped[$key]['total_value'] += $item->total_value;
                 $grouped[$key]['locations'][] = [
                     'name' => $item->location->name,
@@ -252,10 +284,17 @@ class ReportExportController extends Controller
             }
             return array_values($grouped);
         } else {
-            // Group by location
+            // Group by location - convert to base units
             $grouped = [];
             foreach ($stockItems as $item) {
                 $key = $item->location_id;
+
+                $qtyInBase = $this->inventoryService->toBaseUnit(
+                    floatval($item->quantity),
+                    $item->unit,
+                    $item->product_id
+                );
+
                 if (!isset($grouped[$key])) {
                     $grouped[$key] = [
                         'location_name' => $item->location->name,
@@ -267,13 +306,13 @@ class ReportExportController extends Controller
                     ];
                 }
                 $grouped[$key]['total_items'] += 1;
-                $grouped[$key]['total_quantity'] += $item->quantity;
+                $grouped[$key]['total_quantity'] += $qtyInBase;
                 $grouped[$key]['total_value'] += $item->total_value;
                 $grouped[$key]['products'][] = [
                     'name' => $item->product->name,
                     'brand' => $item->product->brand->name,
-                    'quantity' => $item->quantity,
-                    'unit' => $item->unit,
+                    'quantity' => $qtyInBase,
+                    'unit' => $item->product->base_unit ?? $item->unit,
                     'value' => $item->total_value,
                 ];
             }
@@ -426,5 +465,287 @@ class ReportExportController extends Controller
             'consumptions' => $consumptions,
             'summary' => $summary,
         ];
+    }
+
+    /**
+     * Export Kardex Product Report to Excel
+     */
+    public function exportKardexExcel(Request $request)
+    {
+        $filters = [
+            'product_id' => $request->input('product_id'),
+            'location_id' => $request->input('location_id'),
+            'start_date' => $request->input('start_date'),
+            'end_date' => $request->input('end_date'),
+        ];
+
+        if (!$filters['product_id']) {
+            return response()->json(['message' => 'El producto es requerido'], 422);
+        }
+
+        $fileName = 'kardex_report_' . now()->format('Y_m_d_His') . '.xlsx';
+
+        return Excel::download(new KardexReportExport($filters, $this->inventoryService), $fileName);
+    }
+
+    /**
+     * Export Kardex Product Report to PDF
+     */
+    public function exportKardexPdf(Request $request)
+    {
+        $filters = [
+            'product_id' => $request->input('product_id'),
+            'location_id' => $request->input('location_id'),
+            'start_date' => $request->input('start_date'),
+            'end_date' => $request->input('end_date'),
+        ];
+
+        if (!$filters['product_id']) {
+            return response()->json(['message' => 'El producto es requerido'], 422);
+        }
+
+        $productId = $filters['product_id'];
+
+        // Get product info
+        $product = DB::table('products')->where('id', $productId)->first();
+
+        if (!$product) {
+            return response()->json(['message' => 'Producto no encontrado'], 404);
+        }
+
+        // Get movements query
+        $movementsQuery = DB::table('inventory_movements')
+            ->select([
+                'inventory_movements.*',
+                'brands.name as brand_name',
+                'locations.name as location_name',
+                'users.name as responsible_user_name'
+            ])
+            ->join('brands', 'inventory_movements.brand_id', '=', 'brands.id')
+            ->join('locations', 'inventory_movements.location_id', '=', 'locations.id')
+            ->join('users', 'inventory_movements.responsible_user', '=', 'users.id')
+            ->where('inventory_movements.product_id', $productId);
+
+        if ($filters['location_id']) {
+            $movementsQuery->where('inventory_movements.location_id', $filters['location_id']);
+        }
+
+        if ($filters['start_date']) {
+            $movementsQuery->whereDate('inventory_movements.created_at', '>=', $filters['start_date']);
+        }
+
+        if ($filters['end_date']) {
+            $movementsQuery->whereDate('inventory_movements.created_at', '<=', $filters['end_date']);
+        }
+
+        $rawMovements = $movementsQuery->orderBy('inventory_movements.created_at', 'asc')->get();
+
+        // Calculate running balance converting to base unit
+        $balance = 0;
+        $movements = [];
+        $totalEntries = 0;
+        $totalExits = 0;
+
+        foreach ($rawMovements as $movement) {
+            $quantityValue = floatval($movement->quantity);
+            $quantityInBase = $this->inventoryService->toBaseUnit($quantityValue, $movement->unit, $productId);
+
+            if ($movement->type === 'entry' || $movement->type === 'adjustment') {
+                $balance += $quantityInBase;
+                $totalEntries += $quantityInBase;
+                $quantityIn = $quantityInBase;
+                $quantityOut = 0;
+            } else {
+                $balance -= $quantityInBase;
+                $totalExits += $quantityInBase;
+                $quantityIn = 0;
+                $quantityOut = $quantityInBase;
+            }
+
+            $movements[] = [
+                'date' => $movement->created_at,
+                'type' => $movement->type,
+                'brand_name' => $movement->brand_name,
+                'location_name' => $movement->location_name,
+                'quantity_in' => $quantityIn,
+                'quantity_out' => $quantityOut,
+                'balance' => round($balance, 4),
+                'original_quantity' => $quantityValue,
+                'original_unit' => $movement->unit,
+                'responsible_user' => $movement->responsible_user_name,
+                'observations' => $movement->observations,
+            ];
+        }
+
+        // Get current stock
+        $currentInventoryQuery = DB::table('inventory')
+            ->where('product_id', $productId);
+
+        if ($filters['location_id']) {
+            $currentInventoryQuery->where('location_id', $filters['location_id']);
+        }
+
+        $currentItems = $currentInventoryQuery->get();
+        $currentStock = 0;
+        foreach ($currentItems as $inv) {
+            $currentStock += $this->inventoryService->toBaseUnit(
+                floatval($inv->quantity),
+                $inv->unit,
+                $productId
+            );
+        }
+
+        $summary = [
+            'total_movements' => count($movements),
+            'total_entries' => round($totalEntries, 4),
+            'total_exits' => round($totalExits, 4),
+            'current_stock' => round($currentStock, 4),
+        ];
+
+        $data = [
+            'title' => 'Kardex - ' . $product->name,
+            'date' => now()->format('d/m/Y H:i'),
+            'user' => auth()->user()->name,
+            'product' => $product,
+            'filters' => $filters,
+            'movements' => $movements,
+            'summary' => $summary,
+        ];
+
+        $pdf = Pdf::loadView('exports.pdf.kardex-report', $data);
+        $pdf->setPaper('A4', 'landscape');
+
+        return $pdf->download('kardex_' . $product->name . '_' . now()->format('Y_m_d_His') . '.pdf');
+    }
+
+    /**
+     * Export Kardex List (Inventory General) to Excel
+     */
+    public function exportKardexListExcel(Request $request)
+    {
+        $filters = [
+            'location_id' => $request->input('location_id'),
+            'status' => $request->input('status'),
+            'search' => $request->input('search'),
+        ];
+
+        $fileName = 'inventario_actual_' . now()->format('Y_m_d_His') . '.xlsx';
+
+        return Excel::download(new KardexListExport($filters, $this->inventoryService), $fileName);
+    }
+
+    /**
+     * Export Kardex List (Inventory General) to PDF
+     */
+    public function exportKardexListPdf(Request $request)
+    {
+        $filters = [
+            'location_id' => $request->input('location_id'),
+            'status' => $request->input('status'),
+            'search' => $request->input('search'),
+        ];
+
+        // Get inventory items grouped by product
+        $query = DB::table('inventory')
+            ->select([
+                'inventory.*',
+                'products.name as product_name',
+                'products.product_code',
+                'products.category',
+                'products.base_unit',
+                'products.min_stock',
+            ])
+            ->join('products', 'inventory.product_id', '=', 'products.id')
+            ->join('locations', 'inventory.location_id', '=', 'locations.id')
+            ->where('inventory.quantity', '>', 0);
+
+        if ($filters['location_id']) {
+            $query->where('inventory.location_id', $filters['location_id']);
+        }
+
+        if ($filters['status']) {
+            $query->where('inventory.status', $filters['status']);
+        }
+
+        if ($filters['search']) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('products.name', 'like', "%{$search}%")
+                  ->orWhere('products.product_code', 'like', "%{$search}%");
+            });
+        }
+
+        $items = $query->orderBy('products.name')->get();
+
+        // Group by product
+        $grouped = [];
+        $totalValue = 0;
+        $lowStock = 0;
+        $outOfStock = 0;
+
+        foreach ($items as $item) {
+            $key = $item->product_id;
+
+            $qtyInBase = $this->inventoryService->toBaseUnit(
+                floatval($item->quantity),
+                $item->unit,
+                $item->product_id
+            );
+
+            if (!isset($grouped[$key])) {
+                $grouped[$key] = [
+                    'product_name' => $item->product_name,
+                    'product_code' => $item->product_code ?? 'N/A',
+                    'category' => $item->category,
+                    'base_unit' => $item->base_unit,
+                    'total_quantity_base' => 0,
+                    'total_value' => 0,
+                    'locations_count' => 0,
+                    'status' => 'good',
+                    'locations_list' => [],
+                ];
+            }
+
+            $grouped[$key]['total_quantity_base'] += $qtyInBase;
+            $grouped[$key]['total_value'] += floatval($item->total_value ?? 0);
+
+            $locId = $item->location_id;
+            if (!in_array($locId, $grouped[$key]['locations_list'])) {
+                $grouped[$key]['locations_list'][] = $locId;
+                $grouped[$key]['locations_count']++;
+            }
+
+            if ($item->status === 'expired') {
+                $grouped[$key]['status'] = 'expired';
+            } elseif ($item->status === 'low' && $grouped[$key]['status'] !== 'expired') {
+                $grouped[$key]['status'] = 'low';
+            }
+        }
+
+        foreach ($grouped as $g) {
+            $totalValue += $g['total_value'];
+            if ($g['status'] === 'low') $lowStock++;
+        }
+
+        $stats = [
+            'total_products' => count($grouped),
+            'total_value' => $totalValue,
+            'low_stock' => $lowStock,
+            'out_of_stock' => $outOfStock,
+        ];
+
+        $data = [
+            'title' => 'Inventario Actual - Kardex General',
+            'date' => now()->format('d/m/Y H:i'),
+            'user' => auth()->user()->name,
+            'filters' => $filters,
+            'data' => array_values($grouped),
+            'stats' => $stats,
+        ];
+
+        $pdf = Pdf::loadView('exports.pdf.kardex-list-report', $data);
+        $pdf->setPaper('A4', 'landscape');
+
+        return $pdf->download('inventario_actual_' . now()->format('Y_m_d_His') . '.pdf');
     }
 }

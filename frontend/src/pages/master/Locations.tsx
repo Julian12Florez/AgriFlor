@@ -35,8 +35,8 @@ const Locations: React.FC = () => {
 
   // Fetch users for responsible select
   const { data: usersData, isLoading: usersLoading } = useQuery({
-    queryKey: ['users', 'active'],
-    queryFn: () => usersApi.list({ status: 'active', per_page: 100 }),
+    queryKey: ['users-simple', 'active'],
+    queryFn: () => usersApi.listSimple({ status: 'active' }),
   });
   const users = usersData?.data || [];
 

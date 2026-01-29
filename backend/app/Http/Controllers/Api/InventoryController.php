@@ -493,8 +493,15 @@ class InventoryController extends Controller
 
                 $inventoryItems = $inventoryQuery->get();
 
-                // Calculate totals
-                $totalQuantity = $inventoryItems->sum('quantity');
+                // Calculate totals (convert each item to base unit before summing)
+                $totalQuantity = 0;
+                foreach ($inventoryItems as $item) {
+                    $totalQuantity += $this->inventoryService->toBaseUnit(
+                        floatval($item->quantity),
+                        $item->unit,
+                        $product->product_id
+                    );
+                }
                 $totalValue = $inventoryItems->sum('total_value');
                 $locationsCount = $inventoryItems->unique('location_id')->count();
 
@@ -550,7 +557,12 @@ class InventoryController extends Controller
                         ];
                     }
 
-                    $inventoryByLocation[$locationKey]['total_quantity'] += floatval($item->quantity);
+                    $qtyInBase = $this->inventoryService->toBaseUnit(
+                        floatval($item->quantity),
+                        $item->unit,
+                        $product->product_id
+                    );
+                    $inventoryByLocation[$locationKey]['total_quantity'] += $qtyInBase;
                     $inventoryByLocation[$locationKey]['total_value'] += floatval($item->total_value);
                     $inventoryByLocation[$locationKey]['batches'][] = [
                         'id' => $item->id,
@@ -666,20 +678,20 @@ class InventoryController extends Controller
 
                 if ($movement->type === 'entry') {
                     $balance += $quantityInBase;
-                    $quantityIn = $quantityValue;
+                    $quantityIn = $quantityInBase;
                     $quantityOut = 0;
                 } elseif ($movement->type === 'exit' || $movement->type === 'application') {
                     $balance -= $quantityInBase;
                     $quantityIn = 0;
-                    $quantityOut = $quantityValue;
+                    $quantityOut = $quantityInBase;
                 } elseif ($movement->type === 'adjustment') {
                     $balance += $quantityInBase;
-                    $quantityIn = $quantityValue;
+                    $quantityIn = $quantityInBase;
                     $quantityOut = 0;
                 } else {
                     $balance -= $quantityInBase;
                     $quantityIn = 0;
-                    $quantityOut = $quantityValue;
+                    $quantityOut = $quantityInBase;
                 }
 
                 $kardexMovements[] = [
@@ -692,7 +704,9 @@ class InventoryController extends Controller
                     'quantity_out' => $quantityOut,
                     'balance' => round($balance, 4),
                     'balance_unit' => $product->base_unit,
-                    'unit' => $movement->unit,
+                    'unit' => $product->base_unit,
+                    'original_quantity' => $quantityValue,
+                    'original_unit' => $movement->unit,
                     'unit_price' => floatval($movement->unit_price ?? 0),
                     'total_price' => floatval($movement->total_price ?? 0),
                     'responsible_user' => $movement->responsible_user_name,
@@ -719,37 +733,55 @@ class InventoryController extends Controller
 
             $currentInventory = $currentInventoryQuery->get();
 
+            // Calculate current stock in base unit
+            $currentStockBase = 0;
+            foreach ($currentInventory as $inv) {
+                $currentStockBase += $this->inventoryService->toBaseUnit(
+                    floatval($inv->quantity),
+                    $inv->unit,
+                    $productId
+                );
+            }
+
             return response()->json([
                 'success' => true,
-                'product' => [
-                    'id' => $product->id,
-                    'name' => $product->name,
-                    'product_code' => $product->product_code,
-                    'category' => $product->category,
-                    'base_unit' => $product->base_unit,
-                    'min_stock' => floatval($product->min_stock ?? 0)
-                ],
-                'movements' => $kardexMovements,
-                'current_inventory' => $currentInventory->map(function($item) {
-                    return [
-                        'id' => $item->id,
-                        'brand_name' => $item->brand_name,
-                        'location_name' => $item->location_name,
-                        'batch_number' => $item->batch_number,
-                        'quantity' => floatval($item->quantity),
-                        'unit' => $item->unit,
-                        'expiration_date' => $item->expiration_date,
-                        'unit_price' => floatval($item->unit_price ?? 0),
-                        'total_value' => floatval($item->total_value ?? 0),
-                        'status' => $item->status
-                    ];
-                }),
-                'summary' => [
-                    'total_movements' => count($kardexMovements),
-                    'total_entries' => array_sum(array_column($kardexMovements, 'quantity_in')),
-                    'total_exits' => array_sum(array_column($kardexMovements, 'quantity_out')),
-                    'current_balance' => $balance,
-                    'current_stock' => $currentInventory->sum('quantity')
+                'data' => [
+                    'product' => [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'product_code' => $product->product_code,
+                        'category' => $product->category,
+                        'base_unit' => $product->base_unit,
+                        'min_stock' => floatval($product->min_stock ?? 0)
+                    ],
+                    'movements' => $kardexMovements,
+                    'current_inventory' => $currentInventory->map(function($item) use ($productId) {
+                        $qtyBase = $this->inventoryService->toBaseUnit(
+                            floatval($item->quantity),
+                            $item->unit,
+                            $productId
+                        );
+                        return [
+                            'id' => $item->id,
+                            'brand_name' => $item->brand_name,
+                            'location_name' => $item->location_name,
+                            'batch_number' => $item->batch_number,
+                            'quantity' => floatval($item->quantity),
+                            'quantity_base' => round($qtyBase, 4),
+                            'unit' => $item->unit,
+                            'expiration_date' => $item->expiration_date,
+                            'unit_price' => floatval($item->unit_price ?? 0),
+                            'total_value' => floatval($item->total_value ?? 0),
+                            'status' => $item->status
+                        ];
+                    }),
+                    'summary' => [
+                        'total_movements' => count($kardexMovements),
+                        'total_entries' => array_sum(array_column($kardexMovements, 'quantity_in')),
+                        'total_exits' => array_sum(array_column($kardexMovements, 'quantity_out')),
+                        'current_balance' => $balance,
+                        'current_stock' => round($currentStockBase, 4)
+                    ]
                 ]
             ]);
 
@@ -781,6 +813,7 @@ class InventoryController extends Controller
                     'products.name as product_name',
                     'products.product_code',
                     'products.category',
+                    'products.base_unit as product_base_unit',
                     'brands.name as brand_name',
                     'locations.name as location_name',
                     'locations.type as location_type',
@@ -837,7 +870,7 @@ class InventoryController extends Controller
                 }
             }
 
-            // Group by product
+            // Group by product (quantities converted to base unit)
             $byProduct = [];
             foreach ($movements as $movement) {
                 $productKey = $movement->product_id;
@@ -856,17 +889,22 @@ class InventoryController extends Controller
                 }
 
                 $byProduct[$productKey]['movements_count']++;
+                $qtyBase = $this->inventoryService->toBaseUnit(
+                    floatval($movement->quantity),
+                    $movement->unit,
+                    $movement->product_id
+                );
 
                 if ($movement->type === 'entry') {
-                    $byProduct[$productKey]['total_entries'] += floatval($movement->quantity);
+                    $byProduct[$productKey]['total_entries'] += $qtyBase;
                     $byProduct[$productKey]['total_value_entries'] += floatval($movement->total_price ?? 0);
                 } elseif (in_array($movement->type, ['exit', 'application'])) {
-                    $byProduct[$productKey]['total_exits'] += floatval($movement->quantity);
+                    $byProduct[$productKey]['total_exits'] += $qtyBase;
                     $byProduct[$productKey]['total_value_exits'] += floatval($movement->total_price ?? 0);
                 }
             }
 
-            // Group by location
+            // Group by location (quantities converted to base unit)
             $byLocation = [];
             foreach ($movements as $movement) {
                 $locationKey = $movement->location_id;
@@ -884,17 +922,22 @@ class InventoryController extends Controller
                 }
 
                 $byLocation[$locationKey]['movements_count']++;
+                $qtyBase = $this->inventoryService->toBaseUnit(
+                    floatval($movement->quantity),
+                    $movement->unit,
+                    $movement->product_id
+                );
 
                 if ($movement->type === 'entry') {
-                    $byLocation[$locationKey]['total_entries'] += floatval($movement->quantity);
+                    $byLocation[$locationKey]['total_entries'] += $qtyBase;
                     $byLocation[$locationKey]['total_value_entries'] += floatval($movement->total_price ?? 0);
                 } elseif (in_array($movement->type, ['exit', 'application'])) {
-                    $byLocation[$locationKey]['total_exits'] += floatval($movement->quantity);
+                    $byLocation[$locationKey]['total_exits'] += $qtyBase;
                     $byLocation[$locationKey]['total_value_exits'] += floatval($movement->total_price ?? 0);
                 }
             }
 
-            // Group by type
+            // Group by type (quantities converted to base unit)
             $byType = [
                 'entry' => ['count' => 0, 'total_quantity' => 0, 'total_value' => 0],
                 'exit' => ['count' => 0, 'total_quantity' => 0, 'total_value' => 0],
@@ -905,12 +948,17 @@ class InventoryController extends Controller
             foreach ($movements as $movement) {
                 if (isset($byType[$movement->type])) {
                     $byType[$movement->type]['count']++;
-                    $byType[$movement->type]['total_quantity'] += floatval($movement->quantity);
+                    $qtyBase = $this->inventoryService->toBaseUnit(
+                        floatval($movement->quantity),
+                        $movement->unit,
+                        $movement->product_id
+                    );
+                    $byType[$movement->type]['total_quantity'] += $qtyBase;
                     $byType[$movement->type]['total_value'] += floatval($movement->total_price ?? 0);
                 }
             }
 
-            // Group by day
+            // Group by day (quantities converted to base unit)
             $byDay = [];
             foreach ($movements as $movement) {
                 $date = date('Y-m-d', strtotime($movement->created_at));
@@ -926,18 +974,28 @@ class InventoryController extends Controller
                 }
 
                 $byDay[$date]['movements_count']++;
+                $qtyBase = $this->inventoryService->toBaseUnit(
+                    floatval($movement->quantity),
+                    $movement->unit,
+                    $movement->product_id
+                );
 
                 if ($movement->type === 'entry') {
-                    $byDay[$date]['total_entries'] += floatval($movement->quantity);
+                    $byDay[$date]['total_entries'] += $qtyBase;
                     $byDay[$date]['total_value_entries'] += floatval($movement->total_price ?? 0);
                 } elseif (in_array($movement->type, ['exit', 'application'])) {
-                    $byDay[$date]['total_exits'] += floatval($movement->quantity);
+                    $byDay[$date]['total_exits'] += $qtyBase;
                     $byDay[$date]['total_value_exits'] += floatval($movement->total_price ?? 0);
                 }
             }
 
-            // Format movements for response
+            // Format movements for response (include base unit quantity)
             $formattedMovements = $movements->map(function ($movement) {
+                $qtyBase = $this->inventoryService->toBaseUnit(
+                    floatval($movement->quantity),
+                    $movement->unit,
+                    $movement->product_id
+                );
                 return [
                     'id' => $movement->id,
                     'date' => $movement->created_at,
@@ -951,7 +1009,9 @@ class InventoryController extends Controller
                     'location_name' => $movement->location_name,
                     'location_type' => $movement->location_type,
                     'quantity' => floatval($movement->quantity),
+                    'quantity_base' => round($qtyBase, 4),
                     'unit' => $movement->unit,
+                    'product_base_unit' => $movement->product_base_unit,
                     'unit_price' => floatval($movement->unit_price ?? 0),
                     'total_price' => floatval($movement->total_price ?? 0),
                     'responsible_user' => $movement->responsible_user_name,
@@ -973,12 +1033,11 @@ class InventoryController extends Controller
                 'movements' => $formattedMovements,
                 'summary' => [
                     'total_movements' => $movements->count(),
-                    'total_entries' => $totalEntries,
-                    'total_exits' => $totalExits,
+                    'total_entries' => round($totalEntriesBase, 4),
+                    'total_exits' => round($totalExitsBase, 4),
                     'total_value_entries' => $totalValueEntries,
                     'total_value_exits' => $totalValueExits,
-                    'net_change' => $totalEntries - $totalExits,
-                    'net_change_base' => round($totalEntriesBase - $totalExitsBase, 4),
+                    'net_change' => round($totalEntriesBase - $totalExitsBase, 4),
                     'net_value_change' => $totalValueEntries - $totalValueExits,
                 ],
                 'by_product' => array_values($byProduct),

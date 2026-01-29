@@ -47,7 +47,7 @@ class ReceptionController extends Controller
 
         // Get purchases that are not cancelled or fully received
         $purchases = Purchase::whereNotIn('status', ['received', 'cancelled'])
-            ->with(['supplier', 'destinationLocation', 'originLocation', 'purchaseItems'])
+            ->with(['supplier', 'destinationLocation.responsibleUser', 'originLocation', 'purchaseItems'])
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -70,6 +70,8 @@ class ReceptionController extends Controller
                 'destination_location' => [
                     'id' => $purchase->destinationLocation->id,
                     'name' => $purchase->destinationLocation->name,
+                    'responsible_user_id' => $purchase->destinationLocation->responsible_user_id,
+                    'responsible_user_name' => $purchase->destinationLocation->responsibleUser?->name,
                 ],
                 'supplier_name' => $purchase->supplier->name ?? null,
                 'total' => $purchase->total,
@@ -144,7 +146,7 @@ class ReceptionController extends Controller
 
         // Get outputs that are not fully completed
         $outputs = ProductOutput::whereNotIn('status', ['completed'])
-            ->with(['originLocation', 'destinationLocation', 'outputProducts'])
+            ->with(['originLocation', 'destinationLocation.responsibleUser', 'outputProducts'])
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -167,6 +169,8 @@ class ReceptionController extends Controller
                 'destination_location' => [
                     'id' => $output->destinationLocation->id,
                     'name' => $output->destinationLocation->name,
+                    'responsible_user_id' => $output->destinationLocation->responsible_user_id,
+                    'responsible_user_name' => $output->destinationLocation->responsibleUser?->name,
                 ],
                 'supplier_name' => null,
                 'total' => null,
@@ -311,6 +315,7 @@ class ReceptionController extends Controller
                 'destination_location' => [
                     'id' => $purchase->destinationLocation->id,
                     'name' => $purchase->destinationLocation->name,
+                    'responsible_user_id' => $purchase->destinationLocation->responsible_user_id,
                 ],
                 'supplier_name' => $purchase->supplier->name ?? null,
                 'total' => $purchase->total,
@@ -352,6 +357,7 @@ class ReceptionController extends Controller
                 'destination_location' => [
                     'id' => $output->destinationLocation->id,
                     'name' => $output->destinationLocation->name,
+                    'responsible_user_id' => $output->destinationLocation->responsible_user_id,
                 ],
                 'supplier_name' => null,
                 'total' => null,

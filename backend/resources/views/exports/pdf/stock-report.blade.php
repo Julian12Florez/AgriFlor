@@ -162,9 +162,8 @@
                     <th>Producto</th>
                     <th>Código</th>
                     <th>Marca</th>
-                    <th style="text-align: right;">Cantidad</th>
-                    <th>Unidad</th>
-                    <th style="text-align: right;">Cantidad Total</th>
+                    <th style="text-align: right;">Stock (Base)</th>
+                    <th>Detalle Empaque</th>
                     <th style="text-align: right;">Valor</th>
                     <th style="text-align: center;">Ubic.</th>
                     <th>Estado</th>
@@ -174,23 +173,21 @@
                 @foreach($data as $item)
                 @php
                     $hasPackaging = isset($item['base_quantity']) && $item['base_quantity'] > 1;
-                    $fullUnitName = $item['unit'];
-                    if ($hasPackaging) {
-                        $fullUnitName = $item['unit'] . ' de ' . $item['base_quantity'] . ' ' . $item['base_unit'];
-                    }
+                    $baseUnit = $item['base_unit'] ?? $item['unit'];
+                    $totalBaseQty = $item['total_base_quantity'] ?? $item['total_quantity'];
+                    $stockBaseText = number_format($totalBaseQty, 0, ',', '.') . ' ' . $baseUnit;
 
-                    $totalBaseQuantity = '-';
-                    if ($hasPackaging && isset($item['total_base_quantity'])) {
-                        $totalBaseQuantity = number_format($item['total_base_quantity'], 0, ',', '.') . ' ' . $item['base_unit'];
+                    $packagingDetail = '';
+                    if ($hasPackaging) {
+                        $packagingDetail = ($item['total_quantity'] ?? 0) . ' ' . ($item['unit'] ?? '');
                     }
                 @endphp
                 <tr>
                     <td>{{ $item['product_name'] }}</td>
                     <td>{{ $item['product_code'] }}</td>
                     <td>{{ $item['brand_name'] }}</td>
-                    <td style="text-align: right;">{{ number_format($item['total_quantity'], 0, ',', '.') }}</td>
-                    <td>{{ $fullUnitName }}</td>
-                    <td style="text-align: right;">{{ $totalBaseQuantity }}</td>
+                    <td style="text-align: right;">{{ $stockBaseText }}</td>
+                    <td>{{ $packagingDetail }}</td>
                     <td style="text-align: right;">${{ number_format($item['total_value'], 0, ',', '.') }}</td>
                     <td style="text-align: center;">{{ count($item['locations']) }}</td>
                     <td>

@@ -89,8 +89,8 @@ const ReceptionPage: React.FC = () => {
 
   // Fetch users for "Recibido por" field
   const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => usersApi.list(),
+    queryKey: ['users-simple'],
+    queryFn: () => usersApi.listSimple(),
   });
 
   const receptions = receptionsData?.data || [];
@@ -166,6 +166,17 @@ const ReceptionPage: React.FC = () => {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  const getRoleLabel = (role: string): string => {
+    const labels: Record<string, string> = {
+      admin: 'Administrador',
+      agronomist: 'Agrónomo',
+      warehouse: 'Bodeguero',
+      supervisor: 'Supervisor',
+      farm: 'Operario de Finca',
+    };
+    return labels[role] || role;
+  };
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -349,6 +360,7 @@ const ReceptionPage: React.FC = () => {
           const receptionItem = selectedReception.items[index];
           return {
             productId: receptionItem.productId,
+            brandId: receptionItem.brandId,
             quantityReceived: item.quantityToReceive,
             condition: item.condition,
             expirationDate: item.expirationDate ? item.expirationDate.format('YYYY-MM-DD') : undefined,
@@ -392,6 +404,7 @@ const ReceptionPage: React.FC = () => {
       observations: values.observations || undefined,
       items: itemsToReceive.map((item: any) => ({
         product_id: item.productId,
+        brand_id: item.brandId,
         quantity_received: item.quantityReceived,
         condition: item.condition || 'good',
         expiration_date: item.expirationDate ? item.expirationDate.format('YYYY-MM-DD') : undefined,
@@ -482,10 +495,11 @@ const ReceptionPage: React.FC = () => {
 
     sourceReceptionForm.setFieldsValue({
       receptionDate: dayjs(),
-      receivedBy: undefined,
+      receivedBy: selectedSource?.destination_location?.responsible_user_id || undefined,
       observations: undefined,
       items: itemsWithPending.map((item: any) => ({
         productId: selectedSource.source_type === 'purchase' ? item.productId : item.productId || item.product_id,
+        brandId: item.brandId || item.brand_id,
         quantityReceived: 0,
         condition: 'good',
         expirationDate: item.expirationDate
@@ -1101,7 +1115,7 @@ const ReceptionPage: React.FC = () => {
                   .filter((user: any) => user.status === 'active')
                   .map((user: any) => (
                     <Option key={user.id} value={user.id}>
-                      {user.name} - {user.role}
+                      {user.name} - {getRoleLabel(user.role)}
                     </Option>
                   ))}
               </Select>
@@ -1416,7 +1430,7 @@ const ReceptionPage: React.FC = () => {
                 .filter((user: any) => user.status === 'active')
                 .map((user: any) => (
                   <Option key={user.id} value={user.id}>
-                    {user.name} - {user.role}
+                    {user.name} - {getRoleLabel(user.role)}
                   </Option>
                 ))}
             </Select>

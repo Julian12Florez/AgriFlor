@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseController extends Controller
 {
@@ -26,7 +27,7 @@ class PurchaseController extends Controller
     {
         $query = Purchase::query()
             ->with([
-                'supplier',
+                'supplier.contacts',
                 'originLocation',
                 'destinationLocation',
                 'purchaseItems.product.packagingUnits',
@@ -201,7 +202,7 @@ class PurchaseController extends Controller
     public function show(string $id): JsonResponse
     {
         $purchase = Purchase::with([
-            'supplier',
+            'supplier.contacts',
             'originLocation',
             'destinationLocation',
             'purchaseItems.product',
@@ -429,6 +430,44 @@ class PurchaseController extends Controller
         }
     }
 
+
+    /**
+     * Export purchase order to PDF
+     */
+    public function exportPdf(string $id)
+    {
+        $purchase = Purchase::with([
+            'supplier.contacts',
+            'originLocation',
+            'destinationLocation',
+            'purchaseItems.product',
+            'purchaseItems.brand',
+            'purchaseItems.packagingUnit',
+            'creator',
+            'receiver',
+        ])->findOrFail($id);
+
+        // Determine mixed IVA
+        $ivaPercentages = $purchase->purchaseItems->pluck('iva_percentage')->unique()->filter()->values();
+        $isMixedIva = $ivaPercentages->count() > 1;
+        $singleIvaPercentage = $isMixedIva ? null : $ivaPercentages->first();
+
+        $data = [
+            'purchase' => $purchase,
+            'companyName' => config('app.company_name', 'AgriFlor S.A.S.'),
+            'companyAddress' => config('app.company_address', ''),
+            'companyPhone' => config('app.company_phone', ''),
+            'companyEmail' => config('app.company_email', ''),
+            'companyNit' => config('app.company_nit', ''),
+            'isMixedIva' => $isMixedIva,
+            'singleIvaPercentage' => $singleIvaPercentage,
+        ];
+
+        $pdf = Pdf::loadView('exports.pdf.purchase-order', $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        return $pdf->download('orden_compra_' . $purchase->order_number . '.pdf');
+    }
 
     /**
      * Add attachment to purchase

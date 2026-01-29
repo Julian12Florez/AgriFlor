@@ -54,6 +54,23 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    'frontend_url' => env('FRONTEND_URL', 'http://localhost:5173'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Company Information
+    |--------------------------------------------------------------------------
+    |
+    | Company details used in PDF exports (purchase orders, reports, etc.)
+    |
+    */
+
+    'company_name' => env('COMPANY_NAME', 'AgriFlor S.A.S.'),
+    'company_nit' => env('COMPANY_NIT', ''),
+    'company_address' => env('COMPANY_ADDRESS', ''),
+    'company_phone' => env('COMPANY_PHONE', ''),
+    'company_email' => env('COMPANY_EMAIL', ''),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

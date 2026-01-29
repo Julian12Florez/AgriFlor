@@ -15,10 +15,12 @@ import {
   UserOutlined,
   BellOutlined,
   LogoutOutlined,
+  LockOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import usePermissions from '../../hooks/usePermissions';
 import { setAuthToken } from '../../services/api';
+import ChangePasswordModal from './ChangePasswordModal';
 
 const { Header, Sider, Content } = Layout;
 
@@ -28,6 +30,7 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -147,9 +150,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       label: 'Mi Perfil',
     },
     {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: 'Configuración',
+      key: 'change-password',
+      icon: <LockOutlined />,
+      label: 'Cambiar Contraseña',
     },
     {
       type: 'divider',
@@ -174,6 +177,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       setAuthToken(null);
       queryClient.clear();
       navigate('/login');
+    } else if (info.key === 'change-password') {
+      setChangePasswordVisible(true);
     }
   };
 
@@ -298,6 +303,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           {children}
         </Content>
       </Layout>
+
+      <ChangePasswordModal
+        open={changePasswordVisible}
+        onClose={() => setChangePasswordVisible(false)}
+      />
     </Layout>
   );
 };

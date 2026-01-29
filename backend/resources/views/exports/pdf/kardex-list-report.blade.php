@@ -11,7 +11,7 @@
         }
         body {
             font-family: Arial, sans-serif;
-            font-size: 9px;
+            font-size: 10px;
             color: #333;
         }
         .header {
@@ -49,7 +49,7 @@
         }
         .stat-item {
             display: table-cell;
-            width: 33.33%;
+            width: 25%;
             text-align: center;
             padding: 10px;
             background-color: #e8f5e9;
@@ -78,15 +78,15 @@
             color: #fff;
         }
         table thead th {
-            padding: 8px 4px;
+            padding: 8px 5px;
             text-align: left;
-            font-size: 8px;
+            font-size: 9px;
             font-weight: bold;
         }
         table tbody td {
-            padding: 5px 4px;
+            padding: 6px 5px;
             border-bottom: 1px solid #ddd;
-            font-size: 8px;
+            font-size: 9px;
         }
         table tbody tr:nth-child(even) {
             background-color: #f9f9f9;
@@ -101,6 +101,16 @@
             padding: 10px 0;
             border-top: 1px solid #ddd;
         }
+        .status-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 8px;
+            font-weight: bold;
+        }
+        .status-good { background-color: #4caf50; color: white; }
+        .status-low { background-color: #ff9800; color: white; }
+        .status-out { background-color: #f44336; color: white; }
+        .status-near-expiry { background-color: #ff5722; color: white; }
     </style>
 </head>
 <body>
@@ -113,30 +123,34 @@
     <!-- Info Section -->
     <div class="info-section">
         <p><strong>Filtros aplicados:</strong></p>
-        @if($filters['start_date'] && $filters['end_date'])
-            <p>• Período: {{ \Carbon\Carbon::parse($filters['start_date'])->format('d/m/Y') }} - {{ \Carbon\Carbon::parse($filters['end_date'])->format('d/m/Y') }}</p>
+        @if($filters['location_id'] ?? null)
+            <p>&bull; Ubicación filtrada</p>
         @endif
-        @if($filters['product_id'])
-            <p>• Producto filtrado</p>
+        @if($filters['status'] ?? null)
+            <p>&bull; Estado: {{ $filters['status'] }}</p>
         @endif
-        @if($filters['location_id'])
-            <p>• Finca filtrada</p>
+        @if($filters['search'] ?? null)
+            <p>&bull; Búsqueda: {{ $filters['search'] }}</p>
         @endif
     </div>
 
     <!-- Statistics -->
     <div class="stats">
         <div class="stat-item">
-            <div class="stat-label">Total Salidas</div>
-            <div class="stat-value">{{ $summary['outputs_count'] }}</div>
-        </div>
-        <div class="stat-item">
-            <div class="stat-label">Total Aplicaciones</div>
-            <div class="stat-value">{{ $summary['total_consumptions'] }}</div>
-        </div>
-        <div class="stat-item">
             <div class="stat-label">Total Productos</div>
-            <div class="stat-value">{{ count(collect($consumptions)->unique('product_id')) }}</div>
+            <div class="stat-value">{{ $stats['total_products'] }}</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Valor Total</div>
+            <div class="stat-value">${{ number_format($stats['total_value'], 0, ',', '.') }}</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Stock Bajo</div>
+            <div class="stat-value" style="color: {{ $stats['low_stock'] > 0 ? '#ff9800' : '#2E7D32' }};">{{ $stats['low_stock'] }}</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Agotados</div>
+            <div class="stat-value" style="color: {{ $stats['out_of_stock'] > 0 ? '#f44336' : '#2E7D32' }};">{{ $stats['out_of_stock'] }}</div>
         </div>
     </div>
 
@@ -144,43 +158,45 @@
     <table>
         <thead>
             <tr>
-                <th>Fecha</th>
-                <th>N° Salida</th>
                 <th>Producto</th>
                 <th>Código</th>
-                <th>Marca</th>
-                <th style="text-align: right;">Consumo (Base)</th>
-                <th>Detalle Empaque</th>
-                <th>Finca Destino</th>
+                <th>Categoría</th>
+                <th style="text-align: right;">Stock (Base)</th>
+                <th style="text-align: right;">Valor Total</th>
+                <th style="text-align: center;">Ubic.</th>
+                <th>Estado</th>
             </tr>
         </thead>
         <tbody>
-            @foreach($consumptions as $item)
+            @foreach($data as $item)
             @php
-                $hasPackaging = isset($item->base_quantity) && $item->base_quantity > 1;
-                $baseUnit = $item->base_unit ?? $item->unit ?? 'unidades';
-
-                // Always show in base unit
-                $totalBase = $hasPackaging
-                    ? ($item->total_base_quantity ?? ($item->quantity * $item->base_quantity))
-                    : ($item->quantity ?? 0);
-                $consumoBaseText = number_format($totalBase, 0, ',', '.') . ' ' . $baseUnit;
-
-                // Packaging detail only when packaging exists
-                $packagingDetail = '';
-                if ($hasPackaging) {
-                    $packagingDetail = ($item->quantity ?? 0) . ' ' . ($item->unit ?? '') . ' x ' . $item->base_quantity . ' ' . $baseUnit;
-                }
+                $statusClass = match($item['status'] ?? 'good') {
+                    'good' => 'status-good',
+                    'low' => 'status-low',
+                    'out_of_stock' => 'status-out',
+                    'near_expiry' => 'status-near-expiry',
+                    'expired' => 'status-out',
+                    default => 'status-good'
+                };
+                $statusLabel = match($item['status'] ?? 'good') {
+                    'good' => 'OK',
+                    'low' => 'Bajo',
+                    'out_of_stock' => 'Agotado',
+                    'near_expiry' => 'Vencer',
+                    'expired' => 'Vencido',
+                    default => 'OK'
+                };
             @endphp
             <tr>
-                <td>{{ \Carbon\Carbon::parse($item->output_date)->format('d/m/Y') }}</td>
-                <td>{{ $item->output_number }}</td>
-                <td>{{ $item->product_name }}</td>
-                <td>{{ $item->product_code }}</td>
-                <td>{{ $item->brand_name }}</td>
-                <td style="text-align: right;">{{ $consumoBaseText }}</td>
-                <td>{{ $packagingDetail }}</td>
-                <td>{{ $item->destination_location_name ?? 'N/A' }}</td>
+                <td>{{ $item['product_name'] }}</td>
+                <td>{{ $item['product_code'] ?? 'N/A' }}</td>
+                <td>{{ ucfirst($item['category'] ?? 'N/A') }}</td>
+                <td style="text-align: right; font-weight: bold;">{{ number_format($item['total_quantity_base'], 0, ',', '.') }} {{ $item['base_unit'] }}</td>
+                <td style="text-align: right;">${{ number_format($item['total_value'], 0, ',', '.') }}</td>
+                <td style="text-align: center;">{{ $item['locations_count'] }}</td>
+                <td>
+                    <span class="status-badge {{ $statusClass }}">{{ $statusLabel }}</span>
+                </td>
             </tr>
             @endforeach
         </tbody>

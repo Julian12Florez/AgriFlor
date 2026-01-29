@@ -257,35 +257,24 @@ const StockReport: React.FC = () => {
       width: 160,
       render: (_, record) => {
         const hasPackaging = record.base_quantity && record.base_quantity > 1;
-        const fullUnitName = getFullPackagingUnitName(record.unit, record.base_quantity, record.base_unit);
-
-        // Calculate average weighted prices
-        const quantity = record.total_quantity || 0;
+        const baseUnit = record.base_unit || record.unit || 'unidades';
+        const baseQty = record.total_base_quantity || record.total_quantity || 0;
         const totalValue = record.total_value || 0;
-        const quantityBase = hasPackaging ? (record.total_base_quantity || 0) : quantity;
-        const unitBase = hasPackaging ? record.base_unit : record.unit;
-
-        const packagePrice = quantity > 0 ? totalValue / quantity : 0;
-        const unitPriceBase = quantityBase > 0 ? totalValue / quantityBase : 0;
+        const unitPriceBase = baseQty > 0 ? totalValue / baseQty : 0;
 
         return (
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: 4 }}>
-              {quantity.toLocaleString()} {fullUnitName}
+            <div style={{ fontWeight: 500, fontSize: '14px', color: '#2E7D32', marginBottom: 4 }}>
+              {baseQty.toLocaleString()} {baseUnit}
             </div>
             {hasPackaging && (
-              <div style={{ fontSize: '12px', color: '#2E7D32', fontWeight: 500, marginBottom: 4 }}>
-                Total: {quantityBase.toLocaleString()} {record.base_unit}
+              <div style={{ fontSize: '11px', color: '#666', marginBottom: 4 }}>
+                {(record.total_quantity || 0).toLocaleString()} {record.unit} x {record.base_quantity} {baseUnit}
               </div>
             )}
-            {packagePrice > 0 && (
-              <div style={{ fontSize: '11px', color: '#722ed1', marginBottom: 2 }}>
-                ${packagePrice.toLocaleString('es-CO', { maximumFractionDigits: 0 })} / {record.unit}
-              </div>
-            )}
-            {unitPriceBase > 0 && hasPackaging && (
+            {unitPriceBase > 0 && (
               <div style={{ fontSize: '11px', color: '#1890ff', marginBottom: 2 }}>
-                ${unitPriceBase.toLocaleString('es-CO', { maximumFractionDigits: 0 })} / {unitBase}
+                ${unitPriceBase.toLocaleString('es-CO', { maximumFractionDigits: 0 })} / {baseUnit}
               </div>
             )}
             <div style={{ fontSize: '12px', color: '#666', fontWeight: 500 }}>
@@ -309,7 +298,7 @@ const StockReport: React.FC = () => {
         <div>
           <div style={{ fontWeight: 500 }}>{name || 'Sin nombre'}</div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            {record.product_code || 'N/A'} • {record.category || 'Sin categoría'}
+            {record.product_code || 'N/A'} • {record.category ? record.category.charAt(0).toUpperCase() + record.category.slice(1) : 'Sin categoría'}
           </div>
         </div>
       ),
@@ -323,71 +312,36 @@ const StockReport: React.FC = () => {
       render: (name: string) => name || 'Sin marca',
     },
     {
-      title: 'Cantidad',
-      dataIndex: 'total_quantity',
-      key: 'total_quantity',
-      width: 180,
-      align: 'right',
-      render: (qty: number, record) => {
-        const fullUnitName = getFullPackagingUnitName(record.unit, record.base_quantity, record.base_unit);
-        return (
-          <div style={{ textAlign: 'right', fontWeight: 500 }}>
-            {(qty || 0).toLocaleString()} {fullUnitName}
-          </div>
-        );
-      },
-      sorter: (a, b) => (a.total_quantity || 0) - (b.total_quantity || 0),
-    },
-    {
-      title: 'Precio por Empaque',
-      key: 'package_price',
-      width: 160,
-      align: 'right',
-      render: (_, record) => {
-        const quantity = record.total_quantity || 0;
-        const totalValue = record.total_value || 0;
-
-        if (quantity === 0 || totalValue === 0) {
-          return '-';
-        }
-
-        // Average weighted price per package
-        const packagePrice = totalValue / quantity;
-
-        return (
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontWeight: 500, color: '#722ed1', fontSize: '13px' }}>
-              ${packagePrice.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-            </div>
-            <div style={{ fontSize: '11px', color: '#666' }}>
-              por {record.unit}
-            </div>
-          </div>
-        );
-      },
-      sorter: (a, b) => {
-        const priceA = a.total_quantity > 0 ? a.total_value / a.total_quantity : 0;
-        const priceB = b.total_quantity > 0 ? b.total_value / b.total_quantity : 0;
-        return priceA - priceB;
-      },
-    },
-    {
-      title: 'Cantidad Total',
+      title: 'Stock (Base)',
       dataIndex: 'total_base_quantity',
       key: 'total_base_quantity',
-      width: 150,
+      width: 160,
       align: 'right',
       render: (totalBase: number, record) => {
-        const hasPackaging = record.base_quantity && record.base_quantity > 1;
-        if (!hasPackaging) return '-';
-
+        const baseUnit = record.base_unit || record.unit || 'unidades';
+        const qty = totalBase || record.total_quantity || 0;
         return (
           <div style={{ textAlign: 'right', fontWeight: 500, color: '#2E7D32' }}>
-            {(totalBase || 0).toLocaleString()} {record.base_unit}
+            {qty.toLocaleString()} {baseUnit}
           </div>
         );
       },
       sorter: (a, b) => (a.total_base_quantity || 0) - (b.total_base_quantity || 0),
+    },
+    {
+      title: 'Detalle Empaque',
+      key: 'packaging_detail',
+      width: 160,
+      render: (_, record) => {
+        const hasPackaging = record.base_quantity && record.base_quantity > 1;
+        if (!hasPackaging) return '';
+
+        return (
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            {(record.total_quantity || 0).toLocaleString()} {record.unit} x {record.base_quantity} {record.base_unit}
+          </div>
+        );
+      },
     },
     {
       title: 'Precio Unitario',
@@ -395,17 +349,14 @@ const StockReport: React.FC = () => {
       width: 150,
       align: 'right',
       render: (_, record) => {
-        // Calculate price per base unit: total_value / total_base_quantity
-        const hasPackaging = record.base_quantity && record.base_quantity > 1;
-        const quantity = hasPackaging ? (record.total_base_quantity || 0) : (record.total_quantity || 0);
-        const unit = hasPackaging ? record.base_unit : record.unit;
+        const quantity = record.total_base_quantity || record.total_quantity || 0;
+        const unit = record.base_unit || record.unit || 'unidades';
         const totalValue = record.total_value || 0;
 
         if (quantity === 0 || totalValue === 0) {
           return '-';
         }
 
-        // Average weighted price per base unit
         const unitPrice = totalValue / quantity;
 
         return (
@@ -420,10 +371,8 @@ const StockReport: React.FC = () => {
         );
       },
       sorter: (a, b) => {
-        const hasPackagingA = a.base_quantity && a.base_quantity > 1;
-        const hasPackagingB = b.base_quantity && b.base_quantity > 1;
-        const qtyA = hasPackagingA ? (a.total_base_quantity || 0) : (a.total_quantity || 0);
-        const qtyB = hasPackagingB ? (b.total_base_quantity || 0) : (b.total_quantity || 0);
+        const qtyA = a.total_base_quantity || a.total_quantity || 0;
+        const qtyB = b.total_base_quantity || b.total_quantity || 0;
         const priceA = qtyA > 0 ? (a.total_value || 0) / qtyA : 0;
         const priceB = qtyB > 0 ? (b.total_value || 0) / qtyB : 0;
         return priceA - priceB;
@@ -583,7 +532,7 @@ const StockReport: React.FC = () => {
             ${(record.total_value || 0).toLocaleString('es-CO')}
           </div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            {(record.total_quantity || 0).toLocaleString()} unidades
+            {record.total_items || 0} producto(s)
           </div>
         </div>
       ),
@@ -612,15 +561,6 @@ const StockReport: React.FC = () => {
       align: 'center',
       render: (items: number) => items || 0,
       sorter: (a, b) => (a.total_items || 0) - (b.total_items || 0),
-    },
-    {
-      title: 'Cantidad Total',
-      dataIndex: 'total_quantity',
-      key: 'total_quantity',
-      width: 150,
-      align: 'right',
-      render: (qty: number) => <span style={{ fontWeight: 500 }}>{(qty || 0).toLocaleString()}</span>,
-      sorter: (a, b) => (a.total_quantity || 0) - (b.total_quantity || 0),
     },
     {
       title: 'Valor Total',
@@ -660,7 +600,7 @@ const StockReport: React.FC = () => {
 
   // Calculate statistics
   const totalItems = stockItems.length;
-  const totalQuantity = stockItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
+  const uniqueProducts = new Set(stockItems.map((item) => item.product_id)).size;
   const totalValue = stockItems.reduce((sum, item) => sum + (item.total_value || 0), 0);
   const lowStockItems = stockItems.filter((item) => item.status === 'low' || item.status === 'out_of_stock').length;
   const expiredItems = stockItems.filter((item) => item.status === 'expired' || item.status === 'near_expiry').length;
@@ -855,8 +795,8 @@ const StockReport: React.FC = () => {
             <Col xs={12} sm={6}>
               <Card>
                 <Statistic
-                  title="Cantidad Total"
-                  value={totalQuantity}
+                  title="Total Productos"
+                  value={uniqueProducts}
                   valueStyle={{ color: '#2E7D32' }}
                 />
               </Card>
