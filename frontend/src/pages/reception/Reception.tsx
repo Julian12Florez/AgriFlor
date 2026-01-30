@@ -403,6 +403,7 @@ const ReceptionPage: React.FC = () => {
       received_by: values.receivedBy,
       observations: values.observations || undefined,
       items: itemsToReceive.map((item: any) => ({
+        reception_item_id: item.receptionItemId || undefined,
         product_id: item.productId,
         brand_id: item.brandId,
         quantity_received: item.quantityReceived,
@@ -433,54 +434,28 @@ const ReceptionPage: React.FC = () => {
 
     const sourceDetails = selectedSourceDetailsData.data;
 
-    // If there's already a reception, use reception items (includes suggestedExpirationDate)
-    // Otherwise, use source items (purchase items or output products)
-    const allItems = selectedSource.reception?.items && selectedSource.reception.items.length > 0
+    // If there's already a reception, use reception items (backend provides per-item quantities).
+    // Otherwise, use source items (purchase items or output products) - first reception.
+    const hasReceptionItems = selectedSource.reception?.items && selectedSource.reception.items.length > 0;
+    const allItems = hasReceptionItems
       ? selectedSource.reception.items
       : (selectedSource.source_type === 'purchase'
           ? sourceDetails.items || []
           : sourceDetails.products || []);
 
-    // Calculate received quantities per product from previous batches
-    const receivedByProduct = new Map<string, number>();
-    if (selectedSource.reception?.batches && Array.isArray(selectedSource.reception.batches)) {
-      selectedSource.reception.batches.forEach((batch: any) => {
-        if (batch.items && Array.isArray(batch.items)) {
-          batch.items.forEach((batchItem: any) => {
-            const productId = batchItem.product_id;
-            const currentReceived = receivedByProduct.get(productId) || 0;
-            const qtyReceived = parseFloat(batchItem.quantity_received);
-            if (!isNaN(qtyReceived)) {
-              receivedByProduct.set(productId, currentReceived + qtyReceived);
-            }
-          });
-        }
-      });
-    }
-
     // Filter items with pending quantities only
     const itemsWithPending = allItems.filter((item: any) => {
-      // If using reception.items, they already have calculated pending quantities
-      if (selectedSource.reception?.items && selectedSource.reception.items.length > 0) {
+      if (hasReceptionItems) {
+        // Backend provides quantityPending per individual item (handles duplicates correctly)
         const quantityPending = parseFloat(item.quantityPending) || 0;
-        console.log('Item (from reception):', item.productName || item.product?.name, 'Pending:', quantityPending);
         return quantityPending > 0;
       }
 
-      // Otherwise calculate from source items
-      const productId = selectedSource.source_type === 'purchase'
-        ? item.productId
-        : item.productId || item.product_id;
-      // For purchases, use 'quantity'. For outputs, use 'quantityDelivered'
+      // First reception - all items are pending (nothing received yet)
       const quantityExpected = selectedSource.source_type === 'purchase'
         ? (parseFloat(item.quantity) || 0)
         : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
-      const quantityReceived = receivedByProduct.get(productId) || 0;
-      const quantityPending = quantityExpected - quantityReceived;
-
-      console.log('Item (from source):', item.productName || item.product?.name, 'Expected:', quantityExpected, 'Received:', quantityReceived, 'Pending:', quantityPending);
-
-      return quantityPending > 0;
+      return quantityExpected > 0;
     });
 
     // Preparar formulario con productos que tienen pendientes
@@ -498,6 +473,7 @@ const ReceptionPage: React.FC = () => {
       receivedBy: selectedSource?.destination_location?.responsible_user_id || undefined,
       observations: undefined,
       items: itemsWithPending.map((item: any) => ({
+        receptionItemId: item.id || undefined,
         productId: selectedSource.source_type === 'purchase' ? item.productId : item.productId || item.product_id,
         brandId: item.brandId || item.brand_id,
         quantityReceived: 0,
@@ -1021,40 +997,28 @@ const ReceptionPage: React.FC = () => {
     if (!selectedSource || !selectedSourceDetailsData) return null;
 
     const sourceDetails = selectedSourceDetailsData.data;
-    const allItems = selectedSource.source_type === 'purchase'
-      ? sourceDetails.items || []
-      : sourceDetails.products || [];
+    // Use the SAME data source as handleOpenReceptionFromSource to keep indices synchronized
+    const hasReceptionItems = selectedSource.reception?.items && selectedSource.reception.items.length > 0;
+    const allItems = hasReceptionItems
+      ? selectedSource.reception.items
+      : (selectedSource.source_type === 'purchase'
+          ? sourceDetails.items || []
+          : sourceDetails.products || []);
 
-    // Calculate received quantities per product from previous batches
-    const receivedByProduct = new Map<string, number>();
-    if (selectedSource.reception?.batches && Array.isArray(selectedSource.reception.batches)) {
-      selectedSource.reception.batches.forEach((batch: any) => {
-        if (batch.items && Array.isArray(batch.items)) {
-          batch.items.forEach((batchItem: any) => {
-            const productId = batchItem.product_id;
-            const currentReceived = receivedByProduct.get(productId) || 0;
-            const qtyReceived = parseFloat(batchItem.quantity_received);
-            if (!isNaN(qtyReceived)) {
-              receivedByProduct.set(productId, currentReceived + qtyReceived);
-            }
-          });
-        }
-      });
-    }
-
-    // Filter items with pending quantities only
+    // Filter items with pending quantities only - SAME logic as handleOpenReceptionFromSource
     const items = allItems.filter((item: any) => {
-      const productId = selectedSource.source_type === 'purchase'
-        ? item.productId
-        : item.productId || item.product_id;
-      // For purchases, use 'quantity'. For outputs, use 'quantityDelivered'
+      if (hasReceptionItems) {
+        // Backend provides quantityPending per item (no need to recalculate)
+        const quantityPending = parseFloat(item.quantityPending) || 0;
+        return quantityPending > 0;
+      }
+
+      // For source items without reception, calculate from source data
       const quantityExpected = selectedSource.source_type === 'purchase'
         ? (parseFloat(item.quantity) || 0)
         : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
-      const quantityReceived = receivedByProduct.get(productId) || 0;
-      const quantityPending = quantityExpected - quantityReceived;
 
-      return quantityPending > 0;
+      return quantityExpected > 0;
     });
 
     // If no items with pending quantities, show message
@@ -1132,18 +1096,27 @@ const ReceptionPage: React.FC = () => {
                 const item = items[index];
                 if (!item) return null;
 
-                const productName = selectedSource.source_type === 'purchase'
-                  ? item.productName
-                  : item.product?.name;
+                const productName = item.productName || item.product?.name;
+                const brandName = item.brandName || item.brand?.name;
 
-                const brandName = selectedSource.source_type === 'purchase'
-                  ? item.brandName
-                  : item.brand?.name;
+                // Get quantities - handle both reception.items and source.products formats
+                let quantityExpected: number;
+                let quantityAlreadyReceived: number;
+                let quantityPending: number;
 
-                // For purchases, use 'quantity'. For outputs, use 'quantityDelivered'
-                const quantityExpected = selectedSource.source_type === 'purchase'
-                  ? (parseFloat(item.quantity) || 0)
-                  : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
+                if (hasReceptionItems) {
+                  // reception.items provides all quantities pre-calculated by backend
+                  quantityExpected = parseFloat(item.quantityExpected) || 0;
+                  quantityAlreadyReceived = parseFloat(item.quantityReceived) || 0;
+                  quantityPending = parseFloat(item.quantityPending) || 0;
+                } else {
+                  // Source items (purchase or output) - first reception, no previous batches
+                  quantityExpected = selectedSource.source_type === 'purchase'
+                    ? (parseFloat(item.quantity) || 0)
+                    : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
+                  quantityAlreadyReceived = 0;
+                  quantityPending = quantityExpected;
+                }
 
                 // Build unit display with base quantity and unit
                 let unitDisplay = '';
@@ -1161,13 +1134,7 @@ const ReceptionPage: React.FC = () => {
                   unitDisplay = item.unit;
                 }
 
-                const productId = selectedSource.source_type === 'purchase'
-                  ? item.productId
-                  : item.productId || item.product_id;
-
-                // Get already received quantity from the map calculated above
-                const quantityAlreadyReceived = receivedByProduct.get(productId) || 0;
-                const quantityPending = Math.max(0, quantityExpected - quantityAlreadyReceived);
+                const productId = item.productId || item.product_id;
 
                 return (
                   <Card key={key} size="small" style={{ marginBottom: 16 }}>
@@ -1183,9 +1150,15 @@ const ReceptionPage: React.FC = () => {
                       <Col xs={6} sm={2}>
                         <Form.Item
                           {...restField}
+                          name={[name, 'receptionItemId']}
+                          hidden
+                        >
+                          <Input />
+                        </Form.Item>
+                        <Form.Item
+                          {...restField}
                           name={[name, 'productId']}
                           hidden
-                          initialValue={productId}
                         >
                           <Input />
                         </Form.Item>

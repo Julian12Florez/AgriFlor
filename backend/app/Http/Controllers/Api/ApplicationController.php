@@ -200,8 +200,10 @@ class ApplicationController extends Controller
 
             // Validar stock disponible antes de crear la aplicación
             // ERR-004 fix: convert to base unit before comparing
+            // ERR-006 fix: use lockForUpdate to prevent race conditions during validation
             foreach ($request->products as $productData) {
-                $inventoryBatches = Inventory::where('product_id', $productData['product_id'])
+                $inventoryBatches = Inventory::lockForUpdate()
+                    ->where('product_id', $productData['product_id'])
                     ->where('brand_id', $productData['brand_id'])
                     ->where('location_id', $request->origin_location_id)
                     ->whereNotIn('status', ['expired'])

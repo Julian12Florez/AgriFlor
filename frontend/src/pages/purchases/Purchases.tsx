@@ -37,7 +37,7 @@ interface Purchase {
   destinationLocationName: string;
   purchaseDate: Date;
   expectedDelivery?: Date;
-  status: 'pending' | 'received' | 'cancelled';
+  status: 'pending' | 'ordered' | 'in_transit' | 'received' | 'cancelled';
   items: PurchaseItem[];
   subtotal: number;
   tax: number;

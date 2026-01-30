@@ -11,8 +11,8 @@ interface User {
   name: string;
   role: 'admin' | 'agronomist' | 'warehouse' | 'supervisor' | 'farm';
   status: 'active' | 'inactive';
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt: string;
 }
 
 const { Search } = Input;

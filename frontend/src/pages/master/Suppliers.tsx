@@ -102,7 +102,7 @@ const Suppliers: React.FC = () => {
       city: record.city,
       phone: record.phone,
       email: record.email,
-      paymentTerms: record.payment_terms,
+      paymentTerms: record.paymentTerms,
       status: record.status
     });
     setIsModalVisible(true);
@@ -211,8 +211,8 @@ const Suppliers: React.FC = () => {
     },
     {
       title: 'Condiciones',
-      dataIndex: 'payment_terms',
-      key: 'payment_terms',
+      dataIndex: 'paymentTerms',
+      key: 'paymentTerms',
       render: (terms: string) => (
         terms ? <Tag color="blue">{terms}</Tag> : <Tag>N/A</Tag>
       ),
@@ -296,7 +296,7 @@ const Suppliers: React.FC = () => {
         {record.email}
       </Descriptions.Item>
       <Descriptions.Item label="Condiciones de pago">
-        {record.payment_terms ? <Tag color="blue">{record.payment_terms}</Tag> : 'N/A'}
+        {record.paymentTerms ? <Tag color="blue">{record.paymentTerms}</Tag> : 'N/A'}
       </Descriptions.Item>
       <Descriptions.Item label="Estado">
         <Tag color={record.status === 'active' ? 'green' : 'red'}>
@@ -325,7 +325,7 @@ const Suppliers: React.FC = () => {
         )}
       </Descriptions.Item>
       <Descriptions.Item label="Fecha de creación">
-        {record.created_at ? new Date(record.created_at).toLocaleDateString('es-CO') : 'N/A'}
+        {record.createdAt ? new Date(record.createdAt).toLocaleDateString('es-CO') : 'N/A'}
       </Descriptions.Item>
     </Descriptions>
   );

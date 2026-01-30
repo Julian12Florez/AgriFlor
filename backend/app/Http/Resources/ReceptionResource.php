@@ -61,23 +61,23 @@ class ReceptionResource extends JsonResource
             ),
 
             // Source Details (Purchase or ProductOutput)
-            // Note: source relation removed to avoid morphTo issues
-            // Use source_id and source_type directly if needed
-            'sourceDetails' => null,
+            // FUN-001 fix: Load source details without morphTo to avoid SQL errors
+            'sourceDetails' => $this->getSourceDetailsDirectly(),
 
             // Reception Items (Expected items from source)
             'items' => $this->when(
                 $this->relationLoaded('receptionItems'),
                 fn() => $this->receptionItems->map(function ($item) {
-                    // Use stored expiration_date first, fallback to inventory query with batch_number
+                    // Use source_item_id for exact OutputProduct lookup (no more ->first() ambiguity)
                     $suggestedExpirationDate = $item->expiration_date;
 
                     if (!$suggestedExpirationDate && $this->source_type === 'output' && $this->origin_location_id) {
-                        // Find the matching output product to get batch_number
-                        $outputProduct = \App\Models\OutputProduct::where('product_output_id', $this->source_id)
-                            ->where('product_id', $item->product_id)
-                            ->where('brand_id', $item->brand_id)
-                            ->first();
+                        $outputProduct = $item->source_item_id
+                            ? \App\Models\OutputProduct::find($item->source_item_id)
+                            : \App\Models\OutputProduct::where('product_output_id', $this->source_id)
+                                ->where('product_id', $item->product_id)
+                                ->where('brand_id', $item->brand_id)
+                                ->first();
 
                         $inventoryQuery = \App\Models\Inventory::where('product_id', $item->product_id)
                             ->where('brand_id', $item->brand_id)
@@ -113,6 +113,7 @@ class ReceptionResource extends JsonResource
                             'name' => $item->brand->name,
                         ] : null,
                         'brandName' => $item->brand?->name ?? null,
+                        'sourceItemId' => $item->source_item_id,
                         'quantityExpected' => $item->quantity_expected,
                         'quantityReceived' => $item->quantity_received,
                         'quantityPending' => $item->quantity_pending,
@@ -134,54 +135,70 @@ class ReceptionResource extends JsonResource
     }
 
     /**
-     * Get source details based on source type
-     * NOTE: DISABLED - morphTo relationship causes SQL errors
-     * Use source_id and source_type fields directly if needed
+     * Get source details using direct queries instead of morphTo.
+     * FUN-001 fix: Avoids morphTo SQL errors by querying models directly.
      */
-    protected function getSourceDetails(): ?array
+    protected function getSourceDetailsDirectly(): ?array
     {
-        // Disabled to avoid morphTo SQL errors
-        return null;
-
-        /* ORIGINAL CODE - COMMENTED OUT
-        if (!$this->source) {
+        if (!$this->source_id || !$this->source_type) {
             return null;
         }
 
-        if ($this->source_type === 'purchase') {
-            return [
-                'type' => 'purchase',
-                'orderNumber' => $this->source->order_number ?? null,
-                'purchaseDate' => $this->source->purchase_date?->format('Y-m-d') ?? null,
-                'expectedDelivery' => $this->source->expected_delivery?->format('Y-m-d') ?? null,
-                'status' => $this->source->status ?? null,
-                'total' => $this->source->total ?? null,
-                'supplier' => $this->source->supplier ? [
-                    'id' => $this->source->supplier->id,
-                    'name' => $this->source->supplier->name,
-                    'contactName' => $this->source->supplier->contact_name,
-                    'email' => $this->source->supplier->email,
-                    'phone' => $this->source->supplier->phone,
-                ] : null,
-            ];
-        }
+        try {
+            if ($this->source_type === 'purchase') {
+                $purchase = \App\Models\Purchase::with('supplier:id,name,email,phone')
+                    ->find($this->source_id);
 
-        if ($this->source_type === 'output') {
-            return [
-                'type' => 'output',
-                'outputNumber' => $this->source->output_number ?? null,
-                'outputDate' => $this->source->output_date?->format('Y-m-d') ?? null,
-                'status' => $this->source->status ?? null,
-                'totalCost' => $this->source->total_cost ?? null,
-                'technicalOrder' => $this->source->technicalOrder ? [
-                    'id' => $this->source->technicalOrder->id,
-                    'orderNumber' => $this->source->technicalOrder->order_number,
-                    'scheduledDate' => $this->source->technicalOrder->scheduled_date?->format('Y-m-d'),
-                ] : null,
-            ];
+                if (!$purchase) {
+                    return null;
+                }
+
+                return [
+                    'type' => 'purchase',
+                    'orderNumber' => $purchase->order_number,
+                    'purchaseDate' => $purchase->purchase_date?->format('Y-m-d'),
+                    'expectedDelivery' => $purchase->expected_delivery?->format('Y-m-d'),
+                    'status' => $purchase->status,
+                    'total' => $purchase->total,
+                    'supplier' => $purchase->supplier ? [
+                        'id' => $purchase->supplier->id,
+                        'name' => $purchase->supplier->name,
+                        'email' => $purchase->supplier->email,
+                        'phone' => $purchase->supplier->phone,
+                    ] : null,
+                ];
+            }
+
+            if ($this->source_type === 'output') {
+                $output = \App\Models\ProductOutput::with('technicalOrder:id,order_number,scheduled_date')
+                    ->find($this->source_id);
+
+                if (!$output) {
+                    return null;
+                }
+
+                return [
+                    'type' => 'output',
+                    'outputNumber' => $output->output_number,
+                    'outputDate' => $output->output_date?->format('Y-m-d'),
+                    'status' => $output->status,
+                    'totalCost' => $output->total_cost,
+                    'technicalOrder' => $output->technicalOrder ? [
+                        'id' => $output->technicalOrder->id,
+                        'orderNumber' => $output->technicalOrder->order_number,
+                        'scheduledDate' => $output->technicalOrder->scheduled_date?->format('Y-m-d'),
+                    ] : null,
+                ];
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::warning('Error loading source details for reception', [
+                'reception_id' => $this->id,
+                'source_type' => $this->source_type,
+                'source_id' => $this->source_id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return null;
-        */
     }
 }

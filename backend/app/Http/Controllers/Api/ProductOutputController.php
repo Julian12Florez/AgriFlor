@@ -10,7 +10,9 @@ use App\Models\Application;
 use App\Models\ApplicationProduct;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
+use App\Models\OutputProduct;
 use App\Models\ProductOutput;
+use App\Models\Reception;
 use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -375,6 +377,14 @@ class ProductOutputController extends Controller
             // Validate inventory availability with lock BEFORE approving (ERR-005 fix)
             // This prevents over-approving when multiple outputs compete for same stock
             // ERR-004 fix: convert inventory quantities to base unit before comparing
+            // LOG-002 fix: discount committed inventory from other approved/partial outputs
+
+            // Get other approved/partial outputs from the same origin (cached outside product loop)
+            $otherApprovedOutputs = ProductOutput::where('origin_location_id', $output->origin_location_id)
+                ->whereIn('status', ['approved', 'partial'])
+                ->where('id', '!=', $output->id)
+                ->get();
+
             foreach ($output->outputProducts as $outputProduct) {
                 $inventoryBatches = Inventory::lockForUpdate()
                     ->where('product_id', $outputProduct->product_id)
@@ -394,6 +404,49 @@ class ProductOutputController extends Controller
                     );
                 }
 
+                // Calculate committed inventory from other approved/partial outputs
+                $committedInBase = 0;
+                foreach ($otherApprovedOutputs as $otherOutput) {
+                    $otherProducts = OutputProduct::where('product_output_id', $otherOutput->id)
+                        ->where('product_id', $outputProduct->product_id)
+                        ->where('brand_id', $outputProduct->brand_id)
+                        ->get();
+
+                    foreach ($otherProducts as $otherProduct) {
+                        $deliveredInBase = $this->inventoryService->toBaseUnit(
+                            floatval($otherProduct->quantity_delivered),
+                            $otherProduct->unit,
+                            $otherProduct->product_id
+                        );
+
+                        // Subtract already received quantities (already reduced from inventory)
+                        $receivedInBase = 0;
+                        $reception = Reception::where('source_id', $otherOutput->id)
+                            ->where('source_type', 'output')
+                            ->first();
+
+                        if ($reception) {
+                            $receptionItems = $reception->receptionItems()
+                                ->where('product_id', $otherProduct->product_id)
+                                ->where('brand_id', $otherProduct->brand_id)
+                                ->get();
+
+                            foreach ($receptionItems as $receptionItem) {
+                                $receivedInBase += $this->inventoryService->toBaseUnit(
+                                    floatval($receptionItem->quantity_received),
+                                    $receptionItem->unit,
+                                    $otherProduct->product_id
+                                );
+                            }
+                        }
+
+                        $committedInBase += max(0, $deliveredInBase - $receivedInBase);
+                    }
+                }
+
+                // Effective available = physical inventory - committed by other outputs
+                $effectiveAvailable = $availableInBase - $committedInBase;
+
                 // Convert requested quantity to base unit
                 $requestedInBase = $this->inventoryService->toBaseUnit(
                     floatval($outputProduct->quantity_delivered),
@@ -401,12 +454,15 @@ class ProductOutputController extends Controller
                     $outputProduct->product_id
                 );
 
-                if ($availableInBase < $requestedInBase - 0.01) {
+                if ($effectiveAvailable < $requestedInBase - 0.01) {
                     DB::rollBack();
                     $product = $outputProduct->product;
+                    $committedMsg = $committedInBase > 0
+                        ? " (Comprometido por otras salidas: " . round($committedInBase, 2) . ")"
+                        : "";
                     return response()->json([
                         'success' => false,
-                        'message' => "Inventario insuficiente para {$product->name}. Disponible: " . round($availableInBase, 2) . " unidades base, Requerido: " . round($requestedInBase, 2) . " unidades base"
+                        'message' => "Inventario insuficiente para {$product->name}. Disponible: " . round($effectiveAvailable, 2) . " unidades base, Requerido: " . round($requestedInBase, 2) . " unidades base{$committedMsg}"
                     ], 400);
                 }
             }

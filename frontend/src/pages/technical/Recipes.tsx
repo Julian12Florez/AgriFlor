@@ -251,13 +251,13 @@ const Recipes: React.FC = () => {
     {
       title: 'Uso',
       key: 'usage',
-      render: (_) => (
+      render: (_, record) => (
         <div>
           <div style={{ fontSize: 12 }}>
-            <strong>0</strong> veces
+            <strong>{record.usageCount ?? 0}</strong> veces
           </div>
           <div style={{ color: '#666', fontSize: 11 }}>
-            Disponible para usar
+            {(record.usageCount ?? 0) > 0 ? 'En uso' : 'Disponible para usar'}
           </div>
         </div>
       ),

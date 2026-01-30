@@ -105,49 +105,7 @@ class ReceptionController extends Controller
                         ];
                     }),
                     'items' => $reception->receptionItems->map(function($item) use ($reception) {
-                        // Use stored expiration_date first, fallback to inventory query with batch_number
-                        $suggestedExpirationDate = $item->expiration_date;
-
-                        if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
-                            // Find the matching output product to get batch_number
-                            $outputProduct = \App\Models\OutputProduct::where('product_output_id', $reception->source_id)
-                                ->where('product_id', $item->product_id)
-                                ->where('brand_id', $item->brand_id)
-                                ->first();
-
-                            $inventoryQuery = \App\Models\Inventory::where('product_id', $item->product_id)
-                                ->where('brand_id', $item->brand_id)
-                                ->where('location_id', $reception->origin_location_id)
-                                ->whereNotIn('status', ['expired'])
-                                ->where('quantity', '>', 0);
-                            if ($outputProduct?->batch_number) {
-                                $inventoryQuery->where('batch_number', $outputProduct->batch_number);
-                            }
-                            $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
-
-                            $suggestedExpirationDate = $inventory?->expiration_date;
-                        }
-
-                        return [
-                            'id' => $item->id,
-                            'productId' => $item->product_id,
-                            'product' => $item->product ? [
-                                'id' => $item->product->id,
-                                'name' => $item->product->name,
-                                'category' => $item->product->category,
-                            ] : null,
-                            'brandId' => $item->brand_id,
-                            'brand' => $item->brand ? [
-                                'id' => $item->brand->id,
-                                'name' => $item->brand->name,
-                            ] : null,
-                            'quantityExpected' => $item->quantity_expected,
-                            'quantityReceived' => $item->quantity_received,
-                            'quantityPending' => $item->quantity_pending,
-                            'unit' => $item->unit,
-                            'expirationDate' => $item->expiration_date?->format('Y-m-d'),
-                            'suggestedExpirationDate' => $suggestedExpirationDate?->format('Y-m-d'),
-                        ];
+                        return $this->formatReceptionItemForApi($item, $reception);
                     }),
                 ] : null,
             ];
@@ -213,49 +171,7 @@ class ReceptionController extends Controller
                         ];
                     }),
                     'items' => $reception->receptionItems->map(function($item) use ($reception) {
-                        // Use stored expiration_date first, fallback to inventory query with batch_number
-                        $suggestedExpirationDate = $item->expiration_date;
-
-                        if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
-                            // Find the matching output product to get batch_number
-                            $outputProduct = \App\Models\OutputProduct::where('product_output_id', $reception->source_id)
-                                ->where('product_id', $item->product_id)
-                                ->where('brand_id', $item->brand_id)
-                                ->first();
-
-                            $inventoryQuery = \App\Models\Inventory::where('product_id', $item->product_id)
-                                ->where('brand_id', $item->brand_id)
-                                ->where('location_id', $reception->origin_location_id)
-                                ->whereNotIn('status', ['expired'])
-                                ->where('quantity', '>', 0);
-                            if ($outputProduct?->batch_number) {
-                                $inventoryQuery->where('batch_number', $outputProduct->batch_number);
-                            }
-                            $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
-
-                            $suggestedExpirationDate = $inventory?->expiration_date;
-                        }
-
-                        return [
-                            'id' => $item->id,
-                            'productId' => $item->product_id,
-                            'product' => $item->product ? [
-                                'id' => $item->product->id,
-                                'name' => $item->product->name,
-                                'category' => $item->product->category,
-                            ] : null,
-                            'brandId' => $item->brand_id,
-                            'brand' => $item->brand ? [
-                                'id' => $item->brand->id,
-                                'name' => $item->brand->name,
-                            ] : null,
-                            'quantityExpected' => $item->quantity_expected,
-                            'quantityReceived' => $item->quantity_received,
-                            'quantityPending' => $item->quantity_pending,
-                            'unit' => $item->unit,
-                            'expirationDate' => $item->expiration_date?->format('Y-m-d'),
-                            'suggestedExpirationDate' => $suggestedExpirationDate?->format('Y-m-d'),
-                        ];
+                        return $this->formatReceptionItemForApi($item, $reception);
                     }),
                 ] : null,
             ];
@@ -599,8 +515,9 @@ class ReceptionController extends Controller
                 'reception_date' => 'required|date',
                 'received_by' => 'required|uuid|exists:users,id',
                 'items' => 'required|array|min:1',
+                'items.*.reception_item_id' => 'nullable|uuid',
                 'items.*.product_id' => 'required|uuid',
-                'items.*.brand_id' => 'required|uuid|exists:brands,id',  // INC-002: Changed to required
+                'items.*.brand_id' => 'required|uuid|exists:brands,id',
                 'items.*.quantity_received' => 'required|numeric|gt:0',
                 'items.*.condition' => 'required|in:good,damaged,expired',
                 'items.*.expiration_date' => 'nullable|date',
@@ -667,10 +584,35 @@ class ReceptionController extends Controller
 
             // Create batch items and update inventory
             foreach ($data['items'] as $itemData) {
-                // Create batch item
+                // Find matching reception item - prefer exact ID, fallback to product+brand
+                $receptionItem = $this->findReceptionItem(
+                    $reception,
+                    $itemData['reception_item_id'] ?? null,
+                    $itemData['product_id'],
+                    $itemData['brand_id'] ?? null
+                );
+
+                if (!$receptionItem) {
+                    throw new \Exception(
+                        'Producto no encontrado en los items de la recepción.'
+                    );
+                }
+
+                // Validate quantity does not exceed pending
+                $maxAllowed = floatval($receptionItem->quantity_pending);
+                if ($itemData['quantity_received'] > $maxAllowed + 0.01) {
+                    $productName = $receptionItem->product?->name ?? 'Producto';
+                    throw new \Exception(
+                        "La cantidad recibida ({$itemData['quantity_received']}) de {$productName} " .
+                        "excede la cantidad pendiente ({$maxAllowed})."
+                    );
+                }
+
+                // Create batch item linked to specific reception_item
                 ReceptionBatchItem::create([
                     'batch_id' => $batch->id,
                     'product_id' => $itemData['product_id'],
+                    'reception_item_id' => $receptionItem->id,
                     'quantity_received' => $itemData['quantity_received'],
                     'condition' => $itemData['condition'],
                     'expiration_date' => $itemData['expiration_date'] ?? null,
@@ -678,23 +620,15 @@ class ReceptionController extends Controller
                 ]);
 
                 // Update reception item quantities
-                // BUG FIX: Added brand_id filter to prevent using wrong reception item
-                $receptionItem = $reception->receptionItems()
-                    ->where('product_id', $itemData['product_id'])
-                    ->where('brand_id', $itemData['brand_id'] ?? null)
-                    ->first();
+                $newQuantityReceived = $receptionItem->quantity_received + $itemData['quantity_received'];
+                $newQuantityPending = $receptionItem->quantity_expected - $newQuantityReceived;
 
-                if ($receptionItem) {
-                    $newQuantityReceived = $receptionItem->quantity_received + $itemData['quantity_received'];
-                    $newQuantityPending = $receptionItem->quantity_expected - $newQuantityReceived;
+                $receptionItem->update([
+                    'quantity_received' => $newQuantityReceived,
+                    'quantity_pending' => max(0, $newQuantityPending),
+                ]);
 
-                    $receptionItem->update([
-                        'quantity_received' => $newQuantityReceived,
-                        'quantity_pending' => max(0, $newQuantityPending),
-                    ]);
-                }
-
-                // Process complete inventory movements (entry/exit) and update inventory table
+                // Process inventory movements
                 $this->processInventoryMovements(
                     $reception,
                     $itemData,
@@ -767,10 +701,35 @@ class ReceptionController extends Controller
 
             // Create batch items and update inventory
             foreach ($data['items'] as $itemData) {
-                // Create batch item
+                // Find matching reception item - prefer exact ID, fallback to product+brand
+                $receptionItem = $this->findReceptionItem(
+                    $reception,
+                    $itemData['reception_item_id'] ?? null,
+                    $itemData['product_id'],
+                    $itemData['brand_id'] ?? null
+                );
+
+                if (!$receptionItem) {
+                    throw new \Exception(
+                        'Producto no encontrado en los items de la recepción.'
+                    );
+                }
+
+                // Validate quantity does not exceed pending
+                $maxAllowed = floatval($receptionItem->quantity_pending);
+                if ($itemData['quantity_received'] > $maxAllowed + 0.01) {
+                    $productName = $receptionItem->product?->name ?? 'Producto';
+                    throw new \Exception(
+                        "La cantidad recibida ({$itemData['quantity_received']}) de {$productName} " .
+                        "excede la cantidad pendiente ({$maxAllowed})."
+                    );
+                }
+
+                // Create batch item linked to specific reception_item
                 $batchItem = ReceptionBatchItem::create([
                     'batch_id' => $batch->id,
                     'product_id' => $itemData['product_id'],
+                    'reception_item_id' => $receptionItem->id,
                     'quantity_received' => $itemData['quantity_received'],
                     'condition' => $itemData['condition'],
                     'expiration_date' => $itemData['expiration_date'] ?? null,
@@ -778,23 +737,15 @@ class ReceptionController extends Controller
                 ]);
 
                 // Update reception item quantities
-                // BUG FIX: Added brand_id filter to prevent using wrong reception item
-                $receptionItem = $reception->receptionItems()
-                    ->where('product_id', $itemData['product_id'])
-                    ->where('brand_id', $itemData['brand_id'] ?? null)
-                    ->first();
+                $newQuantityReceived = $receptionItem->quantity_received + $itemData['quantity_received'];
+                $newQuantityPending = $receptionItem->quantity_expected - $newQuantityReceived;
 
-                if ($receptionItem) {
-                    $newQuantityReceived = $receptionItem->quantity_received + $itemData['quantity_received'];
-                    $newQuantityPending = $receptionItem->quantity_expected - $newQuantityReceived;
+                $receptionItem->update([
+                    'quantity_received' => $newQuantityReceived,
+                    'quantity_pending' => max(0, $newQuantityPending),
+                ]);
 
-                    $receptionItem->update([
-                        'quantity_received' => $newQuantityReceived,
-                        'quantity_pending' => max(0, $newQuantityPending),
-                    ]);
-                }
-
-                // Process complete inventory movements (entry/exit) and update inventory table
+                // Process inventory movements
                 $this->processInventoryMovements(
                     $reception,
                     $itemData,
@@ -1026,6 +977,90 @@ class ReceptionController extends Controller
     }
 
     /**
+     * Format a reception item for API responses.
+     * Uses source_item_id for exact OutputProduct lookup (handles duplicate product+brand).
+     */
+    private function formatReceptionItemForApi(ReceptionItem $item, Reception $reception): array
+    {
+        $suggestedExpirationDate = $item->expiration_date;
+
+        if (!$suggestedExpirationDate && $reception->source_type === 'output' && $reception->origin_location_id) {
+            // Use source_item_id for exact match, fallback to product_id+brand_id
+            $outputProduct = $item->source_item_id
+                ? OutputProduct::find($item->source_item_id)
+                : OutputProduct::where('product_output_id', $reception->source_id)
+                    ->where('product_id', $item->product_id)
+                    ->where('brand_id', $item->brand_id)
+                    ->first();
+
+            $inventoryQuery = Inventory::where('product_id', $item->product_id)
+                ->where('brand_id', $item->brand_id)
+                ->where('location_id', $reception->origin_location_id)
+                ->whereNotIn('status', ['expired'])
+                ->where('quantity', '>', 0);
+            if ($outputProduct?->batch_number) {
+                $inventoryQuery->where('batch_number', $outputProduct->batch_number);
+            }
+            $inventory = $inventoryQuery->orderBy('expiration_date', 'asc')->first();
+
+            $suggestedExpirationDate = $inventory?->expiration_date;
+        }
+
+        return [
+            'id' => $item->id,
+            'productId' => $item->product_id,
+            'productName' => $item->product?->name,
+            'product' => $item->product ? [
+                'id' => $item->product->id,
+                'name' => $item->product->name,
+                'category' => $item->product->category,
+            ] : null,
+            'brandId' => $item->brand_id,
+            'brandName' => $item->brand?->name,
+            'brand' => $item->brand ? [
+                'id' => $item->brand->id,
+                'name' => $item->brand->name,
+            ] : null,
+            'sourceItemId' => $item->source_item_id,
+            'quantityExpected' => $item->quantity_expected,
+            'quantityReceived' => $item->quantity_received,
+            'quantityPending' => $item->quantity_pending,
+            'unit' => $item->unit,
+            'expirationDate' => $item->expiration_date?->format('Y-m-d'),
+            'suggestedExpirationDate' => $suggestedExpirationDate instanceof \DateTimeInterface
+                ? $suggestedExpirationDate->format('Y-m-d')
+                : ($suggestedExpirationDate ? (string)$suggestedExpirationDate : null),
+        ];
+    }
+
+    /**
+     * Find the exact reception item for a given request item.
+     * Uses reception_item_id for exact match (handles duplicate product+brand).
+     * Falls back to product_id+brand_id for backwards compatibility.
+     */
+    private function findReceptionItem(
+        Reception $reception,
+        ?string $receptionItemId,
+        string $productId,
+        ?string $brandId
+    ): ?ReceptionItem {
+        // Exact match by ID (preferred - handles duplicate products)
+        if ($receptionItemId) {
+            $item = $reception->receptionItems()->find($receptionItemId);
+            if ($item) {
+                return $item;
+            }
+        }
+
+        // Fallback: product_id + brand_id (for backwards compatibility / first reception)
+        // Only safe when there's a single item per product+brand
+        return $reception->receptionItems()
+            ->where('product_id', $productId)
+            ->where('brand_id', $brandId)
+            ->first();
+    }
+
+    /**
      * Get source based on source type
      */
     private function getSource(string $sourceType, string $sourceId)
@@ -1054,7 +1089,6 @@ class ReceptionController extends Controller
     {
         if ($sourceType === 'purchase') {
             foreach ($source->purchaseItems as $purchaseItem) {
-                // Get unit from packaging unit
                 $packagingUnit = PackagingUnit::find($purchaseItem->packaging_unit_id);
                 $unit = $packagingUnit ? $packagingUnit->name : 'unidades';
 
@@ -1062,6 +1096,7 @@ class ReceptionController extends Controller
                     'reception_id' => $reception->id,
                     'product_id' => $purchaseItem->product_id,
                     'brand_id' => $purchaseItem->brand_id,
+                    'source_item_id' => $purchaseItem->id,
                     'quantity_expected' => $purchaseItem->quantity,
                     'quantity_received' => 0,
                     'quantity_pending' => $purchaseItem->quantity,
@@ -1070,7 +1105,6 @@ class ReceptionController extends Controller
             }
         } elseif ($sourceType === 'output') {
             foreach ($source->outputProducts as $outputProduct) {
-                // Obtain expiration date from origin inventory using batch_number for exact match
                 $expirationDate = $outputProduct->expiration_date;
                 if (!$expirationDate && $reception->origin_location_id) {
                     $inventoryQuery = Inventory::where('product_id', $outputProduct->product_id)
@@ -1089,6 +1123,7 @@ class ReceptionController extends Controller
                     'reception_id' => $reception->id,
                     'product_id' => $outputProduct->product_id,
                     'brand_id' => $outputProduct->brand_id ?? null,
+                    'source_item_id' => $outputProduct->id,
                     'quantity_expected' => $outputProduct->quantity_delivered,
                     'quantity_received' => 0,
                     'quantity_pending' => $outputProduct->quantity_delivered,
@@ -1234,8 +1269,8 @@ class ReceptionController extends Controller
         $unit = $receptionItem->unit ?? 'unidades';
         $expirationDate = $itemData['expiration_date'] ?? null;
 
-        // Get unit price based on source type
-        $unitPrice = $this->getUnitPriceForMovement($reception, $productId, $brandId);
+        // Get unit price based on source type (use source_item_id for exact batch lookup)
+        $unitPrice = $this->getUnitPriceForMovement($reception, $productId, $brandId, $receptionItem->source_item_id);
 
         if ($sourceType === 'purchase') {
             // PURCHASE: Only create ENTRY movement in destination
@@ -1260,6 +1295,13 @@ class ReceptionController extends Controller
             $outputTypeCode = $output?->outputType?->code;
 
             // 1. Create EXIT movement in origin location (reduces inventory)
+            // Use source_item_id to get the correct batch_number for FIFO
+            $sourceBatchNumber = null;
+            if ($receptionItem->source_item_id) {
+                $sourceOutputProduct = OutputProduct::find($receptionItem->source_item_id);
+                $sourceBatchNumber = $sourceOutputProduct?->batch_number;
+            }
+
             $this->createExitMovement(
                 $reception,
                 $productId,
@@ -1268,7 +1310,8 @@ class ReceptionController extends Controller
                 $unit,
                 $unitPrice,
                 $userId,
-                $batchNumber
+                $batchNumber,
+                $sourceBatchNumber
             );
 
             // 2. Create ENTRY movement in destination ONLY if NOT consumption
@@ -1456,7 +1499,8 @@ class ReceptionController extends Controller
         string $unit,
         float $unitPrice,
         string $userId,
-        int $batchNumber
+        int $batchNumber,
+        ?string $inventoryBatchNumber = null
     ): void {
         $locationId = $reception->origin_location_id;
         $totalPrice = $quantity * $unitPrice;
@@ -1480,14 +1524,14 @@ class ReceptionController extends Controller
                             " a " . ($reception->destinationLocation->name ?? 'ubicación destino'),
         ]);
 
-        // Reduce inventory using FIFO (First In, First Out) with unit conversion
-        // ERR-001 fix: uses InventoryService to convert units before comparing
+        // Reduce inventory using FIFO, targeting the specific batch when known
         $this->inventoryService->reduceInventoryFIFO(
             $productId,
             $brandId,
             $locationId,
             $quantity,
-            $unit
+            $unit,
+            $inventoryBatchNumber
         );
 
         \Log::info('Exit movement created', [
@@ -1590,16 +1634,19 @@ class ReceptionController extends Controller
     private function getUnitPriceForMovement(
         Reception $reception,
         string $productId,
-        string $brandId
+        string $brandId,
+        ?string $sourceItemId = null
     ): float {
         if ($reception->source_type === 'purchase') {
-            // Get price from purchase items
+            // Use source_item_id for exact match, fallback to product+brand
             $source = Purchase::find($reception->source_id);
             if ($source) {
-                $purchaseItem = $source->purchaseItems()
-                    ->where('product_id', $productId)
-                    ->where('brand_id', $brandId)
-                    ->first();
+                $purchaseItem = $sourceItemId
+                    ? $source->purchaseItems()->find($sourceItemId)
+                    : $source->purchaseItems()
+                        ->where('product_id', $productId)
+                        ->where('brand_id', $brandId)
+                        ->first();
 
                 if ($purchaseItem && $purchaseItem->unit_price) {
                     return floatval($purchaseItem->unit_price);
@@ -1612,10 +1659,20 @@ class ReceptionController extends Controller
             ]);
             return 0.0;
         } else {
-            // For outputs, get price from origin inventory
-            $inventory = Inventory::where('product_id', $productId)
+            // For outputs, get price from origin inventory using batch_number for exact match
+            $query = Inventory::where('product_id', $productId)
                 ->where('brand_id', $brandId)
-                ->where('location_id', $reception->origin_location_id)
+                ->where('location_id', $reception->origin_location_id);
+
+            if ($sourceItemId) {
+                $outputProduct = OutputProduct::find($sourceItemId);
+                if ($outputProduct?->batch_number) {
+                    $query->where('batch_number', $outputProduct->batch_number);
+                }
+            }
+
+            $inventory = $query->where('quantity', '>', 0)
+                ->orderBy('created_at', 'asc')
                 ->first();
 
             if ($inventory && $inventory->unit_price) {

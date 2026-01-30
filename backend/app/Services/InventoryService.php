@@ -72,6 +72,7 @@ class InventoryService
      * @param string $locationId    Location UUID
      * @param float  $quantity      Amount to reduce
      * @param string $requestedUnit Unit of the requested quantity
+     * @param string|null $batchNumber Optional batch number to filter specific batches
      * @throws \Exception When insufficient inventory
      */
     public function reduceInventoryFIFO(
@@ -79,20 +80,27 @@ class InventoryService
         string $brandId,
         string $locationId,
         float $quantity,
-        string $requestedUnit
+        string $requestedUnit,
+        ?string $batchNumber = null
     ): void {
         if ($quantity <= 0) {
             throw new \Exception("La cantidad a reducir debe ser mayor a 0.");
         }
 
         // Lock and get all inventory batches ordered by FIFO
-        $inventoryBatches = Inventory::lockForUpdate()
+        $query = Inventory::lockForUpdate()
             ->where('product_id', $productId)
             ->where('brand_id', $brandId)
             ->where('location_id', $locationId)
             ->whereNotIn('status', ['expired'])
-            ->where('quantity', '>', 0)
-            ->orderBy('expiration_date', 'asc')
+            ->where('quantity', '>', 0);
+
+        // INT-002: Filter by batch_number when specified
+        if ($batchNumber !== null) {
+            $query->where('batch_number', $batchNumber);
+        }
+
+        $inventoryBatches = $query->orderBy('expiration_date', 'asc')
             ->orderBy('created_at', 'asc')
             ->get();
 

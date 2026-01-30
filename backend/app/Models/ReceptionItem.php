@@ -17,6 +17,7 @@ class ReceptionItem extends Model
         'reception_id',
         'product_id',
         'brand_id',
+        'source_item_id',
         'quantity_expected',
         'quantity_received',
         'quantity_pending',

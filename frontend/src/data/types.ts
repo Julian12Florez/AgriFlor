@@ -74,6 +74,7 @@ export interface Recipe {
   applicationInstructions: string;
   safetyNotes: string;
   estimatedCost: number;
+  usageCount: number;
   createdBy: string;
   status: 'active' | 'inactive';
   createdAt: Date;

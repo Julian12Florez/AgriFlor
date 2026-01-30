@@ -16,6 +16,7 @@ class ReceptionBatchItem extends Model
     protected $fillable = [
         'batch_id',
         'product_id',
+        'reception_item_id',
         'quantity_received',
         'condition',
         'expiration_date',
@@ -39,5 +40,10 @@ class ReceptionBatchItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function receptionItem()
+    {
+        return $this->belongsTo(ReceptionItem::class, 'reception_item_id');
     }
 }

@@ -20,8 +20,9 @@ class StoreReceptionBatchRequest extends FormRequest
             'reception_date' => ['required', 'date'],
             'received_by' => ['required', 'uuid', 'exists:users,id'],
             'items' => ['required', 'array', 'min:1'],
+            'items.*.reception_item_id' => ['nullable', 'uuid'],
             'items.*.product_id' => ['required', 'uuid', 'exists:products,id'],
-            'items.*.brand_id' => ['required', 'uuid', 'exists:brands,id'],  // INC-002: Changed to required
+            'items.*.brand_id' => ['required', 'uuid', 'exists:brands,id'],
             'items.*.quantity_received' => ['required', 'numeric', 'gt:0'],
             'items.*.condition' => ['required', Rule::in(['good', 'damaged', 'expired'])],
             'items.*.expiration_date' => ['nullable', 'date'],
@@ -87,11 +88,19 @@ class StoreReceptionBatchRequest extends FormRequest
 
             // Validate each item to prevent over-receiving
             foreach ($this->items ?? [] as $index => $itemData) {
-                // Find the reception item for this product and brand (INC-001 fix)
-                $receptionItem = $reception->receptionItems
-                    ->where('product_id', $itemData['product_id'])
-                    ->where('brand_id', $itemData['brand_id'] ?? null)
-                    ->first();
+                // Find reception item by exact ID first, fallback to product+brand
+                $receptionItem = null;
+                if (!empty($itemData['reception_item_id'])) {
+                    $receptionItem = $reception->receptionItems
+                        ->where('id', $itemData['reception_item_id'])
+                        ->first();
+                }
+                if (!$receptionItem) {
+                    $receptionItem = $reception->receptionItems
+                        ->where('product_id', $itemData['product_id'])
+                        ->where('brand_id', $itemData['brand_id'] ?? null)
+                        ->first();
+                }
 
                 if (!$receptionItem) {
                     $validator->errors()->add(
