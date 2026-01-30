@@ -98,6 +98,7 @@ class ReceptionController extends Controller
                             'items' => $batch->batchItems->map(function($item) {
                                 return [
                                     'product_id' => $item->product_id,
+                                    'reception_item_id' => $item->reception_item_id,
                                     'quantity_received' => $item->quantity_received,
                                     'condition' => $item->condition,
                                 ];
@@ -164,6 +165,7 @@ class ReceptionController extends Controller
                             'items' => $batch->batchItems->map(function($item) {
                                 return [
                                     'product_id' => $item->product_id,
+                                    'reception_item_id' => $item->reception_item_id,
                                     'quantity_received' => $item->quantity_received,
                                     'condition' => $item->condition,
                                 ];
@@ -584,12 +586,15 @@ class ReceptionController extends Controller
 
             // Create batch items and update inventory
             foreach ($data['items'] as $itemData) {
+                $quantityReceived = floatval($itemData['quantity_received']);
+
                 // Find matching reception item - prefer exact ID, fallback to product+brand
                 $receptionItem = $this->findReceptionItem(
                     $reception,
                     $itemData['reception_item_id'] ?? null,
                     $itemData['product_id'],
-                    $itemData['brand_id'] ?? null
+                    $itemData['brand_id'] ?? null,
+                    $quantityReceived
                 );
 
                 if (!$receptionItem) {
@@ -600,10 +605,10 @@ class ReceptionController extends Controller
 
                 // Validate quantity does not exceed pending
                 $maxAllowed = floatval($receptionItem->quantity_pending);
-                if ($itemData['quantity_received'] > $maxAllowed + 0.01) {
+                if ($quantityReceived > $maxAllowed + 0.01) {
                     $productName = $receptionItem->product?->name ?? 'Producto';
                     throw new \Exception(
-                        "La cantidad recibida ({$itemData['quantity_received']}) de {$productName} " .
+                        "La cantidad recibida ({$quantityReceived}) de {$productName} " .
                         "excede la cantidad pendiente ({$maxAllowed})."
                     );
                 }
@@ -613,14 +618,14 @@ class ReceptionController extends Controller
                     'batch_id' => $batch->id,
                     'product_id' => $itemData['product_id'],
                     'reception_item_id' => $receptionItem->id,
-                    'quantity_received' => $itemData['quantity_received'],
+                    'quantity_received' => $quantityReceived,
                     'condition' => $itemData['condition'],
                     'expiration_date' => $itemData['expiration_date'] ?? null,
                     'observations' => $itemData['observations'] ?? null,
                 ]);
 
                 // Update reception item quantities
-                $newQuantityReceived = $receptionItem->quantity_received + $itemData['quantity_received'];
+                $newQuantityReceived = $receptionItem->quantity_received + $quantityReceived;
                 $newQuantityPending = $receptionItem->quantity_expected - $newQuantityReceived;
 
                 $receptionItem->update([
@@ -701,12 +706,15 @@ class ReceptionController extends Controller
 
             // Create batch items and update inventory
             foreach ($data['items'] as $itemData) {
+                $quantityReceived = floatval($itemData['quantity_received']);
+
                 // Find matching reception item - prefer exact ID, fallback to product+brand
                 $receptionItem = $this->findReceptionItem(
                     $reception,
                     $itemData['reception_item_id'] ?? null,
                     $itemData['product_id'],
-                    $itemData['brand_id'] ?? null
+                    $itemData['brand_id'] ?? null,
+                    $quantityReceived
                 );
 
                 if (!$receptionItem) {
@@ -717,10 +725,10 @@ class ReceptionController extends Controller
 
                 // Validate quantity does not exceed pending
                 $maxAllowed = floatval($receptionItem->quantity_pending);
-                if ($itemData['quantity_received'] > $maxAllowed + 0.01) {
+                if ($quantityReceived > $maxAllowed + 0.01) {
                     $productName = $receptionItem->product?->name ?? 'Producto';
                     throw new \Exception(
-                        "La cantidad recibida ({$itemData['quantity_received']}) de {$productName} " .
+                        "La cantidad recibida ({$quantityReceived}) de {$productName} " .
                         "excede la cantidad pendiente ({$maxAllowed})."
                     );
                 }
@@ -730,14 +738,14 @@ class ReceptionController extends Controller
                     'batch_id' => $batch->id,
                     'product_id' => $itemData['product_id'],
                     'reception_item_id' => $receptionItem->id,
-                    'quantity_received' => $itemData['quantity_received'],
+                    'quantity_received' => $quantityReceived,
                     'condition' => $itemData['condition'],
                     'expiration_date' => $itemData['expiration_date'] ?? null,
                     'observations' => $itemData['observations'] ?? null,
                 ]);
 
                 // Update reception item quantities
-                $newQuantityReceived = $receptionItem->quantity_received + $itemData['quantity_received'];
+                $newQuantityReceived = $receptionItem->quantity_received + $quantityReceived;
                 $newQuantityPending = $receptionItem->quantity_expected - $newQuantityReceived;
 
                 $receptionItem->update([
@@ -1006,6 +1014,20 @@ class ReceptionController extends Controller
             $suggestedExpirationDate = $inventory?->expiration_date;
         }
 
+        // Lookup packaging info from source purchase item
+        $packagingInfo = null;
+        if ($reception->source_type === 'purchase' && $item->source_item_id) {
+            $purchaseItem = PurchaseItem::with('packagingUnit')->find($item->source_item_id);
+            if ($purchaseItem && $purchaseItem->packagingUnit) {
+                $packagingInfo = [
+                    'packagingUnitName' => $purchaseItem->packagingUnit->name,
+                    'packagingQuantity' => $purchaseItem->quantity,
+                    'baseQuantityPerUnit' => $purchaseItem->packagingUnit->base_quantity,
+                    'baseUnit' => $purchaseItem->packagingUnit->base_unit,
+                ];
+            }
+        }
+
         return [
             'id' => $item->id,
             'productId' => $item->product_id,
@@ -1030,6 +1052,7 @@ class ReceptionController extends Controller
             'suggestedExpirationDate' => $suggestedExpirationDate instanceof \DateTimeInterface
                 ? $suggestedExpirationDate->format('Y-m-d')
                 : ($suggestedExpirationDate ? (string)$suggestedExpirationDate : null),
+            'packagingInfo' => $packagingInfo,
         ];
     }
 
@@ -1042,22 +1065,61 @@ class ReceptionController extends Controller
         Reception $reception,
         ?string $receptionItemId,
         string $productId,
-        ?string $brandId
+        ?string $brandId,
+        ?float $quantityRequested = null
     ): ?ReceptionItem {
-        // Exact match by ID (preferred - handles duplicate products)
         if ($receptionItemId) {
+            // Exact match by reception_item ID (preferred)
             $item = $reception->receptionItems()->find($receptionItemId);
+            if ($item) {
+                return $item;
+            }
+
+            // The frontend may send the source item ID (OutputProduct/PurchaseItem ID)
+            // instead of the ReceptionItem ID on first reception
+            $item = $reception->receptionItems()
+                ->where('source_item_id', $receptionItemId)
+                ->first();
             if ($item) {
                 return $item;
             }
         }
 
-        // Fallback: product_id + brand_id (for backwards compatibility / first reception)
-        // Only safe when there's a single item per product+brand
-        return $reception->receptionItems()
+        // Fallback: product_id + brand_id
+        $candidates = $reception->receptionItems()
             ->where('product_id', $productId)
             ->where('brand_id', $brandId)
-            ->first();
+            ->where('quantity_pending', '>', 0)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        if ($candidates->count() <= 1) {
+            return $candidates->first();
+        }
+
+        // Multiple items with same product+brand (duplicates): find the best match
+        // First try exact match by quantity_expected == quantityRequested
+        if ($quantityRequested !== null) {
+            $exactMatch = $candidates->first(function ($item) use ($quantityRequested) {
+                return abs(floatval($item->quantity_expected) - $quantityRequested) < 0.01;
+            });
+            if ($exactMatch) {
+                return $exactMatch;
+            }
+        }
+
+        // Otherwise return first item that can accommodate the requested quantity
+        if ($quantityRequested !== null) {
+            $fittingMatch = $candidates->first(function ($item) use ($quantityRequested) {
+                return floatval($item->quantity_pending) >= $quantityRequested - 0.01;
+            });
+            if ($fittingMatch) {
+                return $fittingMatch;
+            }
+        }
+
+        // Last resort: return first with pending
+        return $candidates->first();
     }
 
     /**
@@ -1090,17 +1152,18 @@ class ReceptionController extends Controller
         if ($sourceType === 'purchase') {
             foreach ($source->purchaseItems as $purchaseItem) {
                 $packagingUnit = PackagingUnit::find($purchaseItem->packaging_unit_id);
-                $unit = $packagingUnit ? $packagingUnit->name : 'unidades';
+                $baseUnit = $packagingUnit ? $packagingUnit->base_unit : 'unidades';
+                $quantityInBase = $purchaseItem->quantity_in_base_units ?? $purchaseItem->quantity;
 
                 ReceptionItem::create([
                     'reception_id' => $reception->id,
                     'product_id' => $purchaseItem->product_id,
                     'brand_id' => $purchaseItem->brand_id,
                     'source_item_id' => $purchaseItem->id,
-                    'quantity_expected' => $purchaseItem->quantity,
+                    'quantity_expected' => $quantityInBase,
                     'quantity_received' => 0,
-                    'quantity_pending' => $purchaseItem->quantity,
-                    'unit' => $unit,
+                    'quantity_pending' => $quantityInBase,
+                    'unit' => $baseUnit,
                 ]);
             }
         } elseif ($sourceType === 'output') {

@@ -92,6 +92,20 @@ class ReceptionResource extends JsonResource
                         $suggestedExpirationDate = $inventory?->expiration_date;
                     }
 
+                    // Lookup packaging info from source purchase item
+                    $packagingInfo = null;
+                    if ($this->source_type === 'purchase' && $item->source_item_id) {
+                        $purchaseItem = \App\Models\PurchaseItem::with('packagingUnit')->find($item->source_item_id);
+                        if ($purchaseItem && $purchaseItem->packagingUnit) {
+                            $packagingInfo = [
+                                'packagingUnitName' => $purchaseItem->packagingUnit->name,
+                                'packagingQuantity' => $purchaseItem->quantity,
+                                'baseQuantityPerUnit' => $purchaseItem->packagingUnit->base_quantity,
+                                'baseUnit' => $purchaseItem->packagingUnit->base_unit,
+                            ];
+                        }
+                    }
+
                     return [
                         'id' => $item->id,
                         'productId' => $item->product_id,
@@ -122,6 +136,7 @@ class ReceptionResource extends JsonResource
                         'suggestedExpirationDate' => $suggestedExpirationDate?->format('Y-m-d'),
                         'condition' => $item->condition ?? null,
                         'observations' => $item->observations ?? null,
+                        'packagingInfo' => $packagingInfo,
                     ];
                 })
             ),

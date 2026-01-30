@@ -453,7 +453,7 @@ const ReceptionPage: React.FC = () => {
 
       // First reception - all items are pending (nothing received yet)
       const quantityExpected = selectedSource.source_type === 'purchase'
-        ? (parseFloat(item.quantity) || 0)
+        ? (parseFloat(item.quantityInBaseUnits) || parseFloat(item.quantity) || 0)
         : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
       return quantityExpected > 0;
     });
@@ -956,7 +956,11 @@ const ReceptionPage: React.FC = () => {
                 </div>
                 <div style={{ marginTop: 8 }}>
                   {batch.batch_items?.map((batchItem: any) => {
-                    const receptionItem = selectedReception.items.find((i: any) => i.productId === batchItem.productId);
+                    const receptionItem = selectedReception.items.find((i: any) =>
+                      batchItem.receptionItemId
+                        ? i.id === batchItem.receptionItemId
+                        : i.productId === batchItem.productId
+                    );
                     return (
                       <div key={batchItem.id} style={{ fontSize: 12, marginBottom: 4 }}>
                         • {receptionItem?.product?.name || 'N/A'}: {formatQuantity(batchItem.quantityReceived)} {receptionItem?.unit || 'kg'}
@@ -1015,7 +1019,7 @@ const ReceptionPage: React.FC = () => {
 
       // For source items without reception, calculate from source data
       const quantityExpected = selectedSource.source_type === 'purchase'
-        ? (parseFloat(item.quantity) || 0)
+        ? (parseFloat(item.quantityInBaseUnits) || parseFloat(item.quantity) || 0)
         : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
 
       return quantityExpected > 0;
@@ -1112,23 +1116,21 @@ const ReceptionPage: React.FC = () => {
                 } else {
                   // Source items (purchase or output) - first reception, no previous batches
                   quantityExpected = selectedSource.source_type === 'purchase'
-                    ? (parseFloat(item.quantity) || 0)
+                    ? (parseFloat(item.quantityInBaseUnits) || parseFloat(item.quantity) || 0)
                     : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
                   quantityAlreadyReceived = 0;
                   quantityPending = quantityExpected;
                 }
 
-                // Build unit display with base quantity and unit
+                // Build unit display - quantities are now in base units (kg, L, etc.)
                 let unitDisplay = '';
                 if (selectedSource.source_type === 'purchase') {
-                  const packagingName = item.packagingUnitName || item.unit;
-                  const baseQty = item.packagingUnitBaseQuantity;
-                  const baseUnit = item.packagingUnitBaseUnit;
-
-                  if (baseQty && baseUnit) {
-                    unitDisplay = `${packagingName} (${baseQty} ${baseUnit})`;
+                  if (hasReceptionItems) {
+                    // Reception items already have base unit after backend fix
+                    unitDisplay = item.unit;
                   } else {
-                    unitDisplay = packagingName;
+                    // First reception - use base unit from purchase item
+                    unitDisplay = item.packagingUnitBaseUnit || item.unit;
                   }
                 } else {
                   unitDisplay = item.unit;
@@ -1244,15 +1246,21 @@ const ReceptionPage: React.FC = () => {
                             placeholder="0"
                           />
                         </Form.Item>
-                        {selectedSource.source_type === 'purchase' && item.packagingUnitBaseQuantity && item.packagingUnitBaseUnit && (
+                        {selectedSource.source_type === 'purchase' && (() => {
+                          // Get packaging info from either reception item or source item
+                          const pkgName = item.packagingInfo?.packagingUnitName || item.packagingUnitName;
+                          const pkgBaseQty = parseFloat(item.packagingInfo?.baseQuantityPerUnit || item.packagingUnitBaseQuantity);
+                          return pkgName && !isNaN(pkgBaseQty) && pkgBaseQty > 0;
+                        })() && (
                           <Form.Item noStyle shouldUpdate>
                             {() => {
                               const currentValue = sourceReceptionForm.getFieldValue(['items', index, 'quantityReceived']) || 0;
-                              const baseQty = parseFloat(item.packagingUnitBaseQuantity);
-                              const baseUnit = item.packagingUnitBaseUnit;
+                              const pkgName = item.packagingInfo?.packagingUnitName || item.packagingUnitName;
+                              const pkgBaseQty = parseFloat(item.packagingInfo?.baseQuantityPerUnit || item.packagingUnitBaseQuantity);
 
-                              if (!isNaN(baseQty) && baseQty > 0 && currentValue > 0) {
-                                const totalInBase = currentValue * baseQty;
+                              if (!isNaN(pkgBaseQty) && pkgBaseQty > 0 && currentValue > 0) {
+                                // Input is now in base units (kg/L), show equivalent in packaging units
+                                const packagingUnits = currentValue / pkgBaseQty;
                                 return (
                                   <div style={{
                                     marginTop: -8,
@@ -1261,7 +1269,7 @@ const ReceptionPage: React.FC = () => {
                                     fontWeight: 500,
                                     textAlign: 'center'
                                   }}>
-                                    = {formatQuantity(totalInBase)} {baseUnit}
+                                    = {formatQuantity(packagingUnits)} {pkgName}
                                   </div>
                                 );
                               }
@@ -2024,17 +2032,33 @@ const ReceptionPage: React.FC = () => {
                 );
               }
 
-              // Calculate received quantities per product from reception batches
-              const receivedByProduct = new Map<string, number>();
+              // Calculate received quantities per SOURCE ITEM (keyed by source item ID, not product_id)
+              // This correctly handles duplicate products (same product_id+brand_id, different batches)
+              const receivedBySourceItem = new Map<string, number>();
               if (selectedSource.reception?.batches && Array.isArray(selectedSource.reception.batches)) {
+                // Build lookup: reception_item_id → source_item_id
+                const receptionItemToSourceItem = new Map<string, string>();
+                if (selectedSource.reception?.items) {
+                  selectedSource.reception.items.forEach((ri: any) => {
+                    if (ri.id && ri.sourceItemId) {
+                      receptionItemToSourceItem.set(ri.id, ri.sourceItemId);
+                    }
+                  });
+                }
+
                 selectedSource.reception.batches.forEach((batch: any) => {
                   if (batch.items && Array.isArray(batch.items)) {
                     batch.items.forEach((batchItem: any) => {
-                      const productId = batchItem.product_id;
-                      const currentReceived = receivedByProduct.get(productId) || 0;
+                      const receptionItemId = batchItem.reception_item_id;
+                      const sourceItemId = receptionItemId
+                        ? receptionItemToSourceItem.get(receptionItemId)
+                        : null;
+                      // Use sourceItemId as key (unique per source item), fallback to product_id
+                      const key = sourceItemId || batchItem.product_id;
+                      const currentReceived = receivedBySourceItem.get(key) || 0;
                       const qtyReceived = parseFloat(batchItem.quantity_received);
                       if (!isNaN(qtyReceived)) {
-                        receivedByProduct.set(productId, currentReceived + qtyReceived);
+                        receivedBySourceItem.set(key, currentReceived + qtyReceived);
                       }
                     });
                   }
@@ -2043,13 +2067,13 @@ const ReceptionPage: React.FC = () => {
 
               const totalItems = items.length;
               const totalQuantity = items.reduce((sum: number, item: any) => {
-                // For purchases, use 'quantity'. For outputs, use 'quantityDelivered'
+                // For purchases, use base units. For outputs, use 'quantityDelivered'
                 const qty = selectedSource.source_type === 'purchase'
-                  ? parseFloat(item.quantity)
+                  ? (parseFloat(item.quantityInBaseUnits) || parseFloat(item.quantity))
                   : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered));
                 return sum + (isNaN(qty) ? 0 : qty);
               }, 0);
-              const totalReceived = Array.from(receivedByProduct.values()).reduce((sum, qty) => sum + qty, 0);
+              const totalReceived = Array.from(receivedBySourceItem.values()).reduce((sum, qty) => sum + qty, 0);
 
               return (
                 <>
@@ -2079,25 +2103,17 @@ const ReceptionPage: React.FC = () => {
                       : item.brand?.name;
 
                     const productId = item.productId || item.product_id;
-                    // For purchases, use 'quantity'. For outputs, use 'quantityDelivered'
+                    // For purchases, use base units. For outputs, use 'quantityDelivered'
                     const quantityExpected = selectedSource.source_type === 'purchase'
-                      ? (parseFloat(item.quantity) || 0)
+                      ? (parseFloat(item.quantityInBaseUnits) || parseFloat(item.quantity) || 0)
                       : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
-                    const quantityReceived = receivedByProduct.get(productId) || 0;
+                    const quantityReceived = receivedBySourceItem.get(item.id) || 0;
                     const progressPercent = quantityExpected > 0 ? Math.round((quantityReceived / quantityExpected) * 100) : 0;
 
-                    // Build unit display with base quantity and unit
+                    // Build unit display - quantities are in base units
                     let unitDisplay = '';
                     if (selectedSource.source_type === 'purchase') {
-                      const packagingName = item.packagingUnitName || item.unit;
-                      const baseQty = item.packagingUnitBaseQuantity;
-                      const baseUnit = item.packagingUnitBaseUnit;
-
-                      if (baseQty && baseUnit) {
-                        unitDisplay = `${packagingName} (${baseQty} ${baseUnit})`;
-                      } else {
-                        unitDisplay = packagingName;
-                      }
+                      unitDisplay = item.packagingUnitBaseUnit || item.unit;
                     } else {
                       unitDisplay = item.unit;
                     }
@@ -2180,9 +2196,14 @@ const ReceptionPage: React.FC = () => {
                                 <div style={{ marginTop: 8 }}>
                                   <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>Productos recibidos:</div>
                                   {batch.items.map((batchItem: any, itemIdx: number) => {
-                                    const itemDetails = items.find((i: any) =>
-                                      (i.productId || i.product_id) === batchItem.product_id
-                                    );
+                                    // Use reception_item_id to find exact source item for duplicates
+                                    const receptionItem = batchItem.reception_item_id
+                                      ? selectedSource.reception?.items?.find((ri: any) => ri.id === batchItem.reception_item_id)
+                                      : null;
+                                    const sourceItemId = receptionItem?.sourceItemId;
+                                    const itemDetails = sourceItemId
+                                      ? items.find((i: any) => i.id === sourceItemId)
+                                      : items.find((i: any) => (i.productId || i.product_id) === batchItem.product_id);
                                     const productName = selectedSource.source_type === 'purchase'
                                       ? itemDetails?.productName
                                       : itemDetails?.product?.name;
@@ -2214,11 +2235,11 @@ const ReceptionPage: React.FC = () => {
                     // Check if there are any items with pending quantities
                     const hasPendingItems = items.some((item: any) => {
                       const productId = item.productId || item.product_id;
-                      // For purchases, use 'quantity'. For outputs, use 'quantityDelivered'
+                      // For purchases, use base units. For outputs, use 'quantityDelivered'
                       const quantityExpected = selectedSource.source_type === 'purchase'
-                        ? (parseFloat(item.quantity) || 0)
+                        ? (parseFloat(item.quantityInBaseUnits) || parseFloat(item.quantity) || 0)
                         : (parseFloat(item.quantityDelivered) || parseFloat(item.quantity_delivered) || 0);
-                      const quantityReceived = receivedByProduct.get(productId) || 0;
+                      const quantityReceived = receivedBySourceItem.get(item.id) || 0;
                       const quantityPending = quantityExpected - quantityReceived;
                       return quantityPending > 0;
                     });

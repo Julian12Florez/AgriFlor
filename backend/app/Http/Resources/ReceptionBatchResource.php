@@ -40,6 +40,7 @@ class ReceptionBatchResource extends JsonResource
                 fn() => $this->batchItems->map(function ($item) {
                     return [
                         'id' => $item->id,
+                        'receptionItemId' => $item->reception_item_id,
                         'productId' => $item->product_id,
                         'productName' => $item->product?->name ?? null,
                         'quantityReceived' => $item->quantity_received,
@@ -55,6 +56,7 @@ class ReceptionBatchResource extends JsonResource
                 fn() => $this->batchItems->map(function ($item) {
                     return [
                         'id' => $item->id,
+                        'receptionItemId' => $item->reception_item_id,
                         'productId' => $item->product_id,
                         'productName' => $item->product?->name ?? null,
                         'quantityReceived' => $item->quantity_received,
