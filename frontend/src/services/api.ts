@@ -37,11 +37,13 @@ class ApiService {
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const isPublic = ApiService.PUBLIC_ENDPOINTS.includes(endpoint);
+    const optHeaders = (options.headers || {}) as Record<string, string>;
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      ...(!optHeaders['Content-Type'] && !((options as any).body instanceof FormData)
+        ? { 'Content-Type': 'application/json' } : {}),
       'Accept': 'application/json',
       ...(authToken && !isPublic ? { 'Authorization': `Bearer ${authToken}` } : {}),
-      ...options.headers,
+      ...optHeaders,
     };
 
     try {
@@ -644,6 +646,139 @@ export const reportExportsApi = {
     const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     const url = `${API_BASE_URL}/reports/kardex-list/export-pdf${queryString}`;
     return downloadFile(url, 'inventario-actual.pdf');
+  },
+};
+
+// Workers API
+export const workersApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<any>('/workers', params),
+
+  listSimple: (params?: Record<string, any>) =>
+    api.get<any>('/workers/simple', params),
+
+  get: (id: string) =>
+    api.get<any>(`/workers/${id}`),
+
+  create: (data: any) =>
+    api.post<any>('/workers', data),
+
+  update: (id: string, data: any) =>
+    api.put<any>(`/workers/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<any>(`/workers/${id}`),
+
+  preview: (file: FormData) =>
+    api.post<any>('/workers/preview', file, true),
+
+  processImport: (data: any) =>
+    api.post<any>('/workers/import', data),
+
+  downloadTemplate: () => {
+    const url = `${API_BASE_URL}/workers/template`;
+    return downloadFile(url, 'plantilla_trabajadores.xlsx');
+  },
+};
+
+// Tasks API
+export const tasksApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<any>('/tasks', params),
+
+  listSimple: (params?: Record<string, any>) =>
+    api.get<any>('/tasks/simple', params),
+
+  get: (id: string) =>
+    api.get<any>(`/tasks/${id}`),
+
+  create: (data: any) =>
+    api.post<any>('/tasks', data),
+
+  update: (id: string, data: any) =>
+    api.put<any>(`/tasks/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<any>(`/tasks/${id}`),
+
+  getNetAmount: (id: string) =>
+    api.get<any>(`/tasks/${id}/net-amount`),
+
+  addDeduction: (taskId: string, data: any) =>
+    api.post<any>(`/tasks/${taskId}/deductions`, data),
+
+  updateDeduction: (taskId: string, deductionId: string, data: any) =>
+    api.put<any>(`/tasks/${taskId}/deductions/${deductionId}`, data),
+
+  deleteDeduction: (taskId: string, deductionId: string) =>
+    api.delete<any>(`/tasks/${taskId}/deductions/${deductionId}`),
+};
+
+// Daily Assignments API
+export const dailyAssignmentsApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<any>('/daily-assignments', params),
+
+  create: (data: { date: string; worker_id: string; task_id: string }) =>
+    api.post<any>('/daily-assignments', data),
+
+  preview: (file: FormData) =>
+    api.post<any>('/daily-assignments/preview', file, true),
+
+  process: (data: any) =>
+    api.post<any>('/daily-assignments/process', data),
+
+  downloadTemplate: () => {
+    const url = `${API_BASE_URL}/daily-assignments/template`;
+    return downloadFile(url, 'plantilla_asignaciones.xlsx');
+  },
+};
+
+// Liquidation Reports API
+export const liquidationReportsApi = {
+  generate: (data: any) =>
+    api.post<any>('/reports/liquidation', data),
+
+  exportExcel: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/liquidation/export-excel${queryString}`;
+    return downloadFile(url, 'liquidacion.xlsx');
+  },
+
+  exportPdf: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/liquidation/export-pdf${queryString}`;
+    return downloadFile(url, 'liquidacion.pdf');
+  },
+};
+
+// Liquidation Analytics API
+export const liquidationAnalyticsApi = {
+  laborCosts: (data: any) =>
+    api.post<any>('/reports/analytics/labor-costs', data),
+
+  workerProductivity: (data: any) =>
+    api.post<any>('/reports/analytics/worker-productivity', data),
+
+  taskAnalysis: (data: any) =>
+    api.post<any>('/reports/analytics/task-analysis', data),
+
+  deductionsBreakdown: (data: any) =>
+    api.post<any>('/reports/analytics/deductions-breakdown', data),
+
+  periodComparison: (data: any) =>
+    api.post<any>('/reports/analytics/period-comparison', data),
+
+  exportExcel: (type: string, params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/analytics/${type}/export-excel${queryString}`;
+    return downloadFile(url, `${type}-report.xlsx`);
+  },
+
+  exportPdf: (type: string, params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/analytics/${type}/export-pdf${queryString}`;
+    return downloadFile(url, `${type}-report.pdf`);
   },
 };
 

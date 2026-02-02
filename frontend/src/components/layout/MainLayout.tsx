@@ -16,6 +16,7 @@ import {
   BellOutlined,
   LogoutOutlined,
   LockOutlined,
+  DollarOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import usePermissions from '../../hooks/usePermissions';
@@ -123,6 +124,28 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           { key: '/reports/consolidated', label: 'Análisis Consolidado' },
           { key: '/reports/kardex', label: 'Kardex de Inventario' },
           { key: '/reports/audit', label: 'Auditoría de Inventario' },
+          // TODO: Habilitar cuando se liberen a producción
+          // { type: 'divider' as const },
+          // { key: '/reports/labor-costs', label: 'Costos Laborales' },
+          // { key: '/reports/worker-productivity', label: 'Productividad Trabajadores' },
+          // { key: '/reports/task-analysis', label: 'Análisis de Tareas' },
+          // { key: '/reports/deductions-breakdown', label: 'Desglose de Deducciones' },
+          // { key: '/reports/period-comparison', label: 'Comparativo de Periodos' },
+        ],
+      });
+    }
+
+    // Liquidación - module: 'liquidation'
+    if (hasModuleAccess('liquidation')) {
+      items.push({
+        key: 'sub7',
+        icon: <DollarOutlined />,
+        label: 'Liquidación',
+        children: [
+          { key: '/liquidation/workers', label: 'Trabajadores' },
+          { key: '/liquidation/tasks', label: 'Tareas' },
+          { key: '/liquidation/assignments', label: 'Asignaciones Diarias' },
+          { key: '/liquidation/report', label: 'Reporte de Liquidación' },
         ],
       });
     }

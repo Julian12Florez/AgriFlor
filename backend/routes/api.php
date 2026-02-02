@@ -20,6 +20,11 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\FarmLotController;
 use App\Http\Controllers\Api\OutputTypeController;
 use App\Http\Controllers\Api\ReportExportController;
+use App\Http\Controllers\Api\WorkerController;
+use App\Http\Controllers\Api\TaskController;
+use App\Http\Controllers\Api\DailyAssignmentController;
+use App\Http\Controllers\Api\LiquidationReportController;
+use App\Http\Controllers\Api\LiquidationAnalyticsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -347,6 +352,68 @@ Route::middleware('auth:api')->group(function () {
         // Kardex List (Inventory General) Exports
         Route::get('reports/kardex-list/export-excel', [ReportExportController::class, 'exportKardexListExcel']);
         Route::get('reports/kardex-list/export-pdf', [ReportExportController::class, 'exportKardexListPdf']);
+    });
+
+    // ----------------------------------------
+    // LIQUIDATION MODULE
+    // ----------------------------------------
+
+    // WORKERS - Read (All authenticated - for dropdowns)
+    Route::get('workers/simple', [WorkerController::class, 'listSimple']);
+
+    // WORKERS - CRUD (Admin, Liquidador)
+    Route::middleware('role:admin,liquidador')->group(function () {
+        Route::get('workers', [WorkerController::class, 'index']);
+        Route::post('workers', [WorkerController::class, 'store']);
+        Route::get('workers/template', [WorkerController::class, 'downloadTemplate']);
+        Route::post('workers/preview', [WorkerController::class, 'preview']);
+        Route::post('workers/import', [WorkerController::class, 'processImport']);
+        Route::get('workers/{id}', [WorkerController::class, 'show']);
+        Route::put('workers/{id}', [WorkerController::class, 'update']);
+        Route::delete('workers/{id}', [WorkerController::class, 'destroy']);
+    });
+
+    // TASKS - Read (All authenticated - for dropdowns)
+    Route::get('tasks/simple', [TaskController::class, 'listSimple']);
+
+    // TASKS - CRUD (Admin, Liquidador)
+    Route::middleware('role:admin,liquidador')->group(function () {
+        Route::get('tasks', [TaskController::class, 'index']);
+        Route::post('tasks', [TaskController::class, 'store']);
+        Route::get('tasks/{id}', [TaskController::class, 'show']);
+        Route::put('tasks/{id}', [TaskController::class, 'update']);
+        Route::delete('tasks/{id}', [TaskController::class, 'destroy']);
+        Route::get('tasks/{id}/net-amount', [TaskController::class, 'getNetAmount']);
+
+        // Task Deductions
+        Route::post('tasks/{id}/deductions', [TaskController::class, 'storeDeduction']);
+        Route::put('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'updateDeduction']);
+        Route::delete('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'destroyDeduction']);
+    });
+
+    // DAILY ASSIGNMENTS (Admin, Liquidador)
+    Route::middleware('role:admin,liquidador')->group(function () {
+        Route::get('daily-assignments', [DailyAssignmentController::class, 'index']);
+        Route::post('daily-assignments', [DailyAssignmentController::class, 'store']);
+        Route::get('daily-assignments/template', [DailyAssignmentController::class, 'downloadTemplate']);
+        Route::post('daily-assignments/preview', [DailyAssignmentController::class, 'preview']);
+        Route::post('daily-assignments/process', [DailyAssignmentController::class, 'process']);
+    });
+
+    // LIQUIDATION REPORTS (Admin, Liquidador, Supervisor, Financiero)
+    Route::middleware('role:admin,liquidador,supervisor,financiero')->group(function () {
+        Route::post('reports/liquidation', [LiquidationReportController::class, 'generate']);
+        Route::get('reports/liquidation/export-excel', [LiquidationReportController::class, 'exportExcel']);
+        Route::get('reports/liquidation/export-pdf', [LiquidationReportController::class, 'exportPdf']);
+
+        // LIQUIDATION ANALYTICS REPORTS (FUN-001 to FUN-005)
+        Route::post('reports/analytics/labor-costs', [LiquidationAnalyticsController::class, 'laborCosts']);
+        Route::post('reports/analytics/worker-productivity', [LiquidationAnalyticsController::class, 'workerProductivity']);
+        Route::post('reports/analytics/task-analysis', [LiquidationAnalyticsController::class, 'taskAnalysis']);
+        Route::post('reports/analytics/deductions-breakdown', [LiquidationAnalyticsController::class, 'deductionsBreakdown']);
+        Route::post('reports/analytics/period-comparison', [LiquidationAnalyticsController::class, 'periodComparison']);
+        Route::get('reports/analytics/{type}/export-excel', [LiquidationAnalyticsController::class, 'exportExcel']);
+        Route::get('reports/analytics/{type}/export-pdf', [LiquidationAnalyticsController::class, 'exportPdf']);
     });
 });
 

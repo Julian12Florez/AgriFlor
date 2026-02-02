@@ -337,3 +337,151 @@ export interface FilterParams {
   page?: number;
   limit?: number;
 }
+
+// Liquidation Module Types
+export interface Worker {
+  id: string;
+  workerCode: string;
+  worker_code: string;
+  fullName: string;
+  full_name: string;
+  documentId: string;
+  document_id: string;
+  hireDate: string;
+  hire_date: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Task {
+  id: string;
+  code: string;
+  name: string;
+  durationHours: number;
+  duration_hours: number;
+  dailyCost: number;
+  daily_cost: number;
+  description?: string;
+  status: 'active' | 'inactive';
+  deductions?: TaskDeduction[];
+  netAmount?: number;
+  net_amount?: number;
+  totalDeductions?: number;
+  total_deductions?: number;
+  totalDeductionPercentage?: number;
+  total_deduction_percentage?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TaskDeduction {
+  id: string;
+  deductionName: string;
+  deduction_name: string;
+  percentage: number;
+  isActive: boolean;
+  is_active: boolean;
+}
+
+export interface DailyAssignment {
+  id: string;
+  date: string;
+  workerCode: string;
+  worker_code: string;
+  taskCode: string;
+  task_code: string;
+  grossAmount: number;
+  gross_amount: number;
+  totalDeductions: number;
+  total_deductions: number;
+  netAmount: number;
+  net_amount: number;
+  deductionsDetail: DeductionDetail[];
+  deductions_detail: DeductionDetail[];
+  processedAt?: string;
+  processed_at?: string;
+  worker?: Worker;
+  task?: Task;
+  processedBy?: { id: string; name: string };
+  createdAt: string;
+}
+
+export interface DeductionDetail {
+  name: string;
+  percentage: number;
+  amount: number;
+}
+
+export interface WorkerPreviewRow {
+  row: number;
+  worker_code: string;
+  full_name: string;
+  document_id: string;
+  hire_date: string;
+}
+
+export interface WorkerInvalidRow {
+  row: number;
+  worker_code: string;
+  full_name: string;
+  document_id: string;
+  hire_date: string;
+  errors: string[];
+}
+
+export interface AssignmentPreviewRow {
+  row: number;
+  worker_code: string;
+  worker_name: string;
+  task_code: string;
+  task_name: string;
+  gross_amount: number;
+  total_deductions: number;
+  net_amount: number;
+  deductions_detail: DeductionDetail[];
+}
+
+export interface AssignmentInvalidRow {
+  row: number;
+  worker_code: string;
+  task_code: string;
+  errors: string[];
+}
+
+export interface LiquidationReport {
+  period: { start_date: string; end_date: string };
+  workers: LiquidationWorkerGroup[];
+  totals: {
+    gross_amount: number;
+    total_deductions: number;
+    net_amount: number;
+    total_assignments: number;
+    total_workers: number;
+  };
+  deduction_breakdown: Record<string, number>;
+}
+
+export interface LiquidationWorkerGroup {
+  worker: {
+    id: string;
+    worker_code: string;
+    full_name: string;
+    document_id: string;
+  };
+  assignments: Array<{
+    date: string;
+    task_code: string;
+    task_name: string;
+    gross_amount: number;
+    total_deductions: number;
+    net_amount: number;
+    deductions_detail: DeductionDetail[];
+  }>;
+  subtotals: {
+    gross_amount: number;
+    total_deductions: number;
+    net_amount: number;
+    days_worked: number;
+  };
+}

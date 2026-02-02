@@ -33,6 +33,15 @@ import InventoryAudit from './pages/reports/InventoryAudit';
 import StockReport from './pages/reports/StockReport';
 import ConsumptionReport from './pages/reports/ConsumptionReport';
 import Users from './pages/admin/Users';
+import Workers from './pages/liquidation/Workers';
+import Tasks from './pages/liquidation/Tasks';
+import DailyAssignments from './pages/liquidation/DailyAssignments';
+import LiquidationReport from './pages/liquidation/LiquidationReport';
+import LaborCostsReport from './pages/reports/LaborCostsReport';
+import WorkerProductivityReport from './pages/reports/WorkerProductivityReport';
+import TaskAnalysisReport from './pages/reports/TaskAnalysisReport';
+import DeductionsBreakdownReport from './pages/reports/DeductionsBreakdownReport';
+import PeriodComparisonReport from './pages/reports/PeriodComparisonReport';
 import Login from './pages/auth/Login';
 import ResetPassword from './pages/auth/ResetPassword';
 
@@ -248,6 +257,80 @@ const App: React.FC = () => {
                 <ProtectedRoute module="admin" showAccessDenied>
                   <MainLayout>
                     <Users />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              {/* Liquidation Routes - module: 'liquidation' */}
+              <Route path="/liquidation/workers" element={
+                <ProtectedRoute module="liquidation" showAccessDenied>
+                  <MainLayout>
+                    <Workers />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/liquidation/tasks" element={
+                <ProtectedRoute module="liquidation" showAccessDenied>
+                  <MainLayout>
+                    <Tasks />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/liquidation/assignments" element={
+                <ProtectedRoute module="liquidation" showAccessDenied>
+                  <MainLayout>
+                    <DailyAssignments />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/liquidation/report" element={
+                <ProtectedRoute module="liquidation" showAccessDenied>
+                  <MainLayout>
+                    <LiquidationReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              {/* Liquidation Analytics Reports - accessible via reports module */}
+              <Route path="/reports/labor-costs" element={
+                <ProtectedRoute module="reports" showAccessDenied>
+                  <MainLayout>
+                    <LaborCostsReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/reports/worker-productivity" element={
+                <ProtectedRoute module="reports" showAccessDenied>
+                  <MainLayout>
+                    <WorkerProductivityReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/reports/task-analysis" element={
+                <ProtectedRoute module="reports" showAccessDenied>
+                  <MainLayout>
+                    <TaskAnalysisReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/reports/deductions-breakdown" element={
+                <ProtectedRoute module="reports" showAccessDenied>
+                  <MainLayout>
+                    <DeductionsBreakdownReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/reports/period-comparison" element={
+                <ProtectedRoute module="reports" showAccessDenied>
+                  <MainLayout>
+                    <PeriodComparisonReport />
                   </MainLayout>
                 </ProtectedRoute>
               } />
