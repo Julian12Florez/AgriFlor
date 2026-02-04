@@ -112,7 +112,7 @@ class ReceptionResource extends JsonResource
                         'product' => $item->product ? [
                             'id' => $item->product->id,
                             'name' => $item->product->name,
-                            'category' => $item->product->category_name ?? 'Sin categoría',
+                            'category' => $item->product->category?->name ?? 'Sin categoría',
                             'category_id' => $item->product->category_id,
                             'packagingUnits' => $item->product->packagingUnits->map(fn($pu) => [
                                 'id' => $pu->id,

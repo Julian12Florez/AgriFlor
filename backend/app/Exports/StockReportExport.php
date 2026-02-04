@@ -196,7 +196,7 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
                     $grouped[$key] = [
                         'product_name' => $item->product->name ?? 'Sin nombre',
                         'product_code' => $item->product->product_code ?? 'N/A',
-                        'category' => $item->product->category_name ?? 'Sin categoría',
+                        'category' => $item->product->category?->name ?? 'Sin categoría',
                         'brand_name' => $item->product->brand->name ?? 'Sin marca',
                         'total_quantity' => 0,
                         'total_value' => 0,
