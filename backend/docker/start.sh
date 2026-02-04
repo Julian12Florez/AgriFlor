@@ -37,5 +37,9 @@ php artisan db:seed --class=PermissionsSeeder --force 2>&1 || echo "==> WARNING:
 php artisan db:seed --class=RolesSeeder --force 2>&1 || echo "==> WARNING: RolesSeeder had issues, continuing..."
 php artisan db:seed --class=UserSeeder --force 2>&1 || echo "==> WARNING: UserSeeder had issues, continuing..."
 
+# Update products with category_id (migration helper)
+echo "==> Updating product categories..."
+php artisan products:update-categories 2>&1 || echo "==> WARNING: Product categories update had issues, continuing..."
+
 echo "==> Starting supervisord..."
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/app.conf
