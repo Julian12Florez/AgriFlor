@@ -20,8 +20,6 @@ use App\Http\Controllers\Api\ProductOutputController;
 use App\Http\Controllers\Api\ReportExportController;
 use App\Http\Controllers\Api\PackagingUnitController;
 use App\Http\Controllers\Api\LiquidationController;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 /*
 |--------------------------------------------------------------------------
@@ -32,47 +30,6 @@ use Illuminate\Support\Facades\Schema;
 // Public routes
 Route::post('auth/login', [AuthController::class, 'login']);
 Route::post('auth/register', [AuthController::class, 'register']);
-
-// Diagnostic endpoint (temporary - remove after fixing)
-Route::get('db-diagnostic', function () {
-    $result = [
-        'categories_table_exists' => Schema::hasTable('categories'),
-        'products_has_category_id' => Schema::hasColumn('products', 'category_id'),
-        'products_has_category_enum' => Schema::hasColumn('products', 'category'),
-        'categories_count' => 0,
-        'products_with_category_id' => 0,
-        'products_without_category_id' => 0,
-        'sample_product' => null,
-        'pending_migrations' => [],
-    ];
-
-    if ($result['categories_table_exists']) {
-        $result['categories_count'] = DB::table('categories')->count();
-        $result['categories'] = DB::table('categories')->select('id', 'name', 'slug')->get();
-    }
-
-    if ($result['products_has_category_id']) {
-        $result['products_with_category_id'] = DB::table('products')->whereNotNull('category_id')->count();
-        $result['products_without_category_id'] = DB::table('products')->whereNull('category_id')->count();
-    }
-
-    // Get sample product
-    $result['sample_product'] = DB::table('products')->select('id', 'name', 'category_id',
-        DB::raw("CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'category') THEN 'has_enum' ELSE 'no_enum' END as enum_status")
-    )->first();
-
-    // Check pending migrations
-    $ran = DB::table('migrations')->pluck('migration')->toArray();
-    $files = glob(database_path('migrations/*.php'));
-    foreach ($files as $file) {
-        $name = basename($file, '.php');
-        if (!in_array($name, $ran)) {
-            $result['pending_migrations'][] = $name;
-        }
-    }
-
-    return response()->json($result);
-});
 
 // Protected routes
 Route::middleware('auth:api')->group(function () {
