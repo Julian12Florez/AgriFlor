@@ -1,106 +1,115 @@
 <?php
 
-use App\Http\Controllers\Api\AlertController;
-use App\Http\Controllers\Api\ApplicationController;
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\RoleController;
+use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\CategoryController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\InventoryController;
-use App\Http\Controllers\Api\LocationController;
-use App\Http\Controllers\Api\PackagingUnitController;
-use App\Http\Controllers\Api\BaseUnitController;
-use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\ProductOutputController;
-use App\Http\Controllers\Api\PurchaseController;
-use App\Http\Controllers\Api\ReceptionController;
 use App\Http\Controllers\Api\SupplierController;
+use App\Http\Controllers\Api\LocationController;
+use App\Http\Controllers\Api\PurchaseController;
+use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\TransferController;
+use App\Http\Controllers\Api\ReceptionController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\TechnicalOrderController;
 use App\Http\Controllers\Api\TechnicalRecipeController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\FarmLotController;
-use App\Http\Controllers\Api\OutputTypeController;
+use App\Http\Controllers\Api\ProductOutputController;
 use App\Http\Controllers\Api\ReportExportController;
-use App\Http\Controllers\Api\WorkerController;
-use App\Http\Controllers\Api\TaskController;
-use App\Http\Controllers\Api\DailyAssignmentController;
-use App\Http\Controllers\Api\LiquidationReportController;
-use App\Http\Controllers\Api\LiquidationAnalyticsController;
-use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\PackagingUnitController;
+use App\Http\Controllers\Api\LiquidationController;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /*
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Aquí se registran todas las rutas API para la aplicación AgriFlor.
-| Todas las rutas están protegidas con autenticación JWT excepto login.
-|
 */
 
-// ============================================
-// PUBLIC ROUTES (No Authentication Required)
-// ============================================
+// Public routes
+Route::post('auth/login', [AuthController::class, 'login']);
+Route::post('auth/register', [AuthController::class, 'register']);
 
-Route::prefix('auth')->group(function () {
-    Route::post('login', [AuthController::class, 'login']);
-    Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
-    Route::post('reset-password', [AuthController::class, 'resetPassword']);
+// Diagnostic endpoint (temporary - remove after fixing)
+Route::get('db-diagnostic', function () {
+    $result = [
+        'categories_table_exists' => Schema::hasTable('categories'),
+        'products_has_category_id' => Schema::hasColumn('products', 'category_id'),
+        'products_has_category_enum' => Schema::hasColumn('products', 'category'),
+        'categories_count' => 0,
+        'products_with_category_id' => 0,
+        'products_without_category_id' => 0,
+        'sample_product' => null,
+        'pending_migrations' => [],
+    ];
+
+    if ($result['categories_table_exists']) {
+        $result['categories_count'] = DB::table('categories')->count();
+        $result['categories'] = DB::table('categories')->select('id', 'name', 'slug')->get();
+    }
+
+    if ($result['products_has_category_id']) {
+        $result['products_with_category_id'] = DB::table('products')->whereNotNull('category_id')->count();
+        $result['products_without_category_id'] = DB::table('products')->whereNull('category_id')->count();
+    }
+
+    // Get sample product
+    $result['sample_product'] = DB::table('products')->select('id', 'name', 'category_id',
+        DB::raw("CASE WHEN EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'category') THEN 'has_enum' ELSE 'no_enum' END as enum_status")
+    )->first();
+
+    // Check pending migrations
+    $ran = DB::table('migrations')->pluck('migration')->toArray();
+    $files = glob(database_path('migrations/*.php'));
+    foreach ($files as $file) {
+        $name = basename($file, '.php');
+        if (!in_array($name, $ran)) {
+            $result['pending_migrations'][] = $name;
+        }
+    }
+
+    return response()->json($result);
 });
 
-// ============================================
-// PROTECTED ROUTES (JWT Authentication Required)
-// ============================================
-
+// Protected routes
 Route::middleware('auth:api')->group(function () {
+    // Auth
+    Route::post('auth/logout', [AuthController::class, 'logout']);
+    Route::post('auth/refresh', [AuthController::class, 'refresh']);
+    Route::get('auth/me', [AuthController::class, 'me']);
+    Route::put('auth/profile', [AuthController::class, 'updateProfile']);
+    Route::put('auth/password', [AuthController::class, 'changePassword']);
 
-    // ----------------------------------------
-    // AUTH ROUTES
-    // ----------------------------------------
-    Route::prefix('auth')->group(function () {
-        Route::post('logout', [AuthController::class, 'logout']);
-        Route::post('refresh', [AuthController::class, 'refresh']);
-        Route::get('me', [AuthController::class, 'me']);
-        Route::post('change-password', [AuthController::class, 'changePassword']);
-    });
+    // Dashboard
+    Route::get('dashboard/statistics', [DashboardController::class, 'getStatistics']);
+    Route::get('dashboard/inventory-by-category', [DashboardController::class, 'getInventoryByCategory']);
+    Route::get('dashboard/recent-activity', [DashboardController::class, 'getRecentActivity']);
 
-    // ----------------------------------------
-    // DASHBOARD ROUTES (All authenticated users)
-    // ----------------------------------------
-    Route::prefix('dashboard')->group(function () {
-        Route::get('statistics', [DashboardController::class, 'getStatistics']);
-        Route::get('inventory-by-category', [DashboardController::class, 'getInventoryByCategory']);
-        Route::get('recent-activity', [DashboardController::class, 'getRecentActivity']);
-    });
+    // USERS - Read (All authenticated)
+    Route::get('users', [UserController::class, 'index']);
+    Route::get('users/{user}', [UserController::class, 'show']);
 
-    // ----------------------------------------
-    // USER LIST (All authenticated - for dropdowns)
-    // ----------------------------------------
-    Route::get('users/simple', [UserController::class, 'listSimple']);
-
-    // ----------------------------------------
-    // USER MANAGEMENT (Admin only)
-    // ----------------------------------------
+    // USERS - Write (Admin only)
     Route::middleware('role:admin')->group(function () {
-        Route::apiResource('users', UserController::class);
-        Route::patch('users/{id}/status', [UserController::class, 'updateStatus']);
+        Route::post('users', [UserController::class, 'store']);
+        Route::put('users/{user}', [UserController::class, 'update']);
+        Route::delete('users/{user}', [UserController::class, 'destroy']);
+        Route::post('users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
     });
 
-    // ----------------------------------------
-    // MASTER DATA MODULES
-    // ----------------------------------------
+    // ROLES - Read (All authenticated)
+    Route::get('roles', [RoleController::class, 'index']);
+    Route::get('roles/{role}', [RoleController::class, 'show']);
+    Route::get('permissions', [RoleController::class, 'permissions']);
 
-    // PRODUCTS - Read (All authenticated - needed for outputs/receptions)
-    Route::get('products', [ProductController::class, 'index']);
-    Route::get('products/{product}', [ProductController::class, 'show']);
-    Route::post('products/search-with-inventory', [ProductController::class, 'searchWithInventory']);
-    Route::get('products-for-outputs', [ProductController::class, 'getForOutputs']);
-
-    // PRODUCTS - Write (Admin, Purchasing, Warehouse, Agronomist)
-    Route::middleware('role:admin,purchasing,warehouse,agronomist')->group(function () {
-        Route::post('products', [ProductController::class, 'store']);
-        Route::put('products/{product}', [ProductController::class, 'update']);
-        Route::delete('products/{product}', [ProductController::class, 'destroy']);
+    // ROLES - Write (Admin only)
+    Route::middleware('role:admin')->group(function () {
+        Route::post('roles', [RoleController::class, 'store']);
+        Route::put('roles/{role}', [RoleController::class, 'update']);
+        Route::delete('roles/{role}', [RoleController::class, 'destroy']);
     });
 
     // BRANDS - Read (All authenticated)
@@ -134,357 +143,174 @@ Route::middleware('auth:api')->group(function () {
         Route::post('suppliers', [SupplierController::class, 'store']);
         Route::put('suppliers/{supplier}', [SupplierController::class, 'update']);
         Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy']);
-        Route::post('suppliers/{id}/contacts', [SupplierController::class, 'addContact']);
-        Route::delete('suppliers/{id}/contacts/{contactId}', [SupplierController::class, 'removeContact']);
     });
 
-    // LOCATIONS - Read (All authenticated - needed for outputs/receptions)
+    // LOCATIONS - Read (All authenticated)
     Route::get('locations', [LocationController::class, 'index']);
     Route::get('locations/{location}', [LocationController::class, 'show']);
-    Route::get('locations/type/warehouses', [LocationController::class, 'warehouses']);
-    Route::get('locations/type/farms', [LocationController::class, 'farms']);
 
-    // LOCATIONS - Write (Admin, Warehouse, Supervisor, Purchasing)
-    Route::middleware('role:admin,warehouse,supervisor,purchasing')->group(function () {
+    // LOCATIONS - Write (Admin)
+    Route::middleware('role:admin')->group(function () {
         Route::post('locations', [LocationController::class, 'store']);
         Route::put('locations/{location}', [LocationController::class, 'update']);
         Route::delete('locations/{location}', [LocationController::class, 'destroy']);
     });
 
-    // FARM LOTS - Read (All authenticated - needed for outputs/receptions)
-    Route::get('farm-lots', [FarmLotController::class, 'index']);
-    Route::get('farm-lots/{id}', [FarmLotController::class, 'show']);
-    Route::get('locations/{locationId}/farm-lots', [FarmLotController::class, 'getByLocation']);
-
-    // FARM LOTS - Write (Admin, Warehouse)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('farm-lots', [FarmLotController::class, 'store']);
-        Route::put('farm-lots/{id}', [FarmLotController::class, 'update']);
-        Route::delete('farm-lots/{id}', [FarmLotController::class, 'destroy']);
-    });
-
-    // OUTPUT TYPES (All authenticated users can view)
-    Route::get('output-types', [OutputTypeController::class, 'index']);
-    Route::get('output-types/{id}', [OutputTypeController::class, 'show']);
-
-    // OUTPUT TYPES - Write operations (Admin only)
-    Route::middleware('role:admin')->group(function () {
-        Route::post('output-types', [OutputTypeController::class, 'store']);
-        Route::put('output-types/{id}', [OutputTypeController::class, 'update']);
-        Route::delete('output-types/{id}', [OutputTypeController::class, 'destroy']);
-    });
-
     // PACKAGING UNITS - Read (All authenticated)
     Route::get('packaging-units', [PackagingUnitController::class, 'index']);
-    Route::get('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'show']);
+    Route::get('packaging-units/{packagingUnit}', [PackagingUnitController::class, 'show']);
 
     // PACKAGING UNITS - Write (Admin, Purchasing)
     Route::middleware('role:admin,purchasing')->group(function () {
         Route::post('packaging-units', [PackagingUnitController::class, 'store']);
-        Route::put('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'update']);
-        Route::delete('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'destroy']);
+        Route::put('packaging-units/{packagingUnit}', [PackagingUnitController::class, 'update']);
+        Route::delete('packaging-units/{packagingUnit}', [PackagingUnitController::class, 'destroy']);
     });
 
-    // BASE UNITS - Read (All authenticated)
-    Route::get('base-units', [BaseUnitController::class, 'index']);
-    Route::get('base-units/{base_unit}', [BaseUnitController::class, 'show']);
+    // PRODUCTS - Read (All authenticated)
+    Route::get('products', [ProductController::class, 'index']);
+    Route::get('products/{product}', [ProductController::class, 'show']);
+    Route::get('products-with-inventory', [ProductController::class, 'searchWithInventory']);
+    Route::get('products-for-outputs', [ProductController::class, 'getForOutputs']);
 
-    // BASE UNITS - Write (Admin, Purchasing)
+    // PRODUCTS - Write (Admin, Purchasing)
     Route::middleware('role:admin,purchasing')->group(function () {
-        Route::post('base-units', [BaseUnitController::class, 'store']);
-        Route::put('base-units/{base_unit}', [BaseUnitController::class, 'update']);
-        Route::delete('base-units/{base_unit}', [BaseUnitController::class, 'destroy']);
+        Route::post('products', [ProductController::class, 'store']);
+        Route::put('products/{product}', [ProductController::class, 'update']);
+        Route::delete('products/{product}', [ProductController::class, 'destroy']);
     });
 
-    // ----------------------------------------
-    // TECHNICAL PROCESSES
-    // ----------------------------------------
-
-    // TECHNICAL RECIPES (Admin, Agronomist)
-    Route::middleware('role:admin,agronomist')->group(function () {
-        Route::apiResource('technical-recipes', TechnicalRecipeController::class);
-        Route::post('technical-recipes/{id}/duplicate', [TechnicalRecipeController::class, 'duplicate']);
-    });
-
-    // TECHNICAL ORDERS (Admin, Agronomist, Supervisor - View only)
-    Route::middleware('role:admin,agronomist,supervisor')->group(function () {
-        Route::get('technical-orders', [TechnicalOrderController::class, 'index']);
-        Route::get('technical-orders/{id}', [TechnicalOrderController::class, 'show']);
-    });
-
-    // TECHNICAL ORDERS - Write operations (Admin, Agronomist only)
-    Route::middleware('role:admin,agronomist')->group(function () {
-        Route::post('technical-orders', [TechnicalOrderController::class, 'store']);
-        Route::put('technical-orders/{id}', [TechnicalOrderController::class, 'update']);
-        Route::delete('technical-orders/{id}', [TechnicalOrderController::class, 'destroy']);
-        Route::post('technical-orders/{id}/approve', [TechnicalOrderController::class, 'approve']);
-        Route::post('technical-orders/{id}/complete', [TechnicalOrderController::class, 'complete']);
-        Route::post('technical-orders/{id}/cancel', [TechnicalOrderController::class, 'cancel']);
-    });
-
-    // ----------------------------------------
-    // WAREHOUSE MANAGEMENT
-    // ----------------------------------------
-
-    // PURCHASES - Read (All authenticated - needed for receptions from purchases)
-    Route::get('purchases', [PurchaseController::class, 'index']);
-    Route::get('purchases/{id}', [PurchaseController::class, 'show']);
-    Route::get('purchases/{id}/export-pdf', [PurchaseController::class, 'exportPdf']);
-
-    // PURCHASES - Write operations (Admin, Purchasing, Warehouse)
+    // PURCHASES - Read (Admin, Purchasing, Warehouse)
     Route::middleware('role:admin,purchasing,warehouse')->group(function () {
+        Route::get('purchases', [PurchaseController::class, 'index']);
+        Route::get('purchases/{purchase}', [PurchaseController::class, 'show']);
+    });
+
+    // PURCHASES - Write (Admin, Purchasing)
+    Route::middleware('role:admin,purchasing')->group(function () {
         Route::post('purchases', [PurchaseController::class, 'store']);
-        Route::put('purchases/{id}', [PurchaseController::class, 'update']);
-        Route::delete('purchases/{id}', [PurchaseController::class, 'destroy']);
-        Route::post('purchases/{id}/attachments', [PurchaseController::class, 'addAttachment']);
-        Route::delete('purchases/{id}/attachments/{attachmentId}', [PurchaseController::class, 'removeAttachment']);
-        Route::put('purchases/{id}/cancel', [PurchaseController::class, 'cancel']);
+        Route::put('purchases/{purchase}', [PurchaseController::class, 'update']);
+        Route::delete('purchases/{purchase}', [PurchaseController::class, 'destroy']);
+        Route::post('purchases/{purchase}/approve', [PurchaseController::class, 'approve']);
+        Route::post('purchases/{purchase}/cancel', [PurchaseController::class, 'cancel']);
     });
 
-    // PRODUCT OUTPUTS - Read (All roles - todos deben tener acceso a salidas)
-    Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
-        Route::post('product-outputs/validate-inventory', [ProductOutputController::class, 'validateInventory']);
-        Route::get('product-outputs', [ProductOutputController::class, 'index']);
-        Route::get('product-outputs/{id}', [ProductOutputController::class, 'show']);
-    });
-
-    // PRODUCT OUTPUTS - Write (All roles - todos deben tener acceso a salidas)
-    Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
-        Route::post('product-outputs', [ProductOutputController::class, 'store']);
-        Route::put('product-outputs/{id}', [ProductOutputController::class, 'update']);
-        Route::delete('product-outputs/{id}', [ProductOutputController::class, 'destroy']);
-        Route::post('product-outputs/{id}/mark-in-transit', [ProductOutputController::class, 'markInTransit']);
-        Route::post('product-outputs/{id}/complete', [ProductOutputController::class, 'complete']);
-    });
-
-    // PRODUCT OUTPUTS - Approval (Admin, Supervisor only)
-    Route::middleware('role:admin,supervisor')->group(function () {
-        Route::post('product-outputs/{id}/approve', [ProductOutputController::class, 'approve']);
-    });
-
-    // PRODUCT OUTPUTS - Applications from consumption outputs (Admin, Warehouse, Agronomist)
-    Route::middleware('role:admin,warehouse,agronomist')->group(function () {
-        Route::post('product-outputs/{id}/register-application', [ProductOutputController::class, 'registerApplication']);
-        Route::get('product-outputs/{id}/applications', [ProductOutputController::class, 'getApplications']);
-    });
-
-    // RECEPTIONS (All authenticated users can view)
-    Route::get('receptions/available-sources', [ReceptionController::class, 'availableSources']);
-    Route::get('receptions/available-sources-for-responsible', [ReceptionController::class, 'availableSourcesForResponsible']);
-    Route::get('receptions', [ReceptionController::class, 'index']);
-    Route::get('receptions/{id}', [ReceptionController::class, 'show']);
-    Route::get('receptions/{id}/batches', [ReceptionController::class, 'getBatches']);
-    Route::get('receptions/{id}/pending-products', [ReceptionController::class, 'getPendingProducts']);
-
-    // RECEPTIONS - Write operations (All roles - todos deben tener acceso a recepciones)
-    Route::middleware('role:admin,warehouse,farm,supervisor,agronomist,purchasing,financiero')->group(function () {
-        Route::post('receptions', [ReceptionController::class, 'store']);
-        Route::post('receptions/direct-reception', [ReceptionController::class, 'createReceptionWithBatch']);
-        Route::post('receptions/{id}/batches', [ReceptionController::class, 'addBatch']);
-        Route::put('receptions/{id}/complete', [ReceptionController::class, 'complete']);
-        Route::put('receptions/{id}/cancel', [ReceptionController::class, 'cancel']);
-    });
-
-    // ----------------------------------------
-    // INVENTORY MANAGEMENT
-    // ----------------------------------------
-
-    // INVENTORY - Read operations (All authenticated users)
+    // INVENTORY - Read (All authenticated)
     Route::get('inventory', [InventoryController::class, 'index']);
-    Route::get('inventory/kardex', [InventoryController::class, 'kardex']);
-    Route::get('inventory/kardex/product/{productId}', [InventoryController::class, 'productKardex']);
-    Route::get('inventory/movements', [InventoryController::class, 'movements']);
-    Route::get('inventory/movements/report', [InventoryController::class, 'movementsReport']);
-    Route::get('inventory/movements/product/{productId}', [InventoryController::class, 'movementsByProduct']);
-    Route::get('inventory/consumption/report', [InventoryController::class, 'consumptionReport']);
-    Route::get('inventory/location/{locationId}', [InventoryController::class, 'byLocation']);
-    Route::get('inventory/product/{productId}/details', [InventoryController::class, 'byProduct']);
-    Route::get('inventory/{productId}', [InventoryController::class, 'show']);
+    Route::get('inventory/by-location', [InventoryController::class, 'byLocation']);
+    Route::get('inventory/kardex', [InventoryController::class, 'getKardex']);
+    Route::get('inventory/{inventory}', [InventoryController::class, 'show']);
 
-    // INVENTORY - Adjustments (Admin, Warehouse only)
+    // INVENTORY - Adjustments (Admin, Warehouse)
     Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('inventory/adjustments', [InventoryController::class, 'adjustment']);
+        Route::post('inventory/adjust', [InventoryController::class, 'adjust']);
     });
 
-    // ----------------------------------------
-    // APPLICATIONS (Product Applications to Farm Lots)
-    // ----------------------------------------
-
-    // APPLICATIONS - Read operations (All authenticated users)
-    Route::get('applications', [ApplicationController::class, 'index']);
-    Route::get('applications/{id}', [ApplicationController::class, 'show']);
-
-    // APPLICATIONS - Write operations (Admin, Warehouse, Agronomist)
-    Route::middleware('role:admin,warehouse,agronomist')->group(function () {
-        Route::post('applications', [ApplicationController::class, 'store']);
-        Route::post('applications/{id}/cancel', [ApplicationController::class, 'cancel']);
-    });
-
-    // APPLICATIONS - Approval (Admin, Warehouse only)
+    // TRANSFERS - Read (Admin, Warehouse)
     Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('applications/{id}/approve', [ApplicationController::class, 'approve']);
+        Route::get('transfers', [TransferController::class, 'index']);
+        Route::get('transfers/{transfer}', [TransferController::class, 'show']);
+        Route::post('transfers', [TransferController::class, 'store']);
+        Route::put('transfers/{transfer}', [TransferController::class, 'update']);
+        Route::delete('transfers/{transfer}', [TransferController::class, 'destroy']);
+        Route::post('transfers/{transfer}/complete', [TransferController::class, 'complete']);
+        Route::post('transfers/{transfer}/cancel', [TransferController::class, 'cancel']);
     });
 
-    // ----------------------------------------
-    // ALERTS & REPORTS
-    // ----------------------------------------
-
-    // ALERTS - Read operations (All authenticated users)
-    Route::get('alerts', [AlertController::class, 'index']);
-    Route::get('alerts/{id}', [AlertController::class, 'show']);
-
-    // ALERTS - Write operations (Admin, Supervisor, Warehouse, Financiero)
-    Route::middleware('role:admin,supervisor,warehouse,financiero')->group(function () {
-        Route::post('alerts', [AlertController::class, 'store']);
-        Route::put('alerts/{id}/resolve', [AlertController::class, 'resolve']);
-        Route::put('alerts/{id}/dismiss', [AlertController::class, 'dismiss']);
+    // RECEPTIONS - Read (Admin, Warehouse, Purchasing)
+    Route::middleware('role:admin,warehouse,purchasing')->group(function () {
+        Route::get('receptions', [ReceptionController::class, 'index']);
+        Route::get('receptions/{reception}', [ReceptionController::class, 'show']);
+        Route::get('receptions/{reception}/pending-items', [ReceptionController::class, 'getPendingItems']);
     });
 
-    // ----------------------------------------
-    // REPORT EXPORTS (Permission-based)
-    // ----------------------------------------
-
-    // REPORT EXPORTS - Excel and PDF (requires export_reports permission)
-    Route::middleware('permission:export_reports')->group(function () {
-        // Stock Report Exports
-        Route::get('reports/stock/export-excel', [ReportExportController::class, 'exportStockExcel']);
-        Route::get('reports/stock/export-pdf', [ReportExportController::class, 'exportStockPdf']);
-
-        // Consumption Report Exports
-        Route::get('reports/consumption/export-excel', [ReportExportController::class, 'exportConsumptionExcel']);
-        Route::get('reports/consumption/export-pdf', [ReportExportController::class, 'exportConsumptionPdf']);
-
-        // Inventory Movements Report Exports
-        Route::get('reports/movements/export-excel', [ReportExportController::class, 'exportMovementsExcel']);
-        Route::get('reports/movements/export-pdf', [ReportExportController::class, 'exportMovementsPdf']);
-
-        // Kardex Product Report Exports
-        Route::get('reports/kardex/export-excel', [ReportExportController::class, 'exportKardexExcel']);
-        Route::get('reports/kardex/export-pdf', [ReportExportController::class, 'exportKardexPdf']);
-
-        // Kardex List (Inventory General) Exports
-        Route::get('reports/kardex-list/export-excel', [ReportExportController::class, 'exportKardexListExcel']);
-        Route::get('reports/kardex-list/export-pdf', [ReportExportController::class, 'exportKardexListPdf']);
+    // RECEPTIONS - Write (Admin, Warehouse)
+    Route::middleware('role:admin,warehouse')->group(function () {
+        Route::post('receptions', [ReceptionController::class, 'store']);
+        Route::post('receptions/{reception}/receive-batch', [ReceptionController::class, 'receiveBatch']);
+        Route::post('receptions/{reception}/complete', [ReceptionController::class, 'complete']);
+        Route::post('receptions/{reception}/cancel', [ReceptionController::class, 'cancel']);
     });
 
-    // ----------------------------------------
-    // LIQUIDATION MODULE
-    // ----------------------------------------
-
-    // WORKERS - Read (All authenticated - for dropdowns)
-    Route::get('workers/simple', [WorkerController::class, 'listSimple']);
-
-    // WORKERS - CRUD (Admin, Liquidador)
-    Route::middleware('role:admin,liquidador')->group(function () {
-        Route::get('workers', [WorkerController::class, 'index']);
-        Route::post('workers', [WorkerController::class, 'store']);
-        Route::get('workers/template', [WorkerController::class, 'downloadTemplate']);
-        Route::post('workers/preview', [WorkerController::class, 'preview']);
-        Route::post('workers/import', [WorkerController::class, 'processImport']);
-        Route::get('workers/{id}', [WorkerController::class, 'show']);
-        Route::put('workers/{id}', [WorkerController::class, 'update']);
-        Route::delete('workers/{id}', [WorkerController::class, 'destroy']);
+    // TECHNICAL RECIPES - Read (Admin, Technical, Warehouse)
+    Route::middleware('role:admin,technical,warehouse')->group(function () {
+        Route::get('technical-recipes', [TechnicalRecipeController::class, 'index']);
+        Route::get('technical-recipes/{recipe}', [TechnicalRecipeController::class, 'show']);
     });
 
-    // TASKS - Read (All authenticated - for dropdowns)
-    Route::get('tasks/simple', [TaskController::class, 'listSimple']);
-
-    // TASKS - CRUD (Admin, Liquidador)
-    Route::middleware('role:admin,liquidador')->group(function () {
-        Route::get('tasks', [TaskController::class, 'index']);
-        Route::post('tasks', [TaskController::class, 'store']);
-        Route::get('tasks/{id}', [TaskController::class, 'show']);
-        Route::put('tasks/{id}', [TaskController::class, 'update']);
-        Route::delete('tasks/{id}', [TaskController::class, 'destroy']);
-        Route::get('tasks/{id}/net-amount', [TaskController::class, 'getNetAmount']);
-
-        // Task Deductions
-        Route::post('tasks/{id}/deductions', [TaskController::class, 'storeDeduction']);
-        Route::put('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'updateDeduction']);
-        Route::delete('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'destroyDeduction']);
+    // TECHNICAL RECIPES - Write (Admin, Technical)
+    Route::middleware('role:admin,technical')->group(function () {
+        Route::post('technical-recipes', [TechnicalRecipeController::class, 'store']);
+        Route::put('technical-recipes/{recipe}', [TechnicalRecipeController::class, 'update']);
+        Route::delete('technical-recipes/{recipe}', [TechnicalRecipeController::class, 'destroy']);
     });
 
-    // DAILY ASSIGNMENTS (Admin, Liquidador)
-    Route::middleware('role:admin,liquidador')->group(function () {
-        Route::get('daily-assignments', [DailyAssignmentController::class, 'index']);
-        Route::post('daily-assignments', [DailyAssignmentController::class, 'store']);
-        Route::get('daily-assignments/template', [DailyAssignmentController::class, 'downloadTemplate']);
-        Route::post('daily-assignments/preview', [DailyAssignmentController::class, 'preview']);
-        Route::post('daily-assignments/process', [DailyAssignmentController::class, 'process']);
+    // TECHNICAL ORDERS - Read (Admin, Technical, Warehouse)
+    Route::middleware('role:admin,technical,warehouse')->group(function () {
+        Route::get('technical-orders', [TechnicalOrderController::class, 'index']);
+        Route::get('technical-orders/{order}', [TechnicalOrderController::class, 'show']);
     });
 
-    // LIQUIDATION REPORTS (Admin, Liquidador, Supervisor, Financiero)
-    Route::middleware('role:admin,liquidador,supervisor,financiero')->group(function () {
-        Route::post('reports/liquidation', [LiquidationReportController::class, 'generate']);
-        Route::get('reports/liquidation/export-excel', [LiquidationReportController::class, 'exportExcel']);
-        Route::get('reports/liquidation/export-pdf', [LiquidationReportController::class, 'exportPdf']);
+    // TECHNICAL ORDERS - Write (Admin, Technical)
+    Route::middleware('role:admin,technical')->group(function () {
+        Route::post('technical-orders', [TechnicalOrderController::class, 'store']);
+        Route::put('technical-orders/{order}', [TechnicalOrderController::class, 'update']);
+        Route::delete('technical-orders/{order}', [TechnicalOrderController::class, 'destroy']);
+        Route::post('technical-orders/{order}/approve', [TechnicalOrderController::class, 'approve']);
+        Route::post('technical-orders/{order}/cancel', [TechnicalOrderController::class, 'cancel']);
+        Route::post('technical-orders/{order}/complete', [TechnicalOrderController::class, 'complete']);
+    });
 
-        // LIQUIDATION ANALYTICS REPORTS (FUN-001 to FUN-005)
-        Route::post('reports/analytics/labor-costs', [LiquidationAnalyticsController::class, 'laborCosts']);
-        Route::post('reports/analytics/worker-productivity', [LiquidationAnalyticsController::class, 'workerProductivity']);
-        Route::post('reports/analytics/task-analysis', [LiquidationAnalyticsController::class, 'taskAnalysis']);
-        Route::post('reports/analytics/deductions-breakdown', [LiquidationAnalyticsController::class, 'deductionsBreakdown']);
-        Route::post('reports/analytics/period-comparison', [LiquidationAnalyticsController::class, 'periodComparison']);
-        Route::get('reports/analytics/{type}/export-excel', [LiquidationAnalyticsController::class, 'exportExcel']);
-        Route::get('reports/analytics/{type}/export-pdf', [LiquidationAnalyticsController::class, 'exportPdf']);
+    // PRODUCT OUTPUTS - Read (Admin, Technical, Warehouse)
+    Route::middleware('role:admin,technical,warehouse')->group(function () {
+        Route::get('product-outputs', [ProductOutputController::class, 'index']);
+        Route::get('product-outputs/{output}', [ProductOutputController::class, 'show']);
+    });
+
+    // PRODUCT OUTPUTS - Write (Admin, Warehouse)
+    Route::middleware('role:admin,warehouse')->group(function () {
+        Route::post('product-outputs', [ProductOutputController::class, 'store']);
+        Route::put('product-outputs/{output}', [ProductOutputController::class, 'update']);
+        Route::delete('product-outputs/{output}', [ProductOutputController::class, 'destroy']);
+        Route::post('product-outputs/{output}/complete', [ProductOutputController::class, 'complete']);
+        Route::post('product-outputs/{output}/cancel', [ProductOutputController::class, 'cancel']);
+    });
+
+    // REPORTS
+    Route::middleware('role:admin,technical,warehouse,purchasing')->group(function () {
+        Route::get('reports/stock', [ReportExportController::class, 'stockReport']);
+        Route::get('reports/stock/export/pdf', [ReportExportController::class, 'exportStockPdf']);
+        Route::get('reports/stock/export/excel', [ReportExportController::class, 'exportStockExcel']);
+        Route::get('reports/consumption', [ReportExportController::class, 'consumptionReport']);
+        Route::get('reports/consumption/export/pdf', [ReportExportController::class, 'exportConsumptionPdf']);
+        Route::get('reports/consumption/export/excel', [ReportExportController::class, 'exportConsumptionExcel']);
+        Route::get('reports/kardex/export/pdf', [ReportExportController::class, 'exportKardexPdf']);
+        Route::get('reports/kardex/export/excel', [ReportExportController::class, 'exportKardexExcel']);
+    });
+
+    // LIQUIDATIONS
+    Route::middleware('role:admin,technical,warehouse')->group(function () {
+        // Workers
+        Route::get('liquidation/workers', [LiquidationController::class, 'indexWorkers']);
+        Route::post('liquidation/workers', [LiquidationController::class, 'storeWorker']);
+        Route::put('liquidation/workers/{worker}', [LiquidationController::class, 'updateWorker']);
+        Route::delete('liquidation/workers/{worker}', [LiquidationController::class, 'destroyWorker']);
+
+        // Tasks
+        Route::get('liquidation/tasks', [LiquidationController::class, 'indexTasks']);
+        Route::post('liquidation/tasks', [LiquidationController::class, 'storeTask']);
+        Route::put('liquidation/tasks/{task}', [LiquidationController::class, 'updateTask']);
+        Route::delete('liquidation/tasks/{task}', [LiquidationController::class, 'destroyTask']);
+
+        // Assignments
+        Route::get('liquidation/assignments', [LiquidationController::class, 'indexAssignments']);
+        Route::post('liquidation/assignments', [LiquidationController::class, 'storeAssignment']);
+        Route::put('liquidation/assignments/{assignment}', [LiquidationController::class, 'updateAssignment']);
+        Route::delete('liquidation/assignments/{assignment}', [LiquidationController::class, 'destroyAssignment']);
+
+        // Reports
+        Route::get('liquidation/report', [LiquidationController::class, 'generateReport']);
+        Route::get('liquidation/report/export/pdf', [LiquidationController::class, 'exportReportPdf']);
+        Route::get('liquidation/report/export/excel', [LiquidationController::class, 'exportReportExcel']);
     });
 });
-
-/*
-|--------------------------------------------------------------------------
-| ROLE PERMISSIONS SUMMARY
-|--------------------------------------------------------------------------
-|
-| ADMIN (admin):
-|   - Full access to everything
-|   - User management
-|   - All CRUD operations
-|   - Can approve outputs
-|
-| PURCHASING (purchasing) - Encargado de Compras:
-|   - Master data: products, brands, suppliers, locations, packaging/base units (CRUD)
-|   - Purchases (CRUD)
-|   - Product outputs (CRUD)
-|   - Receptions (CRUD)
-|
-| AGRONOMIST (agronomist):
-|   - Technical recipes (CRUD)
-|   - Technical orders (CRUD)
-|   - Product outputs (CRUD)
-|   - Receptions (CRUD)
-|
-| WAREHOUSE (warehouse) - Bodeguero:
-|   - Product outputs (CRUD)
-|   - Receptions (CRUD)
-|
-| FARM (farm) - Operario de Finca:
-|   - Product outputs (CRUD)
-|   - Receptions (CRUD)
-|
-| SUPERVISOR (supervisor):
-|   - Product outputs (CRUD + approve)
-|   - Receptions (CRUD)
-|   - Inventory (view)
-|   - Reports (view)
-|   - Alerts management
-|   - Technical orders (view only)
-|
-| FINANCIERO (financiero):
-|   - Reports (view + export)
-|   - Inventory (view)
-|   - Product outputs (CRUD)
-|   - Receptions (CRUD)
-|   - Alerts management
-|
-| ALL AUTHENTICATED:
-|   - Dashboard
-|   - Products, locations, brands, suppliers (read)
-|   - Output types (read)
-|   - Inventory (read)
-|   - Applications (read)
-|   - Alerts (read)
-|   - Receptions (read)
-|   - Purchases (read)
-|   - Farm lots (read)
-|
-*/
