@@ -19,11 +19,11 @@ class ProductController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = Product::query()->with(['brand', 'packagingUnits']);
+        $query = Product::query()->with(['brand', 'category', 'packagingUnits']);
 
-        // Filter by category
-        if ($request->has('category')) {
-            $query->where('category', $request->category);
+        // Filter by category_id
+        if ($request->has('category_id')) {
+            $query->where('category_id', $request->category_id);
         }
 
         // Filter by status
@@ -143,10 +143,10 @@ class ProductController extends Controller
         $request->validate([
             'location_id' => 'required|uuid|exists:locations,id',
             'search' => 'nullable|string',
-            'category' => 'nullable|string',
+            'category_id' => 'nullable|uuid|exists:categories,id',
         ]);
 
-        $query = Product::query()->where('status', 'active');
+        $query = Product::query()->with('category')->where('status', 'active');
 
         // Filter by search term
         if ($request->search) {
@@ -158,8 +158,8 @@ class ProductController extends Controller
         }
 
         // Filter by category
-        if ($request->category) {
-            $query->where('category', $request->category);
+        if ($request->category_id) {
+            $query->where('category_id', $request->category_id);
         }
 
         $products = $query->get()->map(function ($product) use ($request) {
@@ -203,7 +203,8 @@ class ProductController extends Controller
             return [
                 'product_id' => $product->id,
                 'name' => $product->name,
-                'category' => $product->category,
+                'category' => $product->category?->name,
+                'category_id' => $product->category_id,
                 'active_ingredient' => $product->active_ingredient,
                 'description' => $product->description,
                 'min_stock' => $product->min_stock,
@@ -299,7 +300,8 @@ class ProductController extends Controller
                 'base_quantity' => $baseQuantity,
                 'base_unit' => $baseUnit,
                 'unit_price' => $item->unit_price,
-                'category' => $item->product->category,
+                'category' => $item->product->category?->name,
+                'category_id' => $item->product->category_id,
                 'active_ingredient' => $item->product->active_ingredient,
                 // Display label for dropdown: "ProductName - ExpDate - ConvertedStock"
                 'display_label' => sprintf(

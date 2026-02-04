@@ -439,11 +439,13 @@ class InventoryController extends Controller
 
             // Base query to get all products
             $productsQuery = DB::table('products')
+                ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
                 ->select([
                     'products.id as product_id',
                     'products.name as product_name',
                     'products.product_code',
-                    'products.category',
+                    'categories.name as category',
+                    'categories.slug as category_slug',
                     'products.base_unit',
                     'products.min_stock',
                     'products.status as product_status'
@@ -812,7 +814,8 @@ class InventoryController extends Controller
                     'inventory_movements.*',
                     'products.name as product_name',
                     'products.product_code',
-                    'products.category',
+                    'categories.name as category',
+                    'categories.slug as category_slug',
                     'products.base_unit as product_base_unit',
                     'brands.name as brand_name',
                     'locations.name as location_name',
@@ -820,6 +823,7 @@ class InventoryController extends Controller
                     'users.name as responsible_user_name'
                 ])
                 ->join('products', 'inventory_movements.product_id', '=', 'products.id')
+                ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
                 ->join('brands', 'inventory_movements.brand_id', '=', 'brands.id')
                 ->join('locations', 'inventory_movements.location_id', '=', 'locations.id')
                 ->join('users', 'inventory_movements.responsible_user', '=', 'users.id');
@@ -1115,10 +1119,12 @@ class InventoryController extends Controller
                         'output_products.*',
                         'products.name as product_name',
                         'products.product_code',
-                        'products.category',
+                        'categories.name as category',
+                        'categories.slug as category_slug',
                         'brands.name as brand_name',
                     ])
                     ->join('products', 'output_products.product_id', '=', 'products.id')
+                    ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
                     ->join('brands', 'output_products.brand_id', '=', 'brands.id')
                     ->where('output_products.output_id', $output->output_id);
 

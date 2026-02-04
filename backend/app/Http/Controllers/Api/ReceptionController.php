@@ -842,7 +842,7 @@ class ReceptionController extends Controller
                     'product_id' => $item->product_id,
                     'brand_id' => $item->brand_id,
                     'product_name' => $item->product->name,
-                    'product_category' => $item->product->category,
+                    'product_category' => $item->product->category?->name ?? 'Sin categoría',
                     'brand_name' => $item->brand ? $item->brand->name : null,
                     'quantity_expected' => $item->quantity_expected,
                     'quantity_received' => $item->quantity_received,
@@ -1035,7 +1035,8 @@ class ReceptionController extends Controller
             'product' => $item->product ? [
                 'id' => $item->product->id,
                 'name' => $item->product->name,
-                'category' => $item->product->category,
+                'category' => $item->product->category?->name ?? 'Sin categoría',
+                'category_id' => $item->product->category_id,
             ] : null,
             'brandId' => $item->brand_id,
             'brandName' => $item->brand?->name,

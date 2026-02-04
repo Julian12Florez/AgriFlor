@@ -19,7 +19,17 @@ class ProductResource extends JsonResource
             'name' => $this->name,
             'productCode' => $this->product_code,
             'product_code' => $this->product_code, // For compatibility
-            'category' => $this->category,
+            'categoryId' => $this->category_id,
+            'category_id' => $this->category_id, // For compatibility
+            'category' => $this->when(
+                $this->relationLoaded('category'),
+                fn() => $this->category ? [
+                    'id' => $this->category->id,
+                    'name' => $this->category->name,
+                    'slug' => $this->category->slug,
+                ] : null
+            ),
+            'categoryName' => $this->category?->name,
             'baseUnit' => $this->base_unit,
             'base_unit' => $this->base_unit, // For compatibility
             'unit' => $this->base_unit, // For compatibility

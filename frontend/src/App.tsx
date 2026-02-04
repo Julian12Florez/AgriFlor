@@ -15,6 +15,7 @@ import Products from './pages/master/Products';
 import PackagingUnits from './pages/master/PackagingUnits';
 import BaseUnits from './pages/master/BaseUnits';
 import Brands from './pages/master/Brands';
+import Categories from './pages/master/Categories';
 import Suppliers from './pages/master/Suppliers';
 import Locations from './pages/master/Locations';
 import OutputTypes from './pages/master/OutputTypes';
@@ -105,6 +106,14 @@ const App: React.FC = () => {
                 <ProtectedRoute module="master" showAccessDenied>
                   <MainLayout>
                     <Brands />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/master/categories" element={
+                <ProtectedRoute module="master" showAccessDenied>
+                  <MainLayout>
+                    <Categories />
                   </MainLayout>
                 </ProtectedRoute>
               } />

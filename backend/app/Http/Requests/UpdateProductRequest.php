@@ -19,7 +19,7 @@ class UpdateProductRequest extends FormRequest
         return [
             'name' => ['sometimes', 'string', 'max:255'],
             'product_code' => ['nullable', 'string', 'max:100', Rule::unique('products', 'product_code')->ignore($productId)],
-            'category' => ['sometimes', Rule::in(['fertilizante', 'pesticida', 'herbicida', 'fungicida'])],
+            'category_id' => ['sometimes', 'uuid', 'exists:categories,id'],
             'base_unit' => ['nullable', 'string', 'exists:base_units,symbol'],
             'active_ingredient' => ['sometimes', 'string'],
             'min_stock' => ['sometimes', 'numeric', 'min:0'],
@@ -38,7 +38,8 @@ class UpdateProductRequest extends FormRequest
             'name.max' => 'El nombre no puede exceder 255 caracteres',
             'product_code.max' => 'El código de producto no puede exceder 100 caracteres',
             'product_code.unique' => 'El código de producto ya existe',
-            'category.in' => 'La categoría seleccionada no es válida',
+            'category_id.uuid' => 'El formato de la categoría no es válido',
+            'category_id.exists' => 'La categoría seleccionada no existe',
             'base_unit.exists' => 'La unidad base seleccionada no existe',
             'min_stock.numeric' => 'El stock mínimo debe ser un número',
             'min_stock.min' => 'El stock mínimo no puede ser negativo',

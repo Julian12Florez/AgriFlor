@@ -58,6 +58,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           { key: '/master/base-units', label: 'Unidades Base' },
           { key: '/master/packaging-units', label: 'Unidades de Empaque' },
           { key: '/master/brands', label: 'Marcas' },
+          { key: '/master/categories', label: 'Categorías' },
           { key: '/master/suppliers', label: 'Proveedores' },
           { key: '/master/locations', label: 'Ubicaciones' },
           { key: '/master/output-types', label: 'Tipos de Salida' },

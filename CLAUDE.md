@@ -26,6 +26,8 @@ Sistema completo de gestion agricola con control de inventario, compras, transfe
 ## Flujo de Trabajo
 
 ```
+Pipeline de Bugs/Correcciones:
+
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │    /analyze     │ ──▶ │      /fix       │ ──▶ │     /test       │
 │                 │     │                 │     │                 │
@@ -38,6 +40,24 @@ Sistema completo de gestion agricola con control de inventario, compras, transfe
         │                       │                       │
         ▼                       ▼                       ▼
  ANALISIS_{ID}.md     CORRECCIONES_{ID}.md  REPORTE_PRUEBAS_{ID}.md
+
+
+Pipeline de Funcionalidades Nuevas:
+
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│    /feature     │ ──▶ │   /implement    │ ──▶ │  /test-feature  │
+│                 │     │                 │     │                 │
+│ Planifica       │     │ Crea codigo     │     │ Fase 1: API     │
+│ funcionalidad   │     │ completo        │     │ Fase 2: Front↔  │
+│                 │     │                 │     │   Back integrac. │
+│ Analiza patrones│     │ Backend +       │     │ Fase 3: E2E     │
+│ del proyecto    │     │ Frontend        │     │ Fase 4: Auto-fix│
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+        │                       │                       │
+        ▼                       ▼                       ▼
+FEATURE_ANALISIS_    FEATURE_IMPLEMENTA-  FEATURE_PRUEBAS_
+    {ID}.md              CION_{ID}.md         {ID}.md
+
  (ID = timestamp unico compartido entre los 3 archivos de una sesion)
 
 ┌─────────────────────────────────────────────────────────────────┐
@@ -255,6 +275,129 @@ Archivo `REPORTE_PRUEBAS_{ID}.md` con:
 
 ---
 
+## /feature - Agente de Planificacion de Funcionalidades Nuevas
+
+### Caracteristicas
+- Analiza el **codebase existente** y extrae patrones del proyecto
+- Genera un **blueprint completo** con esqueletos de codigo funcional
+- Mapea modulos **NUEVO / EXTENDIDO / DEPENDENCIA**
+- Organiza la implementacion en **fases con dependencias**
+- Identifica **riesgos y decisiones arquitectonicas**
+- Acepta **lenguaje natural** como parametro
+
+### Ejemplos de Uso
+
+```bash
+# Planificar una funcionalidad nueva
+/feature "sistema de notificaciones por email"
+/feature "modulo de costos y presupuestos"
+/feature "historial de precios de productos"
+/feature "reportes PDF de inventario por ubicacion"
+/feature "sistema de alertas de stock minimo"
+/feature "agregar campos personalizados a productos"
+```
+
+### Output
+Archivo `FEATURE_ANALISIS_{ID}.md` con:
+- Modulos afectados (nuevo, extendido, dependencia)
+- Patrones del proyecto identificados
+- BACK-DB-XXX: Migraciones de base de datos
+- BACK-XXX: Archivos nuevos de backend (modelos, controllers, requests)
+- MOD-BACK-XXX: Modificaciones a backend existente
+- FRONT-XXX: Archivos nuevos de frontend (types, services, pages)
+- MOD-FRONT-XXX: Modificaciones a frontend existente
+- INTEG-XXX: Contratos de integracion frontend ↔ backend
+- Orden de implementacion por fases
+- Decisiones arquitectonicas y riesgos
+
+---
+
+## /implement - Agente de Implementacion de Funcionalidades
+
+### Caracteristicas
+- Lee `FEATURE_ANALISIS_{ID}.md` generado por /feature
+- Crea **archivos nuevos con codigo completo** (no stubs ni TODOs)
+- Aplica **modificaciones quirurgicas** a archivos existentes
+- Ejecuta **migraciones** automaticamente
+- Verifica **sintaxis y rutas** despues de implementar
+- Acepta **filtros en lenguaje natural**
+
+### Ejemplos de Uso
+
+```bash
+# Implementar todo
+/implement
+
+# Filtrar por capa
+/implement "solo backend"
+/implement "solo frontend"
+
+# Filtrar por fase
+/implement "fase 1"
+/implement "fases 1 a 3"
+
+# Implementar componente especifico
+/implement BACK-001
+/implement FRONT-003
+
+# Implementar lo pendiente
+/implement "lo que falta"
+```
+
+### Output
+- Archivos creados y modificados en el proyecto
+- Migraciones ejecutadas
+- Archivo `FEATURE_IMPLEMENTACION_{ID}.md` con detalle de cambios
+
+---
+
+## /test-feature - Agente de Pruebas y Auto-Correccion de Funcionalidades Nuevas
+
+### Caracteristicas
+- **4 fases de pruebas**: API Backend, Integracion Front↔Back, End-to-End, Auto-correccion
+- **Auto-corrige** problemas encontrados y re-prueba automaticamente
+- Lee el **codigo implementado** antes de probar
+- Verifica **contratos**, **mapeo de campos**, **validacion sincronizada**
+- Distingue entre **PASS** (primera vez) y **FIXED** (corregido automaticamente)
+- Maximo **2 intentos de fix** por prueba antes de escalar a revision manual
+- Acepta **lenguaje natural**
+
+### Prerequisitos
+```bash
+cd backend && php artisan serve  # Backend en puerto 8000
+```
+
+### Ejemplos de Uso
+
+```bash
+# Probar todo + corregir automaticamente
+/test-feature
+
+# Probar solo una fase
+/test-feature "solo api"
+/test-feature "solo integracion"
+/test-feature "solo e2e"
+
+# Solo reportar sin corregir
+/test-feature "sin corregir"
+
+# Probar componente especifico
+/test-feature BACK-001
+
+# Re-probar lo que fallo antes
+/test-feature "re-probar lo que fallo"
+```
+
+### Output
+Archivo `FEATURE_PRUEBAS_{ID}.md` con:
+- Estado por fase (API, Integracion, E2E, Auto-correccion)
+- Pruebas PASS, FIXED y FAIL diferenciadas
+- Correcciones aplicadas automaticamente con diff
+- Problemas pendientes de revision manual
+- Archivos modificados por auto-correccion
+
+---
+
 ## Mapa de Relaciones entre Modulos
 
 ```
@@ -281,16 +424,32 @@ Cuando analizas un modulo, automaticamente se incluyen sus dependencias.
 
 ## Archivos Generados
 
+### Pipeline de Bugs/Correcciones
+
 | Archivo | Generado por | Leido por | Proposito |
 |---------|--------------|-----------|-----------|
 | `ANALISIS_{ID}.md` | /analyze | /fix | Lista de problemas |
 | `CORRECCIONES_{ID}.md` | /fix | /test | Log de cambios |
 | `REPORTE_PRUEBAS_{ID}.md` | /test | - | Resultados de pruebas |
+
+### Pipeline de Funcionalidades Nuevas
+
+| Archivo | Generado por | Leido por | Proposito |
+|---------|--------------|-----------|-----------|
+| `FEATURE_ANALISIS_{ID}.md` | /feature | /implement | Plan de implementacion |
+| `FEATURE_IMPLEMENTACION_{ID}.md` | /implement | /test-feature | Log de archivos creados/modificados |
+| `FEATURE_PRUEBAS_{ID}.md` | /test-feature | - | Resultados + correcciones aplicadas |
+
+### Otros
+
+| Archivo | Generado por | Leido por | Proposito |
+|---------|--------------|-----------|-----------|
 | `MIGRACION_VPS.md` | manual | /migrate-to-vps | Plan de migracion a VPS |
 
-> **Nota**: `{ID}` es un timestamp unico (formato `YYYYMMDD_HHMMSS`) generado por `/analyze`.
-> Los tres archivos de una sesion comparten el mismo ID, permitiendo ejecutar multiples analisis en paralelo.
-> Ejemplo: `ANALISIS_20260128_143052.md` → `CORRECCIONES_20260128_143052.md` → `REPORTE_PRUEBAS_20260128_143052.md`
+> **Nota**: `{ID}` es un timestamp unico (formato `YYYYMMDD_HHMMSS`) generado por `/analyze` o `/feature`.
+> Los tres archivos de una sesion comparten el mismo ID, permitiendo ejecutar multiples sesiones en paralelo.
+> Ejemplo bugs: `ANALISIS_20260128_143052.md` → `CORRECCIONES_20260128_143052.md` → `REPORTE_PRUEBAS_20260128_143052.md`
+> Ejemplo features: `FEATURE_ANALISIS_20260202_143052.md` → `FEATURE_IMPLEMENTACION_20260202_143052.md` → `FEATURE_PRUEBAS_20260202_143052.md`
 
 ---
 
@@ -317,11 +476,14 @@ AgriFlor/
 │       ├── context/             # React context
 │       └── store/               # Zustand
 ├── .claude/commands/            # Agentes
-│   ├── analyze.md
-│   ├── fix.md
-│   ├── test.md
-│   ├── deploy.md
-│   └── migrate-to-vps.md
+│   ├── analyze.md              # Pipeline bugs: analisis
+│   ├── fix.md                  # Pipeline bugs: correccion
+│   ├── test.md                 # Pipeline bugs: pruebas
+│   ├── feature.md              # Pipeline features: planificacion
+│   ├── implement.md            # Pipeline features: implementacion
+│   ├── test-feature.md         # Pipeline features: pruebas + auto-fix
+│   ├── deploy.md               # Despliegue
+│   └── migrate-to-vps.md       # Migracion a VPS
 ├── MIGRACION_VPS.md             # Plan de migracion a VPS
 └── CLAUDE.md                    # Este archivo
 ```

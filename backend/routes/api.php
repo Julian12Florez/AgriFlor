@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\ApplicationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BrandController;
+use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\LocationController;
@@ -111,6 +112,17 @@ Route::middleware('auth:api')->group(function () {
         Route::post('brands', [BrandController::class, 'store']);
         Route::put('brands/{brand}', [BrandController::class, 'update']);
         Route::delete('brands/{brand}', [BrandController::class, 'destroy']);
+    });
+
+    // CATEGORIES - Read (All authenticated)
+    Route::get('categories', [CategoryController::class, 'index']);
+    Route::get('categories/{category}', [CategoryController::class, 'show']);
+
+    // CATEGORIES - Write (Admin, Purchasing)
+    Route::middleware('role:admin,purchasing')->group(function () {
+        Route::post('categories', [CategoryController::class, 'store']);
+        Route::put('categories/{category}', [CategoryController::class, 'update']);
+        Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
     });
 
     // SUPPLIERS - Read (All authenticated)

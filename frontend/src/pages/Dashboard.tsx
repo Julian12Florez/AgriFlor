@@ -138,42 +138,35 @@ const Dashboard: React.FC = () => {
           <Card title="Inventario por Categoría" style={{ height: 400 }}>
             <Spin spinning={inventoryLoading}>
               <Row gutter={16}>
-                <Col span={12}>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Fertilizantes</span>
-                      <span>{inventoryByCategory?.fertilizante || 0}%</span>
+                {inventoryByCategory && Object.entries(inventoryByCategory).map(([slug, data]: [string, any], index) => {
+                  const categoryColors: Record<string, string> = {
+                    fertilizante: '#4CAF50',
+                    pesticida: '#FF9800',
+                    herbicida: '#2196F3',
+                    fungicida: '#9C27B0',
+                  };
+                  const defaultColors = ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0', '#E91E63'];
+                  const color = categoryColors[slug] || defaultColors[index % defaultColors.length];
+
+                  return (
+                    <Col span={12} key={slug}>
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span>{data.name}</span>
+                          <span>{data.percentage || 0}%</span>
+                        </div>
+                        <Progress percent={data.percentage || 0} strokeColor={color} />
+                      </div>
+                    </Col>
+                  );
+                })}
+                {(!inventoryByCategory || Object.keys(inventoryByCategory).length === 0) && (
+                  <Col span={24}>
+                    <div style={{ textAlign: 'center', padding: '40px 0', color: '#999' }}>
+                      No hay datos de inventario
                     </div>
-                    <Progress percent={inventoryByCategory?.fertilizante || 0} strokeColor="#4CAF50" />
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Pesticidas</span>
-                      <span>{inventoryByCategory?.pesticida || 0}%</span>
-                    </div>
-                    <Progress percent={inventoryByCategory?.pesticida || 0} strokeColor="#FF9800" />
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Herbicidas</span>
-                      <span>{inventoryByCategory?.herbicida || 0}%</span>
-                    </div>
-                    <Progress percent={inventoryByCategory?.herbicida || 0} strokeColor="#2196F3" />
-                  </div>
-                </Col>
-                <Col span={12}>
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Fungicidas</span>
-                      <span>{inventoryByCategory?.fungicida || 0}%</span>
-                    </div>
-                    <Progress percent={inventoryByCategory?.fungicida || 0} strokeColor="#9C27B0" />
-                  </div>
-                </Col>
+                  </Col>
+                )}
               </Row>
             </Spin>
           </Card>

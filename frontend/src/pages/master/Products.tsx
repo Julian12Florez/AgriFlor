@@ -1,20 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Typography, Descriptions, InputNumber } from 'antd';
+import React, { useState, useRef } from 'react';
+import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Descriptions, InputNumber } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { productsApi, brandsApi, packagingUnitsApi, baseUnitsApi } from '../../services/api';
-import type { Product, Brand } from '../../data/types';
+import { productsApi, brandsApi, packagingUnitsApi, baseUnitsApi, categoriesApi } from '../../services/api';
+import type { Product } from '../../data/types';
 import ResponsiveTable from '../../components/ResponsiveTable';
-
-const { Text, Title } = Typography;
 
 const { Search } = Input;
 const { Option } = Select;
 
 const Products: React.FC = () => {
   const queryClient = useQueryClient();
-  const [isMobile, setIsMobile] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any | null>(null);
   const [form] = Form.useForm();
@@ -30,9 +27,15 @@ const Products: React.FC = () => {
     queryKey: ['products', searchText, categoryFilter, statusFilter],
     queryFn: () => productsApi.list({
       search: searchText || undefined,
-      category: categoryFilter || undefined,
+      category_id: categoryFilter || undefined,
       status: statusFilter || undefined
     }),
+  });
+
+  // Fetch categories
+  const { data: categoriesData } = useQuery({
+    queryKey: ['categories'],
+    queryFn: () => categoriesApi.list({ status: 'active' }),
   });
 
   // Fetch brands
@@ -57,6 +60,7 @@ const Products: React.FC = () => {
   const brands = brandsData?.data || [];
   const packagingUnits = packagingUnitsData?.data || [];
   const baseUnits = baseUnitsData?.data || [];
+  const categories = categoriesData?.data || [];
 
   // Create product mutation
   const createProductMutation = useMutation({
@@ -81,7 +85,8 @@ const Products: React.FC = () => {
                 key === 'brand_id' ? 'brandId' :
                 key === 'base_unit' ? 'baseUnit' :
                 key === 'min_stock' ? 'minStock' :
-                key === 'product_code' ? 'productCode' : key,
+                key === 'product_code' ? 'productCode' :
+                key === 'category_id' ? 'categoryId' : key,
           errors: backendErrors[key],
         }));
         form.setFields(formErrors);
@@ -115,7 +120,8 @@ const Products: React.FC = () => {
                 key === 'brand_id' ? 'brandId' :
                 key === 'base_unit' ? 'baseUnit' :
                 key === 'min_stock' ? 'minStock' :
-                key === 'product_code' ? 'productCode' : key,
+                key === 'product_code' ? 'productCode' :
+                key === 'category_id' ? 'categoryId' : key,
           errors: backendErrors[key],
         }));
         form.setFields(formErrors);
@@ -137,24 +143,24 @@ const Products: React.FC = () => {
     },
   });
 
-  useEffect(() => {
-    const checkScreenSize = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
-
-  const getCategoryColor = (category: string) => {
-    const colors = {
+  const getCategoryColor = (categorySlug: string) => {
+    const colors: Record<string, string> = {
       fertilizante: 'green',
       pesticida: 'orange',
       herbicida: 'blue',
       fungicida: 'purple'
     };
-    return colors[category as keyof typeof colors] || 'default';
+    return colors[categorySlug] || 'default';
+  };
+
+  const getCategoryName = (categoryId: string) => {
+    const category = categories.find((c: any) => c.id === categoryId);
+    return category?.name || 'Sin categoría';
+  };
+
+  const getCategorySlug = (categoryId: string) => {
+    const category = categories.find((c: any) => c.id === categoryId);
+    return category?.slug || '';
   };
 
   const handleEdit = (record: any) => {
@@ -162,7 +168,7 @@ const Products: React.FC = () => {
     form.setFieldsValue({
       name: record.name,
       productCode: record.productCode || record.product_code,
-      category: record.category,
+      categoryId: record.category_id || record.categoryId,
       baseUnit: record.base_unit,
       activeIngredient: record.active_ingredient,
       brandId: record.brand_id || (typeof record.brand === 'object' ? record.brand.id : null),
@@ -190,7 +196,7 @@ const Products: React.FC = () => {
     const productData = {
       name: values.name,
       product_code: values.productCode || undefined,
-      category: values.category,
+      category_id: values.categoryId,
       base_unit: values.baseUnit,
       active_ingredient: values.activeIngredient,
       brand_id: values.brandId,
@@ -221,18 +227,18 @@ const Products: React.FC = () => {
     {
       title: 'Producto',
       key: 'product',
-      render: (_, record) => (
+      render: (_, record: any) => (
         <div>
           <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: 4 }}>
             {record.name}
           </div>
           <div style={{ fontSize: '12px', color: '#666' }}>
-            {record.category && (
-              <Tag color={getCategoryColor(record.category)} size="small">
-                {record.category.toUpperCase()}
+            {(record.category_id || record.category) && (
+              <Tag color={getCategoryColor(record.category?.slug || getCategorySlug(record.category_id))}>
+                {record.category?.name || getCategoryName(record.category_id)}
               </Tag>
             )}
-            {record.brand && <Tag color="blue" size="small">{record.brand}</Tag>}
+            {record.brand && <Tag color="blue">{typeof record.brand === 'string' ? record.brand : record.brand.name}</Tag>}
           </div>
         </div>
       ),
@@ -243,7 +249,7 @@ const Products: React.FC = () => {
       key: 'status',
       width: 80,
       render: (status: string) => (
-        <Tag color={status === 'active' ? 'green' : 'red'} size="small">
+        <Tag color={status === 'active' ? 'green' : 'red'}>
           {status === 'active' ? 'Activo' : 'Inactivo'}
         </Tag>
       ),
@@ -283,24 +289,20 @@ const Products: React.FC = () => {
     },
     {
       title: 'Categoría',
-      dataIndex: 'category',
       key: 'category',
-      render: (category: string) => (
-        category ? (
-          <Tag color={getCategoryColor(category)}>
-            {category.toUpperCase()}
+      render: (_: any, record: any) => {
+        const categorySlug = record.category?.slug || getCategorySlug(record.category_id);
+        const categoryName = record.category?.name || getCategoryName(record.category_id);
+        return categorySlug ? (
+          <Tag color={getCategoryColor(categorySlug)}>
+            {categoryName}
           </Tag>
         ) : (
           <Tag>Sin categoría</Tag>
-        )
-      ),
-      filters: [
-        { text: 'Fertilizante', value: 'fertilizante' },
-        { text: 'Pesticida', value: 'pesticida' },
-        { text: 'Herbicida', value: 'herbicida' },
-        { text: 'Fungicida', value: 'fungicida' },
-      ],
-      onFilter: (value, record) => record.category === value,
+        );
+      },
+      filters: categories.map((cat: any) => ({ text: cat.name, value: cat.id })),
+      onFilter: (value, record: any) => (record.category_id || record.categoryId) === value,
     },
     {
       title: 'Unidad Base',
@@ -325,14 +327,14 @@ const Products: React.FC = () => {
       dataIndex: 'min_stock',
       key: 'min_stock',
       render: (min_stock: number) => min_stock || 'N/A',
-      sorter: (a, b) => (a.min_stock || 0) - (b.min_stock || 0),
+      sorter: (a: any, b: any) => ((a as any).min_stock || 0) - ((b as any).min_stock || 0),
     },
     {
       title: 'IVA',
       dataIndex: 'iva',
       key: 'iva',
       render: (iva: number) => `${iva ?? 19}%`,
-      sorter: (a, b) => (a.iva || 0) - (b.iva || 0),
+      sorter: (a: any, b: any) => ((a as any).iva || 0) - ((b as any).iva || 0),
     },
     {
       title: 'Estado',
@@ -378,13 +380,16 @@ const Products: React.FC = () => {
     },
   ];
 
-  const expandedRowRender = (record: any) => (
+  const expandedRowRender = (record: any) => {
+    const categorySlug = record.category?.slug || getCategorySlug(record.category_id);
+    const categoryName = record.category?.name || getCategoryName(record.category_id);
+    return (
     <Descriptions size="small" column={1}>
       <Descriptions.Item label="Unidad Base">{record.base_unit || 'N/A'}</Descriptions.Item>
       <Descriptions.Item label="Categoría">
-        {record.category ? (
-          <Tag color={getCategoryColor(record.category)}>
-            {record.category.toUpperCase()}
+        {categorySlug ? (
+          <Tag color={getCategoryColor(categorySlug)}>
+            {categoryName}
           </Tag>
         ) : 'N/A'}
       </Descriptions.Item>
@@ -407,7 +412,7 @@ const Products: React.FC = () => {
         {record.created_at ? new Date(record.created_at).toLocaleDateString('es-CO') : 'N/A'}
       </Descriptions.Item>
     </Descriptions>
-  );
+  );};
 
 
   return (
@@ -450,11 +455,11 @@ const Products: React.FC = () => {
                 style={{ width: '100%' }}
                 value={categoryFilter}
                 onChange={setCategoryFilter}
+                loading={!categoriesData}
               >
-                <Option value="fertilizer">Fertilizer</Option>
-                <Option value="insecticide">Insecticide</Option>
-                <Option value="herbicide">Herbicide</Option>
-                <Option value="fungicide">Fungicide</Option>
+                {categories.map((cat: any) => (
+                  <Option key={cat.id} value={cat.id}>{cat.name}</Option>
+                ))}
               </Select>
             </Col>
             <Col xs={24} sm={12} md={8}>
@@ -526,15 +531,19 @@ const Products: React.FC = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
-                name="category"
+                name="categoryId"
                 label="Categoría"
                 rules={[{ required: true, message: 'La categoría es requerida' }]}
               >
-                <Select placeholder="Seleccione una categoría">
-                  <Option value="fertilizante">Fertilizante</Option>
-                  <Option value="pesticida">Pesticida</Option>
-                  <Option value="herbicida">Herbicida</Option>
-                  <Option value="fungicida">Fungicida</Option>
+                <Select
+                  placeholder="Seleccione una categoría"
+                  loading={!categoriesData}
+                  showSearch
+                  optionFilterProp="children"
+                >
+                  {categories.map((cat: any) => (
+                    <Option key={cat.id} value={cat.id}>{cat.name}</Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>

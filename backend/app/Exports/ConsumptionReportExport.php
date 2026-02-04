@@ -76,10 +76,11 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
                     'output_products.*',
                     'products.name as product_name',
                     'products.product_code',
-                    'products.category',
+                    'categories.name as category',
                     'brands.name as brand_name',
                 ])
                 ->join('products', 'output_products.product_id', '=', 'products.id')
+                ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
                 ->join('brands', 'output_products.brand_id', '=', 'brands.id')
                 ->where('output_products.output_id', $output->output_id);
 

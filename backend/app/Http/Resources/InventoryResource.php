@@ -56,7 +56,13 @@ class InventoryResource extends JsonResource
                 return $this->product?->product_code;
             }),
             'category' => $this->whenLoaded('product', function() {
-                return $this->product?->category;
+                return $this->product?->category?->name;
+            }),
+            'category_id' => $this->whenLoaded('product', function() {
+                return $this->product?->category_id;
+            }),
+            'category_slug' => $this->whenLoaded('product', function() {
+                return $this->product?->category?->slug;
             }),
             'brand_name' => $this->whenLoaded('brand', function() {
                 return $this->brand?->name;

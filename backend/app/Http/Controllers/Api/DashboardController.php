@@ -65,11 +65,19 @@ class DashboardController extends Controller
     public function getInventoryByCategory(Request $request)
     {
         try {
-            // Get inventory items with product info for base unit conversion
+            // Get all active categories
+            $categories = DB::table('categories')
+                ->where('status', 'active')
+                ->get(['id', 'name', 'slug']);
+
+            // Get inventory items with category info
             $inventoryItems = DB::table('inventory')
                 ->join('products', 'inventory.product_id', '=', 'products.id')
+                ->join('categories', 'products.category_id', '=', 'categories.id')
                 ->select(
-                    'products.category',
+                    'categories.id as category_id',
+                    'categories.slug as category_slug',
+                    'categories.name as category_name',
                     'inventory.product_id',
                     'inventory.quantity',
                     'inventory.unit'
@@ -78,39 +86,44 @@ class DashboardController extends Controller
                 ->where('inventory.quantity', '>', 0)
                 ->get();
 
-            // Convert each item to base unit and sum by category
-            $categoryTotals = [
-                'fertilizante' => 0,
-                'pesticida' => 0,
-                'herbicida' => 0,
-                'fungicida' => 0,
-            ];
+            // Initialize totals for all categories
+            $categoryTotals = [];
+            foreach ($categories as $category) {
+                $categoryTotals[$category->slug] = [
+                    'name' => $category->name,
+                    'total' => 0,
+                ];
+            }
 
+            // Sum quantities by category
             foreach ($inventoryItems as $item) {
-                if (isset($categoryTotals[$item->category])) {
+                if (isset($categoryTotals[$item->category_slug])) {
                     $qtyInBase = $this->inventoryService->toBaseUnit(
                         floatval($item->quantity),
                         $item->unit,
                         $item->product_id
                     );
-                    $categoryTotals[$item->category] += $qtyInBase;
+                    $categoryTotals[$item->category_slug]['total'] += $qtyInBase;
                 }
             }
 
             // Calculate total for percentage
-            $totalInventory = array_sum($categoryTotals);
+            $totalInventory = array_sum(array_column($categoryTotals, 'total'));
 
-            // Format data with percentages
-            $categories = [];
-            foreach ($categoryTotals as $category => $total) {
-                $categories[$category] = $totalInventory > 0
-                    ? round(($total / $totalInventory) * 100, 2)
-                    : 0;
+            // Format data with percentages (keyed by slug for backwards compatibility)
+            $result = [];
+            foreach ($categoryTotals as $slug => $data) {
+                $result[$slug] = [
+                    'name' => $data['name'],
+                    'percentage' => $totalInventory > 0
+                        ? round(($data['total'] / $totalInventory) * 100, 2)
+                        : 0,
+                ];
             }
 
             return response()->json([
                 'success' => true,
-                'data' => $categories
+                'data' => $result
             ]);
         } catch (\Exception $e) {
             return response()->json([

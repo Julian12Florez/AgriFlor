@@ -35,13 +35,14 @@ class KardexListExport implements FromCollection, WithHeadings, WithStyles, With
                 'inventory.*',
                 'products.name as product_name',
                 'products.product_code',
-                'products.category',
+                'categories.name as category',
                 'products.base_unit',
                 'products.min_stock',
                 'brands.name as brand_name',
                 'locations.name as location_name',
             ])
             ->join('products', 'inventory.product_id', '=', 'products.id')
+            ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
             ->join('brands', 'inventory.brand_id', '=', 'brands.id')
             ->join('locations', 'inventory.location_id', '=', 'locations.id')
             ->where('inventory.quantity', '>', 0);

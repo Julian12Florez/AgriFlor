@@ -15,7 +15,7 @@ class Product extends Model
         'name',
         'product_code',
         'brand_id',
-        'category',
+        'category_id',
         'base_unit',
         'iva',
         'active_ingredient',
@@ -26,7 +26,7 @@ class Product extends Model
     ];
 
     protected $casts = [
-        'category' => 'string',
+        'category_id' => 'string',
         'base_unit' => 'string',
         'iva' => 'integer',
         'min_stock' => 'decimal:2',
@@ -41,9 +41,9 @@ class Product extends Model
         return $query->where('status', 'active');
     }
 
-    public function scopeByCategory($query, $category)
+    public function scopeByCategory($query, $categoryId)
     {
-        return $query->where('category', $category);
+        return $query->where('category_id', $categoryId);
     }
 
     public function scopeLowStock($query)
@@ -57,6 +57,12 @@ class Product extends Model
     public function brand()
     {
         return $this->belongsTo(Brand::class, 'brand_id');
+    }
+
+    // Category
+    public function category()
+    {
+        return $this->belongsTo(Category::class, 'category_id');
     }
 
     // User who created this product

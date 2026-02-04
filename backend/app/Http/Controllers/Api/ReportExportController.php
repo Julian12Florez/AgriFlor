@@ -255,7 +255,7 @@ class ReportExportController extends Controller
                     $grouped[$key] = [
                         'product_name' => $item->product->name,
                         'product_code' => $item->product->product_code,
-                        'category' => $item->product->category,
+                        'category' => $item->product->category?->name ?? 'Sin categoría',
                         'brand_name' => $item->product->brand->name,
                         'total_quantity' => 0,
                         'total_base_quantity' => 0,
@@ -377,10 +377,11 @@ class ReportExportController extends Controller
                     'output_products.*',
                     'products.name as product_name',
                     'products.product_code',
-                    'products.category',
+                    'categories.name as category',
                     'brands.name as brand_name',
                 ])
                 ->join('products', 'output_products.product_id', '=', 'products.id')
+                ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
                 ->join('brands', 'output_products.brand_id', '=', 'brands.id')
                 ->where('output_products.output_id', $output->output_id);
 
@@ -651,11 +652,12 @@ class ReportExportController extends Controller
                 'inventory.*',
                 'products.name as product_name',
                 'products.product_code',
-                'products.category',
+                'categories.name as category',
                 'products.base_unit',
                 'products.min_stock',
             ])
             ->join('products', 'inventory.product_id', '=', 'products.id')
+            ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
             ->join('locations', 'inventory.location_id', '=', 'locations.id')
             ->where('inventory.quantity', '>', 0);
 

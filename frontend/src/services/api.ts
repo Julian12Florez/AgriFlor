@@ -464,6 +464,24 @@ export const brandsApi = {
     api.delete<ApiResponse<null>>(`/brands/${id}`),
 };
 
+// Categories API
+export const categoriesApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<PaginatedResponse<any>>('/categories', params),
+
+  get: (id: string) =>
+    api.get<ApiResponse<any>>(`/categories/${id}`),
+
+  create: (data: Record<string, any>) =>
+    api.post<ApiResponse<any>>('/categories', data),
+
+  update: (id: string, data: Record<string, any>) =>
+    api.put<ApiResponse<any>>(`/categories/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<ApiResponse<null>>(`/categories/${id}`),
+};
+
 // Alerts API
 export const alertsApi = {
   list: (params?: Record<string, any>) =>
