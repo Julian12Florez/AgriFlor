@@ -118,10 +118,11 @@ jobs:
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -1)
 
-          if [ "$HTTP_CODE" = "201" ]; then
-            DEPLOY_ID=$(echo "$BODY" | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+          if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "202" ]; then
+            DEPLOY_ID=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id', d.get('deploy',{}).get('id','unknown')))" 2>/dev/null || echo "accepted")
             echo "### Backend Deploy Triggered" >> $GITHUB_STEP_SUMMARY
             echo "- Deploy ID: $DEPLOY_ID" >> $GITHUB_STEP_SUMMARY
+            echo "- HTTP Code: $HTTP_CODE" >> $GITHUB_STEP_SUMMARY
             echo "- Dashboard: https://dashboard.render.com/web/${{ secrets.RENDER_SERVICE_ID }}" >> $GITHUB_STEP_SUMMARY
           else
             echo "Deploy trigger failed with HTTP $HTTP_CODE"
