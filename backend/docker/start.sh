@@ -32,6 +32,7 @@ php artisan migrate --force 2>&1 || echo "==> WARNING: Migrations had issues, co
 
 # Run seeders (idempotent: uses firstOrCreate/updateOrCreate)
 echo "==> Running seeders..."
+php artisan db:seed --class=CategorySeeder --force 2>&1 || echo "==> WARNING: CategorySeeder had issues, continuing..."
 php artisan db:seed --class=PermissionsSeeder --force 2>&1 || echo "==> WARNING: PermissionsSeeder had issues, continuing..."
 php artisan db:seed --class=RolesSeeder --force 2>&1 || echo "==> WARNING: RolesSeeder had issues, continuing..."
 php artisan db:seed --class=UserSeeder --force 2>&1 || echo "==> WARNING: UserSeeder had issues, continuing..."
