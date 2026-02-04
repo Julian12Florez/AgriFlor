@@ -139,4 +139,30 @@ class Product extends Model
     {
         return $this->hasMany(Alert::class, 'product_id');
     }
+
+    /**
+     * Get category name - backward compatible with ENUM string or Category relation
+     * This handles the transition period where some products may still have the old ENUM field
+     */
+    public function getCategoryNameAttribute(): ?string
+    {
+        // Try relation first (new schema)
+        if ($this->relationLoaded('category') && $this->category) {
+            return $this->category->name;
+        }
+
+        // Try loading the relation if category_id exists
+        if ($this->category_id) {
+            $category = $this->category;
+            return $category?->name;
+        }
+
+        // Fall back to old ENUM field if it exists
+        $rawCategory = $this->getAttributes()['category'] ?? null;
+        if (is_string($rawCategory)) {
+            return ucfirst($rawCategory);
+        }
+
+        return null;
+    }
 }

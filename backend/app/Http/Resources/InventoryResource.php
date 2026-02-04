@@ -56,13 +56,18 @@ class InventoryResource extends JsonResource
                 return $this->product?->product_code;
             }),
             'category' => $this->whenLoaded('product', function() {
-                return $this->product?->category?->name;
+                return $this->product?->category_name; // Uses accessor for backward compatibility
             }),
             'category_id' => $this->whenLoaded('product', function() {
                 return $this->product?->category_id;
             }),
             'category_slug' => $this->whenLoaded('product', function() {
-                return $this->product?->category?->slug;
+                // Try relation, fall back to old ENUM value as slug
+                if ($this->product?->category) {
+                    return $this->product->category->slug;
+                }
+                $rawCategory = $this->product?->getAttributes()['category'] ?? null;
+                return is_string($rawCategory) ? $rawCategory : null;
             }),
             'brand_name' => $this->whenLoaded('brand', function() {
                 return $this->brand?->name;

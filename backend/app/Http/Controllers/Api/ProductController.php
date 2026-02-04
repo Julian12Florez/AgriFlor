@@ -203,7 +203,7 @@ class ProductController extends Controller
             return [
                 'product_id' => $product->id,
                 'name' => $product->name,
-                'category' => $product->category?->name,
+                'category' => $product->category_name, // Uses accessor for backward compatibility
                 'category_id' => $product->category_id,
                 'active_ingredient' => $product->active_ingredient,
                 'description' => $product->description,
@@ -300,7 +300,7 @@ class ProductController extends Controller
                 'base_quantity' => $baseQuantity,
                 'base_unit' => $baseUnit,
                 'unit_price' => $item->unit_price,
-                'category' => $item->product->category?->name,
+                'category' => $item->product->category_name, // Uses accessor for backward compatibility
                 'category_id' => $item->product->category_id,
                 'active_ingredient' => $item->product->active_ingredient,
                 // Display label for dropdown: "ProductName - ExpDate - ConvertedStock"

@@ -22,14 +22,22 @@ class ProductResource extends JsonResource
             'categoryId' => $this->category_id,
             'category_id' => $this->category_id, // For compatibility
             'category' => $this->when(
-                $this->relationLoaded('category'),
-                fn() => $this->category ? [
-                    'id' => $this->category->id,
-                    'name' => $this->category->name,
-                    'slug' => $this->category->slug,
-                ] : null
+                $this->relationLoaded('category') || $this->category_id,
+                function () {
+                    // Try relation first
+                    if ($this->relationLoaded('category') && $this->category) {
+                        return [
+                            'id' => $this->category->id,
+                            'name' => $this->category->name,
+                            'slug' => $this->category->slug,
+                        ];
+                    }
+                    // Fall back to accessor for backward compatibility
+                    $name = $this->category_name;
+                    return $name ? ['id' => $this->category_id, 'name' => $name, 'slug' => null] : null;
+                }
             ),
-            'categoryName' => $this->category?->name,
+            'categoryName' => $this->category_name, // Uses accessor for backward compatibility
             'baseUnit' => $this->base_unit,
             'base_unit' => $this->base_unit, // For compatibility
             'unit' => $this->base_unit, // For compatibility

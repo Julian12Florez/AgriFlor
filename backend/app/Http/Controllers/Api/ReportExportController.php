@@ -255,7 +255,7 @@ class ReportExportController extends Controller
                     $grouped[$key] = [
                         'product_name' => $item->product->name,
                         'product_code' => $item->product->product_code,
-                        'category' => $item->product->category?->name ?? 'Sin categoría',
+                        'category' => $item->product->category_name ?? 'Sin categoría',
                         'brand_name' => $item->product->brand->name,
                         'total_quantity' => 0,
                         'total_base_quantity' => 0,
