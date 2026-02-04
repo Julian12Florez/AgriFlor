@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -24,6 +24,9 @@ const BaseUnits: React.FC = () => {
   const [editingUnit, setEditingUnit] = useState<BaseUnit | null>(null);
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch base units from API
   const { data: unitsData, isLoading: unitsLoading } = useQuery({
@@ -101,6 +104,12 @@ const BaseUnits: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     const unitData = {
       name: values.name,
       symbol: values.symbol,
@@ -108,10 +117,16 @@ const BaseUnits: React.FC = () => {
       status: 'active',
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingUnit) {
-      updateMutation.mutate({ id: editingUnit.id, data: unitData });
+      updateMutation.mutate({ id: editingUnit.id, data: unitData }, mutationOptions);
     } else {
-      createMutation.mutate(unitData);
+      createMutation.mutate(unitData, mutationOptions);
     }
   };
 
@@ -328,7 +343,12 @@ const BaseUnits: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
                 {editingUnit ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>

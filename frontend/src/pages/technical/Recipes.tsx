@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Tabs, InputNumber, Drawer, Descriptions } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ExperimentOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -21,6 +21,9 @@ const Recipes: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch recipes from API
   const { data: recipesData, isLoading: recipesLoading } = useQuery({
@@ -119,6 +122,12 @@ const Recipes: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     // Format data for backend API (snake_case)
     const recipeData = {
       name: values.name,
@@ -138,10 +147,16 @@ const Recipes: React.FC = () => {
       safety_notes: values.safetyNotes || undefined,
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingRecipe) {
-      updateRecipeMutation.mutate({ id: editingRecipe.id, data: recipeData });
+      updateRecipeMutation.mutate({ id: editingRecipe.id, data: recipeData }, mutationOptions);
     } else {
-      createRecipeMutation.mutate(recipeData);
+      createRecipeMutation.mutate(recipeData, mutationOptions);
     }
   };
 
@@ -594,6 +609,8 @@ const Recipes: React.FC = () => {
             type="primary"
             htmlType="submit"
             style={{ width: isMobile ? '100%' : 'auto' }}
+            loading={createRecipeMutation.isPending || updateRecipeMutation.isPending}
+            disabled={createRecipeMutation.isPending || updateRecipeMutation.isPending}
           >
             {editingRecipe ? 'Actualizar' : 'Crear'}
           </Button>

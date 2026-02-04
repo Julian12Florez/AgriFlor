@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Switch } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -17,6 +17,9 @@ const OutputTypes: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   const { data: typesData, isLoading: typesLoading } = useQuery({
     queryKey: ['output-types', searchText, statusFilter],
@@ -89,6 +92,12 @@ const OutputTypes: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     const typeData = {
       name: values.name,
       code: values.code,
@@ -97,10 +106,16 @@ const OutputTypes: React.FC = () => {
       status: values.status || 'active',
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingType) {
-      updateMutation.mutate({ id: editingType.id, data: typeData });
+      updateMutation.mutate({ id: editingType.id, data: typeData }, mutationOptions);
     } else {
-      createMutation.mutate(typeData);
+      createMutation.mutate(typeData, mutationOptions);
     }
   };
 
@@ -302,7 +317,12 @@ const OutputTypes: React.FC = () => {
               >
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
                 {editingType ? 'Actualizar' : 'Crear'} Tipo
               </Button>
             </Space>

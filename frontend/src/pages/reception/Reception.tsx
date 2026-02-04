@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, InputNumber, Badge, Descriptions, Divider, Alert, List, Typography, Drawer, Progress, Steps, Timeline } from 'antd';
 import { CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EyeOutlined, InboxOutlined, EnvironmentOutlined, WarningOutlined, PlusOutlined, ShoppingCartOutlined, SwapOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -21,7 +21,6 @@ const ReceptionPage: React.FC = () => {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isNewBatchModalVisible, setIsNewBatchModalVisible] = useState(false);
-  const [isNewReceptionModalVisible, setIsNewReceptionModalVisible] = useState(false);
   const [isSourceDetailsModalVisible, setIsSourceDetailsModalVisible] = useState(false);
   const [selectedReception, setSelectedReception] = useState<Reception | null>(null);
   const [selectedSource, setSelectedSource] = useState<any | null>(null);
@@ -31,8 +30,10 @@ const ReceptionPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<'available' | 'receptions'>('available'); // New state for view toggle
   const [form] = Form.useForm();
   const [batchForm] = Form.useForm();
-  const [newReceptionForm] = Form.useForm();
   const [sourceReceptionForm] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch available sources (purchases and outputs ready for reception)
   const { data: availableSourcesData, isLoading: sourcesLoading } = useQuery({
@@ -109,8 +110,6 @@ const ReceptionPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['available-sources'] });
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['outputs'] });
-      setIsNewReceptionModalVisible(false);
-      newReceptionForm.resetFields();
       message.success('Recepción creada exitosamente');
       setViewMode('receptions'); // Switch to receptions view after creating
     },
@@ -316,22 +315,13 @@ const ReceptionPage: React.FC = () => {
     setIsNewBatchModalVisible(true);
   };
 
-  const handleCreateNewReception = (values: any) => {
-    // Format data for backend API (snake_case)
-    const receptionData = {
-      reception_number: values.receptionNumber || `REC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
-      source_id: values.sourceId,
-      source_type: values.sourceType,
-      origin_location_id: values.originLocationId || undefined,
-      destination_location_id: values.destinationLocationId,
-      shipment_date: values.shipmentDate ? values.shipmentDate.format('YYYY-MM-DD') : undefined,
-      observations: values.observations || undefined,
-    };
-
-    createReceptionMutation.mutate(receptionData);
-  };
-
   const handleCreateReceptionFromSource = (source: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     const receptionData = {
       reception_number: `REC-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
       source_id: source.id,
@@ -342,11 +332,22 @@ const ReceptionPage: React.FC = () => {
       observations: undefined,
     };
 
-    createReceptionMutation.mutate(receptionData);
+    createReceptionMutation.mutate(receptionData, {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    });
   };
 
   const handleSavePartialReception = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+
     if (!selectedReception) return;
+
+    isSubmittingRef.current = true;
 
     // Format batch data for backend API (snake_case)
     const batchData = {
@@ -373,10 +374,19 @@ const ReceptionPage: React.FC = () => {
     addBatchMutation.mutate({
       receptionId: selectedReception.id,
       batchData,
+    }, {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
     });
   };
 
   const handleSaveDirectReception = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+
     console.log('=== handleSaveDirectReception called ===');
     console.log('selectedSource:', selectedSource);
     console.log('Form values:', values);
@@ -395,6 +405,8 @@ const ReceptionPage: React.FC = () => {
       message.error('Debe ingresar al menos un producto con cantidad mayor a 0');
       return;
     }
+
+    isSubmittingRef.current = true;
 
     const receptionData = {
       source_id: selectedSource.id,
@@ -415,7 +427,11 @@ const ReceptionPage: React.FC = () => {
 
     console.log('Reception data to send:', receptionData);
 
-    createDirectReceptionMutation.mutate(receptionData);
+    createDirectReceptionMutation.mutate(receptionData, {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    });
   };
 
   const handleCreateEmptyReception = () => {
@@ -1365,6 +1381,7 @@ const ReceptionPage: React.FC = () => {
               type="primary"
               htmlType="submit"
               loading={createDirectReceptionMutation.isPending}
+              disabled={createDirectReceptionMutation.isPending}
             >
               Guardar Recepción Parcial
             </Button>
@@ -1620,7 +1637,12 @@ const ReceptionPage: React.FC = () => {
           <Button onClick={() => setIsNewBatchModalVisible(false)}>
             Cancelar
           </Button>
-          <Button type="primary" htmlType="submit">
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={addBatchMutation.isPending}
+            disabled={addBatchMutation.isPending}
+          >
             Confirmar Recepción Parcial
           </Button>
         </Space>
@@ -1637,16 +1659,6 @@ const ReceptionPage: React.FC = () => {
             Gestión de recepciones de compras y salidas con seguimiento parcial
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            newReceptionForm.resetFields();
-            setIsNewReceptionModalVisible(true);
-          }}
-        >
-          Nueva Recepción
-        </Button>
       </div>
 
       <Card>
@@ -1808,165 +1820,6 @@ const ReceptionPage: React.FC = () => {
         width={1400}
       >
         {selectedSource ? renderSourceReceptionForm() : renderNewBatchForm()}
-      </Modal>
-
-      {/* Modal para crear nueva recepción */}
-      <Modal
-        title="Crear Nueva Recepción"
-        open={isNewReceptionModalVisible}
-        onCancel={() => {
-          setIsNewReceptionModalVisible(false);
-          newReceptionForm.resetFields();
-        }}
-        footer={null}
-        width={800}
-      >
-        <Form
-          form={newReceptionForm}
-          layout="vertical"
-          onFinish={handleCreateNewReception}
-        >
-          <Row gutter={16}>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="receptionNumber"
-                label="Número de Recepción"
-                rules={[{ required: true, message: 'El número de recepción es requerido' }]}
-              >
-                <Input placeholder={`REC-${new Date().getFullYear()}-XXXXXX`} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="sourceType"
-                label="Tipo de Origen"
-                rules={[{ required: true, message: 'El tipo de origen es requerido' }]}
-              >
-                <Select placeholder="Seleccione el tipo de origen">
-                  <Option value="purchase">Compra</Option>
-                  <Option value="output">Salida</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col xs={24}>
-              <Form.Item
-                noStyle
-                shouldUpdate={(prevValues, currentValues) => prevValues.sourceType !== currentValues.sourceType}
-              >
-                {({ getFieldValue }) => {
-                  const sourceType = getFieldValue('sourceType');
-                  if (sourceType === 'purchase') {
-                    return (
-                      <Form.Item
-                        name="sourceId"
-                        label="Compra"
-                        rules={[{ required: true, message: 'Seleccione una compra' }]}
-                      >
-                        <Select placeholder="Seleccione la compra" showSearch optionFilterProp="children">
-                          {purchases.map((purchase: any) => (
-                            <Option key={purchase.id} value={purchase.id}>
-                              {purchase.orderNumber} - {purchase.supplier?.name || 'Sin proveedor'} ({formatCurrency(purchase.total)})
-                            </Option>
-                          ))}
-                        </Select>
-                      </Form.Item>
-                    );
-                  } else if (sourceType === 'output') {
-                    return (
-                      <Form.Item
-                        name="sourceId"
-                        label="Salida"
-                        rules={[{ required: true, message: 'Seleccione una salida' }]}
-                      >
-                        <Select placeholder="Seleccione la salida" showSearch optionFilterProp="children">
-                          {outputs
-                            .filter((output: any) => output.status !== 'completed')
-                            .map((output: any) => (
-                              <Option key={output.id} value={output.id}>
-                                {output.outputNumber} - {output.destinationLocation?.name || 'Sin destino'}
-                              </Option>
-                            ))}
-                        </Select>
-                      </Form.Item>
-                    );
-                  }
-                  return null;
-                }}
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="originLocationId"
-                label="Ubicación de Origen (Opcional)"
-              >
-                <Select placeholder="Seleccione la ubicación de origen" allowClear>
-                  {locations
-                    .filter((loc: any) => loc.status === 'active')
-                    .map((location: any) => (
-                      <Option key={location.id} value={location.id}>
-                        {location.type === 'farm' ? '🏡' : '🏢'} {location.name} ({location.municipality})
-                      </Option>
-                    ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="destinationLocationId"
-                label="Ubicación de Destino"
-                rules={[{ required: true, message: 'La ubicación de destino es requerida' }]}
-              >
-                <Select placeholder="Seleccione la ubicación de destino">
-                  {locations
-                    .filter((loc: any) => loc.status === 'active')
-                    .map((location: any) => (
-                      <Option key={location.id} value={location.id}>
-                        {location.type === 'farm' ? '🏡' : '🏢'} {location.name} ({location.municipality})
-                      </Option>
-                    ))}
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col xs={24} sm={12}>
-              <Form.Item
-                name="shipmentDate"
-                label="Fecha de Envío (Opcional)"
-              >
-                <DatePicker style={{ width: '100%' }} format="DD/MM/YYYY" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            name="observations"
-            label="Observaciones"
-          >
-            <TextArea rows={3} placeholder="Observaciones sobre la recepción..." />
-          </Form.Item>
-
-          <div style={{ textAlign: 'right', marginTop: 24 }}>
-            <Space>
-              <Button onClick={() => {
-                setIsNewReceptionModalVisible(false);
-                newReceptionForm.resetFields();
-              }}>
-                Cancelar
-              </Button>
-              <Button type="primary" htmlType="submit" loading={createReceptionMutation.isPending}>
-                Crear Recepción
-              </Button>
-            </Space>
-          </div>
-        </Form>
       </Modal>
 
       {/* Modal para ver fuente disponible (solo informativo) */}

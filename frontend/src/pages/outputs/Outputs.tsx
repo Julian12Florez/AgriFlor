@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, InputNumber, Badge, Descriptions, Divider, List, Typography, Drawer } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ExportOutlined, EnvironmentOutlined, CheckCircleOutlined, ClockCircleOutlined, InboxOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -32,6 +32,9 @@ const Outputs: React.FC = () => {
   const [availableFarmLots, setAvailableFarmLots] = useState<any[]>([]);
   const [isReadOnly, setIsReadOnly] = useState(false);
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch outputs from backend
   const { data: outputsData, isLoading: outputsLoading } = useQuery({
@@ -410,6 +413,11 @@ const Outputs: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+
     // Validate 5% rule
     if (values.products) {
       for (const product of values.products) {
@@ -420,6 +428,8 @@ const Outputs: React.FC = () => {
         }
       }
     }
+
+    isSubmittingRef.current = true;
 
     // Format data for backend API (snake_case)
     const outputData = {
@@ -444,11 +454,17 @@ const Outputs: React.FC = () => {
       }) || []
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     // Call backend API to create or update output
     if (editingOutput) {
-      updateOutputMutation.mutate({ id: editingOutput.id, data: outputData });
+      updateOutputMutation.mutate({ id: editingOutput.id, data: outputData }, mutationOptions);
     } else {
-      createOutputMutation.mutate(outputData);
+      createOutputMutation.mutate(outputData, mutationOptions);
     }
   };
 
@@ -1307,6 +1323,8 @@ const Outputs: React.FC = () => {
               type="primary"
               htmlType="submit"
               style={{ width: isMobile ? '100%' : 'auto' }}
+              loading={createOutputMutation.isPending || updateOutputMutation.isPending}
+              disabled={createOutputMutation.isPending || updateOutputMutation.isPending}
             >
               {editingOutput ? 'Actualizar' : 'Crear'} Salida
             </Button>

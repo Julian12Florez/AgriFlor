@@ -226,6 +226,7 @@ Route::middleware('auth:api')->group(function () {
         Route::delete('purchases/{id}', [PurchaseController::class, 'destroy']);
         Route::post('purchases/{id}/attachments', [PurchaseController::class, 'addAttachment']);
         Route::delete('purchases/{id}/attachments/{attachmentId}', [PurchaseController::class, 'removeAttachment']);
+        Route::put('purchases/{id}/cancel', [PurchaseController::class, 'cancel']);
     });
 
     // PRODUCT OUTPUTS - Read (All roles - todos deben tener acceso a salidas)

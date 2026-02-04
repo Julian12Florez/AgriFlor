@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, Tabs, Steps, InputNumber, Drawer, Descriptions } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, CalendarOutlined, EnvironmentOutlined, ExperimentOutlined, CheckCircleOutlined, ClockCircleOutlined, FileTextOutlined, PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -23,6 +23,9 @@ const Orders: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch orders from API
   const { data: ordersData, isLoading: ordersLoading } = useQuery({
@@ -200,6 +203,12 @@ const Orders: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     // Format data for backend API (snake_case)
     const orderData = {
       scheduled_date: values.scheduledDate.toISOString(),
@@ -221,10 +230,16 @@ const Orders: React.FC = () => {
       })),
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingOrder) {
-      updateOrderMutation.mutate({ id: editingOrder.id, data: orderData });
+      updateOrderMutation.mutate({ id: editingOrder.id, data: orderData }, mutationOptions);
     } else {
-      createOrderMutation.mutate(orderData);
+      createOrderMutation.mutate(orderData, mutationOptions);
     }
   };
 
@@ -669,7 +684,12 @@ const Orders: React.FC = () => {
           }}>
             Cancelar
           </Button>
-          <Button type="primary" htmlType="submit">
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={createOrderMutation.isPending || updateOrderMutation.isPending}
+            disabled={createOrderMutation.isPending || updateOrderMutation.isPending}
+          >
             {editingOrder ? 'Actualizar' : 'Crear'}
           </Button>
         </Space>

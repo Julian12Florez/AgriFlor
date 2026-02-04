@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Table, Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Avatar, Checkbox } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, MailOutlined, PhoneOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -27,6 +27,9 @@ const Users: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [showPasswordFields, setShowPasswordFields] = useState(false);
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch users from API
   const { data: usersData, isLoading: usersLoading } = useQuery({
@@ -120,6 +123,12 @@ const Users: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     // Format data for backend API (snake_case)
     const userData: Record<string, any> = {
       email: values.email,
@@ -134,10 +143,16 @@ const Users: React.FC = () => {
       userData.password_confirmation = values.password_confirmation;
     }
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingUser) {
-      updateUserMutation.mutate({ id: editingUser.id, data: userData });
+      updateUserMutation.mutate({ id: editingUser.id, data: userData }, mutationOptions);
     } else {
-      createUserMutation.mutate(userData);
+      createUserMutation.mutate(userData, mutationOptions);
     }
   };
 
@@ -478,7 +493,12 @@ const Users: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createUserMutation.isPending || updateUserMutation.isPending}
+                disabled={createUserMutation.isPending || updateUserMutation.isPending}
+              >
                 {editingUser ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>

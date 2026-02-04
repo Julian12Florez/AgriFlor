@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, InputNumber, Table, Switch, Divider } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, DollarOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -21,6 +21,10 @@ const Tasks: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [editingDeduction, setEditingDeduction] = useState<any | null>(null);
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
+  const isDeductionSubmittingRef = useRef(false);
 
   const { data: tasksData, isLoading } = useQuery({
     queryKey: ['tasks', searchText, statusFilter],
@@ -152,6 +156,12 @@ const Tasks: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     const taskData = {
       code: values.code,
       name: values.name,
@@ -161,10 +171,16 @@ const Tasks: React.FC = () => {
       status: values.status || 'active',
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingTask) {
-      updateMutation.mutate({ id: editingTask.id, data: taskData });
+      updateMutation.mutate({ id: editingTask.id, data: taskData }, mutationOptions);
     } else {
-      createMutation.mutate(taskData);
+      createMutation.mutate(taskData, mutationOptions);
     }
   };
 
@@ -176,10 +192,22 @@ const Tasks: React.FC = () => {
   };
 
   const handleDeductionSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isDeductionSubmittingRef.current) {
+      return;
+    }
+    isDeductionSubmittingRef.current = true;
+
     const deductionData = {
       deduction_name: values.deductionName,
       percentage: values.percentage,
       is_active: values.isActive ?? true,
+    };
+
+    const mutationOptions = {
+      onSettled: () => {
+        isDeductionSubmittingRef.current = false;
+      }
     };
 
     if (editingDeduction) {
@@ -187,12 +215,12 @@ const Tasks: React.FC = () => {
         taskId: selectedTask.id,
         deductionId: editingDeduction.id,
         data: deductionData,
-      });
+      }, mutationOptions);
     } else {
       addDeductionMutation.mutate({
         taskId: selectedTask.id,
         data: deductionData,
-      });
+      }, mutationOptions);
     }
   };
 
@@ -484,7 +512,12 @@ const Tasks: React.FC = () => {
               <Button onClick={() => { setIsModalVisible(false); form.resetFields(); setEditingTask(null); }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit" loading={createMutation.isPending || updateMutation.isPending}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
                 {editingTask ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>
@@ -550,6 +583,7 @@ const Tasks: React.FC = () => {
                   htmlType="submit"
                   icon={editingDeduction ? <EditOutlined /> : <PlusOutlined />}
                   loading={addDeductionMutation.isPending || updateDeductionMutation.isPending}
+                  disabled={addDeductionMutation.isPending || updateDeductionMutation.isPending}
                 >
                   {editingDeduction ? 'Actualizar' : 'Agregar'}
                 </Button>

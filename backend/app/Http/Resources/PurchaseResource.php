@@ -134,6 +134,16 @@ class PurchaseResource extends JsonResource
                     'email' => $this->receiver->email,
                 ] : null
             ),
+
+            // Informacion de recepcion para determinar si se puede cancelar
+            'hasReceptionStarted' => $this->when(
+                $this->relationLoaded('reception'),
+                fn() => $this->reception && in_array($this->reception->status, ['partial', 'completed'])
+            ),
+            'receptionStatus' => $this->when(
+                $this->relationLoaded('reception'),
+                fn() => $this->reception?->status
+            ),
         ];
     }
 }

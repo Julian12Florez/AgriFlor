@@ -206,6 +206,9 @@ export const purchasesApi = {
   deleteAttachment: (id: string, attachmentId: string) =>
     api.delete<ApiResponse<null>>(`/purchases/${id}/attachments/${attachmentId}`),
 
+  cancel: (id: string) =>
+    api.put<ApiResponse<any>>(`/purchases/${id}/cancel`, {}),
+
   exportPdf: (id: string, orderNumber?: string) => {
     const url = `${API_BASE_URL}/purchases/${id}/export-pdf`;
     const filename = orderNumber ? `orden_compra_${orderNumber}.pdf` : `orden_compra_${id}.pdf`;

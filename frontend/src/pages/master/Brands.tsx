@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Descriptions } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -18,6 +18,9 @@ const Brands: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch brands from API
   const { data: brandsData, isLoading: brandsLoading } = useQuery({
@@ -85,15 +88,27 @@ const Brands: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     const brandData = {
       name: values.name,
       status: values.status || 'active',
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingBrand) {
-      updateBrandMutation.mutate({ id: editingBrand.id, data: brandData });
+      updateBrandMutation.mutate({ id: editingBrand.id, data: brandData }, mutationOptions);
     } else {
-      createBrandMutation.mutate(brandData);
+      createBrandMutation.mutate(brandData, mutationOptions);
     }
   };
 
@@ -341,7 +356,12 @@ const Brands: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createBrandMutation.isPending || updateBrandMutation.isPending}
+                disabled={createBrandMutation.isPending || updateBrandMutation.isPending}
+              >
                 {editingBrand ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>

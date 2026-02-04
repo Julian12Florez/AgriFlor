@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Badge, Descriptions, Divider, InputNumber } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, EnvironmentOutlined, HomeOutlined, BankOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -20,6 +20,9 @@ const Locations: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [selectedLocationType, setSelectedLocationType] = useState<string | undefined>();
   const [form] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch locations from API
   const { data: locationsData, isLoading: locationsLoading } = useQuery({
@@ -138,6 +141,12 @@ const Locations: React.FC = () => {
   };
 
   const handleSave = async (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     try {
       const lat = values.coordinates?.lat;
       const lng = values.coordinates?.lng;
@@ -198,6 +207,8 @@ const Locations: React.FC = () => {
       setEditingLocation(null);
     } catch (error: any) {
       message.error(`Error: ${error.message}`);
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -703,7 +714,12 @@ const Locations: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createLocationMutation.isPending || updateLocationMutation.isPending}
+                disabled={createLocationMutation.isPending || updateLocationMutation.isPending}
+              >
                 {editingLocation ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>

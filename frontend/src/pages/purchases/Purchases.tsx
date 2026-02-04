@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Button, Input, Space, Card, Tag, message, Modal, Row, Col, Select, Descriptions, Divider, Alert, Typography, Drawer, Table, Form, DatePicker, InputNumber } from 'antd';
-import { EyeOutlined, DownloadOutlined, PrinterOutlined, ShoppingCartOutlined, ClockCircleOutlined, CheckCircleOutlined, TruckOutlined, ExclamationCircleOutlined, PlusOutlined, InboxOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useRef } from 'react';
+import { Button, Input, Space, Card, Tag, message, Modal, Row, Col, Select, Descriptions, Divider, Alert, Typography, Drawer, Table, Form, DatePicker, InputNumber, Popconfirm } from 'antd';
+import { EyeOutlined, DownloadOutlined, PrinterOutlined, ShoppingCartOutlined, ClockCircleOutlined, CheckCircleOutlined, TruckOutlined, ExclamationCircleOutlined, PlusOutlined, InboxOutlined, StopOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
@@ -48,6 +48,8 @@ interface Purchase {
   receivedBy?: string;
   receivedAt?: Date;
   createdAt: Date;
+  hasReceptionStarted?: boolean;
+  receptionStatus?: string;
 }
 
 interface PurchaseItem {
@@ -81,6 +83,9 @@ const Purchases: React.FC = () => {
   const [isNewPurchaseModalVisible, setIsNewPurchaseModalVisible] = useState(false);
   const [form] = Form.useForm();
   const [selectedOriginLocationId, setSelectedOriginLocationId] = useState<string | undefined>();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch purchases from API
   const { data: purchasesData, isLoading: purchasesLoading } = useQuery({
@@ -120,6 +125,18 @@ const Purchases: React.FC = () => {
     },
     onError: (error: any) => {
       message.error(`Error al crear la compra: ${error.message}`);
+    },
+  });
+
+  // Cancel purchase mutation
+  const cancelPurchaseMutation = useMutation({
+    mutationFn: (id: string) => purchasesApi.cancel(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['purchases'] });
+      message.success('Orden de compra cancelada exitosamente');
+    },
+    onError: (error: any) => {
+      message.error(`Error al cancelar la compra: ${error.message}`);
     },
   });
 
@@ -190,6 +207,15 @@ const Purchases: React.FC = () => {
   };
 
   const handleCreatePurchase = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      console.log('Submission blocked - already in progress');
+      return;
+    }
+
+    // Mark as submitting immediately (synchronous)
+    isSubmittingRef.current = true;
+
     // Format data for backend API
     const purchaseData = {
       order_number: `PUR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
@@ -209,7 +235,12 @@ const Purchases: React.FC = () => {
       })),
     };
 
-    createPurchaseMutation.mutate(purchaseData);
+    createPurchaseMutation.mutate(purchaseData, {
+      onSettled: () => {
+        // Reset the ref when mutation completes (success or error)
+        isSubmittingRef.current = false;
+      }
+    });
   };
 
 
@@ -242,7 +273,7 @@ const Purchases: React.FC = () => {
     {
       title: 'Acciones',
       key: 'actions',
-      width: 100,
+      width: 120,
       fixed: 'right' as const,
       render: (_, record) => (
         <Space direction="vertical" size="small">
@@ -262,6 +293,26 @@ const Purchases: React.FC = () => {
           >
             PDF
           </Button>
+          {record.status === 'pending' && !record.hasReceptionStarted && (
+            <Popconfirm
+              title="¿Cancelar orden?"
+              description="Esta acción no se puede deshacer"
+              onConfirm={() => cancelPurchaseMutation.mutate(record.id)}
+              okText="Sí, cancelar"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="link"
+                danger
+                icon={<StopOutlined />}
+                size="small"
+                loading={cancelPurchaseMutation.isPending}
+              >
+                Cancelar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -390,6 +441,26 @@ const Purchases: React.FC = () => {
           >
             Descargar
           </Button>
+          {record.status === 'pending' && !record.hasReceptionStarted && (
+            <Popconfirm
+              title="¿Cancelar orden de compra?"
+              description="Esta acción no se puede deshacer"
+              onConfirm={() => cancelPurchaseMutation.mutate(record.id)}
+              okText="Sí, cancelar"
+              cancelText="No"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="link"
+                danger
+                icon={<StopOutlined />}
+                size="small"
+                loading={cancelPurchaseMutation.isPending}
+              >
+                Cancelar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -953,7 +1024,12 @@ const Purchases: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createPurchaseMutation.isPending}
+                disabled={createPurchaseMutation.isPending}
+              >
                 Crear Orden de Compra
               </Button>
             </Space>

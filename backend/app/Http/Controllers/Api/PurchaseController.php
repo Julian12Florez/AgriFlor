@@ -36,7 +36,8 @@ class PurchaseController extends Controller
                 'purchaseItems.packagingUnit',
                 'creator',
                 'receiver',
-                'attachments.uploader'
+                'attachments.uploader',
+                'reception'
             ]);
 
         // Filter by status
@@ -550,6 +551,82 @@ class PurchaseController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar el archivo adjunto',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Cancel the specified purchase
+     * Only purchases without started reception can be cancelled
+     */
+    public function cancel(string $id): JsonResponse
+    {
+        try {
+            $purchase = Purchase::with('reception')->findOrFail($id);
+
+            // Check if purchase can be cancelled (only if no reception has started)
+            if ($purchase->status === 'received') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede cancelar una compra que ya fue recibida'
+                ], 422);
+            }
+
+            if ($purchase->status === 'cancelled') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La compra ya está cancelada'
+                ], 422);
+            }
+
+            // Check if there's a reception started for this purchase
+            if ($purchase->reception && in_array($purchase->reception->status, ['partial', 'completed'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede cancelar una compra con recepción iniciada'
+                ], 422);
+            }
+
+            // Check if status is in_transit (reception started)
+            if ($purchase->status === 'in_transit') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede cancelar una compra con recepción en proceso'
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            $purchase->update(['status' => 'cancelled']);
+
+            // If there was a pending reception, cancel it too
+            if ($purchase->reception && $purchase->reception->status === 'pending') {
+                $purchase->reception->update(['status' => 'cancelled']);
+            }
+
+            DB::commit();
+
+            $purchase->load([
+                'supplier',
+                'destinationLocation',
+                'purchaseItems.product',
+                'purchaseItems.brand',
+                'purchaseItems.packagingUnit',
+                'creator',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Compra cancelada exitosamente',
+                'data' => new PurchaseResource($purchase)
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cancelar la compra',
                 'error' => $e->getMessage()
             ], 500);
         }

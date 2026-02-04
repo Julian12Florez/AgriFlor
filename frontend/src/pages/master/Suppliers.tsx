@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Tabs, Descriptions } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, PhoneOutlined, MailOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -40,6 +40,9 @@ const Suppliers: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [form] = Form.useForm();
   const [contactForm] = Form.useForm();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch suppliers from API
   const { data: suppliersData, isLoading: suppliersLoading } = useQuery({
@@ -113,6 +116,12 @@ const Suppliers: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     // Format data for backend API (snake_case)
     const supplierData = {
       name: values.name,
@@ -125,10 +134,16 @@ const Suppliers: React.FC = () => {
       status: values.status || 'active',
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingSupplier) {
-      updateSupplierMutation.mutate({ id: editingSupplier.id, data: supplierData });
+      updateSupplierMutation.mutate({ id: editingSupplier.id, data: supplierData }, mutationOptions);
     } else {
-      createSupplierMutation.mutate(supplierData);
+      createSupplierMutation.mutate(supplierData, mutationOptions);
     }
   };
 
@@ -515,7 +530,12 @@ const Suppliers: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createSupplierMutation.isPending || updateSupplierMutation.isPending}
+                disabled={createSupplierMutation.isPending || updateSupplierMutation.isPending}
+              >
                 {editingSupplier ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>

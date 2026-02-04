@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Typography, Descriptions, InputNumber } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -21,6 +21,9 @@ const Products: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Fetch products from API
   const { data: productsData, isLoading: productsLoading } = useQuery({
@@ -177,6 +180,12 @@ const Products: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     // Format data for backend API (snake_case)
     const productData = {
       name: values.name,
@@ -192,10 +201,16 @@ const Products: React.FC = () => {
       packaging_unit_ids: values.packagingUnitIds || [],
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingProduct) {
-      updateProductMutation.mutate({ id: editingProduct.id, data: productData });
+      updateProductMutation.mutate({ id: editingProduct.id, data: productData }, mutationOptions);
     } else {
-      createProductMutation.mutate(productData);
+      createProductMutation.mutate(productData, mutationOptions);
     }
   };
 
@@ -668,7 +683,12 @@ const Products: React.FC = () => {
               }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit">
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createProductMutation.isPending || updateProductMutation.isPending}
+                disabled={createProductMutation.isPending || updateProductMutation.isPending}
+              >
                 {editingProduct ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>

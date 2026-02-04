@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, DatePicker, Upload, Table, Alert, Statistic, Divider } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UploadOutlined, DownloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -18,6 +18,9 @@ const Workers: React.FC = () => {
   const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+
+  // Ref to prevent double submissions (synchronous check)
+  const isSubmittingRef = useRef(false);
 
   // Bulk upload state
   const [fileList, setFileList] = useState<UploadFile[]>([]);
@@ -138,6 +141,12 @@ const Workers: React.FC = () => {
   };
 
   const handleSave = (values: any) => {
+    // Prevent multiple submissions using ref (synchronous check)
+    if (isSubmittingRef.current) {
+      return;
+    }
+    isSubmittingRef.current = true;
+
     const workerData = {
       worker_code: values.workerCode,
       full_name: values.fullName,
@@ -146,10 +155,16 @@ const Workers: React.FC = () => {
       status: values.status || 'active',
     };
 
+    const mutationOptions = {
+      onSettled: () => {
+        isSubmittingRef.current = false;
+      }
+    };
+
     if (editingWorker) {
-      updateMutation.mutate({ id: editingWorker.id, data: workerData });
+      updateMutation.mutate({ id: editingWorker.id, data: workerData }, mutationOptions);
     } else {
-      createMutation.mutate(workerData);
+      createMutation.mutate(workerData, mutationOptions);
     }
   };
 
@@ -564,7 +579,12 @@ const Workers: React.FC = () => {
               <Button onClick={() => { setIsModalVisible(false); form.resetFields(); setEditingWorker(null); }}>
                 Cancelar
               </Button>
-              <Button type="primary" htmlType="submit" loading={createMutation.isPending || updateMutation.isPending}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={createMutation.isPending || updateMutation.isPending}
+                disabled={createMutation.isPending || updateMutation.isPending}
+              >
                 {editingWorker ? 'Actualizar' : 'Crear'}
               </Button>
             </Space>
