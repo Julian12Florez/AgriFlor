@@ -394,6 +394,7 @@ const LaborCostsReport: React.FC = () => {
               rowKey={(record, index) => `${record.period}-${index}`}
               size="small"
               pagination={false}
+              scroll={{ x: 'max-content' }}
               summary={() => {
                 if (periods.length === 0) return null;
                 return (

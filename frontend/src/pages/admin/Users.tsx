@@ -327,6 +327,7 @@ const Users: React.FC = () => {
           dataSource={filteredUsers}
           rowKey="id"
           loading={usersLoading || createUserMutation.isPending || updateUserMutation.isPending || deleteUserMutation.isPending}
+          scroll={{ x: 'max-content' }}
           pagination={{
             total: filteredUsers.length,
             pageSize: 10,

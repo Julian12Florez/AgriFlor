@@ -437,6 +437,7 @@ const Workers: React.FC = () => {
                 rowKey="row"
                 size="small"
                 pagination={false}
+                scroll={{ x: 'max-content' }}
                 style={{ marginBottom: 16 }}
               />
             </>
@@ -451,6 +452,7 @@ const Workers: React.FC = () => {
                 rowKey="row"
                 size="small"
                 pagination={false}
+                scroll={{ x: 'max-content' }}
               />
 
               <div style={{ textAlign: 'right', marginTop: 16 }}>

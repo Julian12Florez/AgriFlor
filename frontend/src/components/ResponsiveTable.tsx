@@ -63,7 +63,7 @@ function ResponsiveTable<T extends Record<string, any>>({
       {...tableProps}
       columns={columns}
       expandable={expandableConfig}
-      scroll={isMobile ? undefined : (expandedRowRender ? undefined : { x: 800 })}
+      scroll={{ x: 'max-content' }}
       pagination={paginationConfig}
     />
   );

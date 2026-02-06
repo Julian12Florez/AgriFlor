@@ -354,6 +354,7 @@ const WorkerProductivityReport: React.FC = () => {
               rowKey={(record, index) => record.worker_id || record.id || `worker-${index}`}
               size="small"
               pagination={{ pageSize: 50, showSizeChanger: true, showTotal: (total) => `Total: ${total} trabajadores` }}
+              scroll={{ x: 'max-content' }}
               summary={() => {
                 if (workersReport.length === 0) return null;
                 return (

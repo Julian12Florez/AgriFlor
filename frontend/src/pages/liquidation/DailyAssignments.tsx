@@ -457,6 +457,7 @@ const DailyAssignments: React.FC = () => {
                 rowKey="row"
                 size="small"
                 pagination={false}
+                scroll={{ x: 'max-content' }}
                 style={{ marginBottom: 16 }}
               />
             </>
@@ -471,6 +472,7 @@ const DailyAssignments: React.FC = () => {
                 rowKey="row"
                 size="small"
                 pagination={false}
+                scroll={{ x: 'max-content' }}
                 summary={() => (
                   <Table.Summary.Row>
                     <Table.Summary.Cell index={0} colSpan={5} align="right">

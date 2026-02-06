@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Layout, Menu, Button, Avatar, Dropdown, Badge } from 'antd';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -25,17 +25,34 @@ import ChangePasswordModal from './ChangePasswordModal';
 
 const { Header, Sider, Content } = Layout;
 
+// Breakpoint para detectar móvil (lg = 992px según Ant Design)
+const MOBILE_BREAKPOINT = 992;
+
 interface MainLayoutProps {
   children: React.ReactNode;
 }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(window.innerWidth < MOBILE_BREAKPOINT);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < MOBILE_BREAKPOINT);
   const [changePasswordVisible, setChangePasswordVisible] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
   const { user, hasModuleAccess, getRoleDisplayName } = usePermissions();
+
+  // Detectar cambios de tamaño de pantalla
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < MOBILE_BREAKPOINT;
+      setIsMobile(mobile);
+      if (mobile && !collapsed) {
+        setCollapsed(true);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [collapsed]);
 
   // Build menu dynamically based on user permissions
   const menuItems: MenuProps['items'] = useMemo(() => {
@@ -208,12 +225,40 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
+      {/* Overlay para cerrar sidebar en móviles */}
+      {isMobile && !collapsed && (
+        <div
+          onClick={() => setCollapsed(true)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.45)',
+            zIndex: 999,
+          }}
+        />
+      )}
       <Sider
         trigger={null}
         collapsible
         collapsed={collapsed}
+        breakpoint="lg"
+        collapsedWidth={isMobile ? 0 : 80}
+        onBreakpoint={(broken) => {
+          setIsMobile(broken);
+          if (broken) {
+            setCollapsed(true);
+          }
+        }}
         style={{
           background: '#2E7D32',
+          position: isMobile ? 'fixed' : 'relative',
+          height: isMobile ? '100vh' : 'auto',
+          left: 0,
+          top: 0,
+          zIndex: 1000,
         }}
         width={280}
       >
@@ -250,11 +295,14 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {/* Header */}
         <Header
           style={{
-            padding: '0 24px',
+            padding: isMobile ? '0 12px' : '0 24px',
             background: '#4CAF50',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            position: 'sticky',
+            top: 0,
+            zIndex: 100,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -264,17 +312,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
               onClick={() => setCollapsed(!collapsed)}
               style={{
                 fontSize: '16px',
-                width: 64,
+                width: isMobile ? 48 : 64,
                 height: 64,
                 color: 'white',
               }}
             />
-            <h2 style={{ color: 'white', margin: 0, marginLeft: 16 }}>
-              Dashboard
-            </h2>
+            {!isMobile && (
+              <h2 style={{ color: 'white', margin: 0, marginLeft: 16 }}>
+                Panel
+              </h2>
+            )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 16 }}>
             {/* Notificaciones */}
             <Badge count={3} size="small">
               <Button
@@ -301,11 +351,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
                   icon={<UserOutlined />}
                   style={{ background: '#2E7D32' }}
                 />
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: 1.3, gap: 0 }}>
-                  <span style={{ fontSize: '14px', fontWeight: 500 }}>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  lineHeight: 1.3,
+                  gap: 0,
+                  maxWidth: isMobile ? 100 : 'none',
+                }}>
+                  <span style={{
+                    fontSize: isMobile ? '12px' : '14px',
+                    fontWeight: 500,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    maxWidth: isMobile ? 80 : 'none',
+                  }}>
                     {user?.name || 'Usuario'}
                   </span>
-                  <span style={{ fontSize: '12px', opacity: 0.8 }}>
+                  <span style={{ fontSize: isMobile ? '10px' : '12px', opacity: 0.8 }}>
                     {getRoleDisplayName()}
                   </span>
                 </div>
@@ -317,8 +381,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         {/* Content */}
         <Content
           style={{
-            margin: '24px',
-            padding: 24,
+            margin: isMobile ? '12px' : '24px',
+            padding: isMobile ? 12 : 24,
             background: '#fff',
             borderRadius: 8,
             minHeight: 280,

@@ -309,6 +309,7 @@ const LiquidationReport: React.FC = () => {
                     rowKey={(record, i) => `${record.date}-${record.task_code}-${i}`}
                     size="small"
                     pagination={false}
+                    scroll={{ x: 'max-content' }}
                     summary={() => (
                       <Table.Summary.Row style={{ background: '#f6ffed' }}>
                         <Table.Summary.Cell index={0} colSpan={3} align="right">

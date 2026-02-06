@@ -380,6 +380,7 @@ const TaskAnalysisReport: React.FC = () => {
               rowKey={(record, index) => record.task_id || record.id || `task-${index}`}
               size="small"
               pagination={false}
+              scroll={{ x: 'max-content' }}
               summary={() => {
                 if (tasksReport.length === 0) return null;
                 const totalVeces = tasksReport.reduce((sum: number, t: any) => sum + (t.veces_asignada || 0), 0);

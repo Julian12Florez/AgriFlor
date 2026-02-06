@@ -563,6 +563,7 @@ const Tasks: React.FC = () => {
               rowKey="id"
               size="small"
               pagination={false}
+              scroll={{ x: 'max-content' }}
             />
 
             <Divider />

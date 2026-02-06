@@ -351,6 +351,7 @@ const PeriodComparisonReport: React.FC = () => {
               rowKey={(record, index) => record.metric || `metric-${index}`}
               size="small"
               pagination={false}
+              scroll={{ x: 'max-content' }}
             />
           </Card>
 

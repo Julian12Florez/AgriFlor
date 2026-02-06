@@ -482,6 +482,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
                           }))}
                           rowKey="type"
                           pagination={false}
+                          scroll={{ x: 'max-content' }}
                           columns={[
                             {
                               title: 'Tipo',
@@ -538,6 +539,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
                         dataSource={report.by_product}
                         rowKey="product_id"
                         pagination={{ pageSize: 10 }}
+                        scroll={{ x: 'max-content' }}
                         columns={[
                           { title: 'Producto', dataIndex: 'product_name', key: 'product_name' },
                           {
@@ -612,6 +614,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
                         dataSource={report.by_location}
                         rowKey="location_id"
                         pagination={false}
+                        scroll={{ x: 'max-content' }}
                         columns={[
                           { title: 'Ubicación', dataIndex: 'location_name', key: 'location_name' },
                           {
