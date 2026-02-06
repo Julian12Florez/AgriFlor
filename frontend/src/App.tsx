@@ -214,7 +214,7 @@ const App: React.FC = () => {
               } />
 
               <Route path="/reports/stock" element={
-                <ProtectedRoute module="reports" showAccessDenied>
+                <ProtectedRoute module="inventory" showAccessDenied>
                   <MainLayout>
                     <StockReport />
                   </MainLayout>

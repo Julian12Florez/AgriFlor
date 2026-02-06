@@ -9,7 +9,7 @@ interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'agronomist' | 'warehouse' | 'supervisor' | 'farm';
+  role: 'admin' | 'agronomist' | 'warehouse' | 'supervisor' | 'farm' | 'purchasing' | 'financiero';
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
@@ -90,7 +90,9 @@ const Users: React.FC = () => {
       agronomist: 'green',
       warehouse: 'blue',
       supervisor: 'orange',
-      farm: 'purple'
+      farm: 'purple',
+      purchasing: 'cyan',
+      financiero: 'gold'
     };
     return colors[role as keyof typeof colors] || 'default';
   };
@@ -101,7 +103,9 @@ const Users: React.FC = () => {
       agronomist: 'Agrónomo',
       warehouse: 'Bodeguero',
       supervisor: 'Supervisor',
-      farm: 'Operario de Finca'
+      farm: 'Operario de Finca',
+      purchasing: 'Encargado de Compras',
+      financiero: 'Financiero'
     };
     return texts[role as keyof typeof texts] || role;
   };
@@ -195,6 +199,8 @@ const Users: React.FC = () => {
         { text: 'Bodeguero', value: 'warehouse' },
         { text: 'Supervisor', value: 'supervisor' },
         { text: 'Operario de Finca', value: 'farm' },
+        { text: 'Encargado de Compras', value: 'purchasing' },
+        { text: 'Financiero', value: 'financiero' },
       ],
       onFilter: (value, record) => record.role === value,
     },
@@ -300,6 +306,8 @@ const Users: React.FC = () => {
               <Option value="warehouse">Bodeguero</Option>
               <Option value="supervisor">Supervisor</Option>
               <Option value="farm">Operario de Finca</Option>
+              <Option value="purchasing">Encargado de Compras</Option>
+              <Option value="financiero">Financiero</Option>
             </Select>
             <Select
               placeholder="Filtrar por estado"
@@ -402,6 +410,12 @@ const Users: React.FC = () => {
                   </Option>
                   <Option value="farm">
                     <Tag color="purple" style={{ margin: 0 }}>Operario de Finca</Tag>
+                  </Option>
+                  <Option value="purchasing">
+                    <Tag color="cyan" style={{ margin: 0 }}>Encargado de Compras</Tag>
+                  </Option>
+                  <Option value="financiero">
+                    <Tag color="gold" style={{ margin: 0 }}>Financiero</Tag>
                   </Option>
                 </Select>
               </Form.Item>

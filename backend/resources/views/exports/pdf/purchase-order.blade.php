@@ -364,6 +364,30 @@
             </table>
         </div>
 
+        <!-- Datos de Facturacion (ENVIAR A) -->
+        <div class="supplier-section">
+            <div class="section-title">ENVIAR FACTURA A</div>
+            <table class="supplier-table">
+                <tr>
+                    <td>
+                        <strong>Empresa:</strong><br>
+                        {{ config('app.billing_company_name', 'AGUACATES FLOREZ S.A.S') }}<br><br>
+                        <strong>NIT:</strong><br>
+                        {{ config('app.billing_nit', '901.060.667-7') }}<br><br>
+                        <strong>Direccion:</strong><br>
+                        {{ config('app.billing_address', 'URRAO') }}<br>
+                        {{ config('app.billing_city', 'URRAO - ANTIOQUIA') }}
+                    </td>
+                    <td>
+                        <strong>E-mail:</strong><br>
+                        {{ config('app.billing_email', 'compras@aguacatesflorez.com') }}<br><br>
+                        <strong>Telefono:</strong><br>
+                        {{ config('app.billing_phone', '312-853-42-84') }}
+                    </td>
+                </tr>
+            </table>
+        </div>
+
         <!-- Productos Solicitados -->
         <div style="margin: 20px 0;">
             <div class="section-title">PRODUCTOS SOLICITADOS</div>

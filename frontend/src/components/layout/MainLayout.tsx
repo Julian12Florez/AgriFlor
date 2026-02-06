@@ -108,6 +108,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         label: 'Inventario',
         children: [
           { key: '/inventory', label: 'Inventario y Kardex' },
+          { key: '/reports/stock', label: 'Stock Actual' },
         ],
       });
     }
@@ -119,7 +120,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         icon: <BarChartOutlined />,
         label: 'Reportes y Alertas',
         children: [
-          { key: '/reports/stock', label: 'Stock Actual' },
           { key: '/reports/consumption', label: 'Consumo de Productos' },
           { key: '/reports/movements', label: 'Movimientos de Inventario' },
           { key: '/reports/consolidated', label: 'Análisis Consolidado' },

@@ -18,7 +18,7 @@ class StoreUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'name' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['required', Rule::in(['admin', 'agronomist', 'warehouse', 'supervisor', 'farm'])],
+            'role' => ['required', Rule::in(['admin', 'agronomist', 'warehouse', 'supervisor', 'farm', 'purchasing', 'financiero'])],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
         ];
     }

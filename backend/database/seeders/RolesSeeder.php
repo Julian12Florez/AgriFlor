@@ -63,20 +63,20 @@ class RolesSeeder extends Seeder
             ->get();
         $supervisor->permissions()->sync($supervisorPermissions);
 
-        // 4. WAREHOUSE (Bodeguero) - Outputs and Reception only
+        // 4. WAREHOUSE (Bodeguero) - Outputs, Reception and Inventory
         $warehouse = Role::firstOrCreate(
             ['name' => 'warehouse'],
             [
                 'display_name' => 'Bodeguero',
-                'description' => 'Acceso a salidas y recepciones',
+                'description' => 'Acceso a salidas, recepciones e inventario',
                 'has_full_access' => false,
                 'excluded_modules' => null,
             ]
         );
         // Update description if role already exists
-        $warehouse->update(['description' => 'Acceso a salidas y recepciones']);
+        $warehouse->update(['description' => 'Acceso a salidas, recepciones e inventario']);
 
-        $warehousePermissions = Permission::whereIn('module', ['outputs', 'reception'])
+        $warehousePermissions = Permission::whereIn('module', ['outputs', 'reception', 'inventory'])
             ->get();
         $warehouse->permissions()->sync($warehousePermissions);
 
@@ -133,7 +133,7 @@ class RolesSeeder extends Seeder
         $this->command->info('1. admin - Administrador (Full access)');
         $this->command->info('2. agronomist - Agrónomo (Technical + Outputs + Reception)');
         $this->command->info('3. supervisor - Supervisor (Reception + Outputs + Inventory)');
-        $this->command->info('4. warehouse - Bodeguero (Outputs + Reception)');
+        $this->command->info('4. warehouse - Bodeguero (Outputs + Reception + Inventory)');
         $this->command->info('5. farm - Operario de Finca (Outputs + Reception)');
         $this->command->info('6. purchasing - Encargado de Compras (Master + Purchases + Products + Outputs + Reception)');
         $this->command->info('7. financiero - Financiero (Reports + Inventory + Outputs + Reception)');

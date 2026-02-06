@@ -73,6 +73,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Billing Information (for invoices / purchase orders)
+    |--------------------------------------------------------------------------
+    |
+    | Information about who receives invoices (ENVIAR A / FACTURAR A)
+    |
+    */
+
+    'billing_company_name' => env('BILLING_COMPANY_NAME', 'AGUACATES FLOREZ S.A.S'),
+    'billing_nit' => env('BILLING_NIT', '901.060.667-7'),
+    'billing_address' => env('BILLING_ADDRESS', 'URRAO'),
+    'billing_city' => env('BILLING_CITY', 'URRAO - ANTIOQUIA'),
+    'billing_email' => env('BILLING_EMAIL', 'compras@aguacatesflorez.com'),
+    'billing_phone' => env('BILLING_PHONE', '312-853-42-84'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |
