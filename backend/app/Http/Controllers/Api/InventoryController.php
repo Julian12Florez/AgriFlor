@@ -626,9 +626,18 @@ class InventoryController extends Controller
             $startDate = $request->get('start_date');
             $endDate = $request->get('end_date');
 
-            // Get product info
+            // Get product info with category
             $product = DB::table('products')
-                ->where('id', $productId)
+                ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
+                ->where('products.id', $productId)
+                ->select([
+                    'products.id',
+                    'products.name',
+                    'products.product_code',
+                    'products.base_unit',
+                    'products.min_stock',
+                    'categories.name as category'
+                ])
                 ->first();
 
             if (!$product) {
