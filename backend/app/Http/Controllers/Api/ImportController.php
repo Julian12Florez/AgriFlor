@@ -70,6 +70,73 @@ class ImportController extends Controller
     }
 
     /**
+     * Clean transactional data: products, inventory, movements, locations (farms), receptions, outputs, purchases
+     * Keeps: users, roles, permissions, base_units, brands, output_types, suppliers, categories
+     * POST /api/admin/clean-data
+     */
+    public function cleanData(): JsonResponse
+    {
+        try {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+
+            // Order matters due to FK constraints
+            $tables = [
+                'inventory_movements',
+                'inventory',
+                'reception_batch_items',
+                'reception_batch_attachments',
+                'reception_batches',
+                'receptions',
+                'purchase_items',
+                'purchase_attachments',
+                'purchases',
+                'output_products',
+                'product_outputs',
+                'applications',
+                'technical_order_products',
+                'technical_order_farms',
+                'technical_orders',
+                'recipe_products',
+                'technical_recipes',
+                'product_packaging_units',
+                'alerts',
+                'farm_lots',
+                'products',
+            ];
+
+            $cleaned = [];
+            foreach ($tables as $table) {
+                try {
+                    $count = DB::table($table)->count();
+                    DB::table($table)->truncate();
+                    $cleaned[$table] = $count;
+                } catch (\Exception $e) {
+                    $cleaned[$table] = 'error: ' . $e->getMessage();
+                }
+            }
+
+            // Delete farm locations (keep warehouses)
+            $farmsDeleted = Location::where('type', 'farm')->count();
+            Location::where('type', 'farm')->delete();
+            $cleaned['locations_farms'] = $farmsDeleted;
+
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Datos transaccionales limpiados',
+                'cleaned' => $cleaned,
+            ]);
+        } catch (\Exception $e) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Run pending migrations
      * POST /api/admin/run-migrations
      */

@@ -383,6 +383,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('admin/import-inventory', [ImportController::class, 'importInventory']);
         Route::post('admin/run-migrations', [ImportController::class, 'runMigrations']);
         Route::post('admin/setup-brand', [ImportController::class, 'setupBrand']);
+        Route::post('admin/clean-data', [ImportController::class, 'cleanData']);
     });
 
     // ----------------------------------------
