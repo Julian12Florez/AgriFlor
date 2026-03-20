@@ -4,7 +4,7 @@ import { UserOutlined, LockOutlined, LoginOutlined, MailOutlined, ArrowLeftOutli
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { authApi, setAuthToken } from '../../services/api';
+import { authApi, setAuthToken, handleApiError } from '../../services/api';
 
 const { Text } = Typography;
 
@@ -55,7 +55,7 @@ const LoginForm: React.FC = () => {
         message.error(response.message || 'Error al iniciar sesión');
       }
     } catch (error: any) {
-      message.error(error.message || 'Error de conexión con el servidor');
+      handleApiError(error, 'Error de conexión con el servidor', form);
     } finally {
       setLoading(false);
     }

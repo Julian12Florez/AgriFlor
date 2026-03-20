@@ -1322,4 +1322,261 @@ class InventoryController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Monthly Inventory Report
+     * Shows per product: initial stock, purchases, shipments to each farm, returns, final stock
+     */
+    public function monthlyReport(Request $request): JsonResponse
+    {
+        try {
+            $month = (int) $request->get('month', now()->month);
+            $year = (int) $request->get('year', now()->year);
+            $locationId = $request->get('location_id'); // optional: filter by warehouse
+
+            $startDate = \Carbon\Carbon::create($year, $month, 1)->startOfDay();
+            $endDate = $startDate->copy()->endOfMonth()->endOfDay();
+            $prevEndDate = $startDate->copy()->subSecond();
+
+            // Get all locations (farms + warehouses)
+            $locations = \App\Models\Location::where('status', 'active')
+                ->orderBy('type', 'desc') // warehouses first
+                ->orderBy('name')
+                ->get(['id', 'name', 'type']);
+
+            $farms = $locations->where('type', 'farm');
+            $warehouses = $locations->where('type', 'warehouse');
+
+            // Get the main warehouse (first warehouse or specified)
+            $warehouseId = $locationId ?: $warehouses->first()?->id;
+
+            // Get all products with their categories and base units
+            $products = \App\Models\Product::with('category')
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name', 'product_code', 'category_id', 'base_unit']);
+
+            $result = [];
+
+            foreach ($products as $product) {
+                // 1. Initial stock at start of month (sum of all inventory movements before start date)
+                $initialStock = InventoryMovement::where('product_id', $product->id)
+                    ->where('created_at', '<=', $prevEndDate)
+                    ->selectRaw("
+                        SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END) -
+                        SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END) as stock
+                    ")
+                    ->value('stock') ?? 0;
+
+                // 2. Purchases during the month (entries from purchases)
+                $purchases = InventoryMovement::where('product_id', $product->id)
+                    ->where('type', 'entry')
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->where(function ($q) {
+                        $q->where('related_document_type', 'purchase')
+                            ->orWhere('related_document_type', 'reception')
+                            ->orWhereNull('related_document_type');
+                    })
+                    ->sum('quantity');
+
+                // 3. Shipments to each farm (exits/transfers during the month)
+                $farmShipments = [];
+                $totalShipped = 0;
+                foreach ($farms as $farm) {
+                    // Entries at the farm = shipments TO the farm
+                    $shipped = InventoryMovement::where('product_id', $product->id)
+                        ->where('location_id', $farm->id)
+                        ->where('type', 'entry')
+                        ->whereBetween('created_at', [$startDate, $endDate])
+                        ->sum('quantity');
+
+                    if ($shipped > 0) {
+                        $farmShipments[$farm->id] = round((float) $shipped, 2);
+                        $totalShipped += $shipped;
+                    }
+                }
+
+                // 4. Returns/Remanentes (exits from farms back to warehouse)
+                $returns = InventoryMovement::where('product_id', $product->id)
+                    ->where('location_id', $warehouseId)
+                    ->where('type', 'entry')
+                    ->where('observations', 'like', '%remanente%')
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->sum('quantity');
+
+                // 5. Final stock at end of month
+                $finalStock = InventoryMovement::where('product_id', $product->id)
+                    ->where('created_at', '<=', $endDate)
+                    ->selectRaw("
+                        SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END) -
+                        SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END) as stock
+                    ")
+                    ->value('stock') ?? 0;
+
+                // 6. Increases (adjustments positive - not purchases, not remanentes)
+                $increases = InventoryMovement::where('product_id', $product->id)
+                    ->where('type', 'entry')
+                    ->where('location_id', $warehouseId)
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->where(function ($q) {
+                        $q->where('observations', 'like', '%aumento%')
+                            ->orWhere('observations', 'like', '%ajuste%positiv%');
+                    })
+                    ->sum('quantity');
+
+                // 7. Decreases (adjustments negative - not shipments)
+                $decreases = InventoryMovement::where('product_id', $product->id)
+                    ->whereIn('type', ['exit', 'application'])
+                    ->where('location_id', $warehouseId)
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->where(function ($q) {
+                        $q->where('observations', 'like', '%disminuc%')
+                            ->orWhere('observations', 'like', '%ajuste%negativ%');
+                    })
+                    ->sum('quantity');
+
+                // Total movements = purchases + increases - shipped - decreases + returns
+                $totalMov = round((float)$purchases + (float)$increases - (float)$totalShipped - (float)$decreases + (float)$returns, 2);
+                // Variation = final - initial - totalMov (should be 0 if everything balances)
+                $variation = round((float)$finalStock - (float)$initialStock - $totalMov, 2);
+
+                // Only include products that have any activity or stock
+                if ($initialStock != 0 || $purchases > 0 || $totalShipped > 0 || $returns > 0 || $finalStock != 0 || $increases > 0 || $decreases > 0) {
+                    $result[] = [
+                        'product_id' => $product->id,
+                        'product_code' => $product->product_code,
+                        'product_name' => $product->name,
+                        'category' => $product->category?->name ?? 'Sin categoría',
+                        'unit' => $product->base_unit,
+                        'initial_stock' => round((float) $initialStock, 2),
+                        'purchases' => round((float) $purchases, 2),
+                        'farm_shipments' => $farmShipments,
+                        'total_shipped' => round((float) $totalShipped, 2),
+                        'returns' => round((float) $returns, 2),
+                        'increases' => round((float) $increases, 2),
+                        'decreases' => round((float) $decreases, 2),
+                        'total_movements' => $totalMov,
+                        'variation' => $variation,
+                        'final_stock' => round((float) $finalStock, 2),
+                    ];
+                }
+            }
+
+            // Build farm columns list
+            $farmColumns = $farms->map(fn($f) => [
+                'id' => $f->id,
+                'name' => $f->name,
+            ])->values()->toArray();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'month' => $month,
+                    'year' => $year,
+                    'warehouse' => $warehouses->firstWhere('id', $warehouseId)?->name ?? 'N/A',
+                    'farm_columns' => $farmColumns,
+                    'products' => $result,
+                    'summary' => [
+                        'total_products' => count($result),
+                        'total_with_stock' => count(array_filter($result, fn($p) => $p['final_stock'] > 0)),
+                        'total_purchases' => round(array_sum(array_column($result, 'purchases')), 2),
+                        'total_shipped' => round(array_sum(array_column($result, 'total_shipped')), 2),
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el reporte mensual: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Product Listing Report by Date
+     * Shows stock at a given date, current stock, and the differential
+     */
+    public function productListingReport(Request $request): JsonResponse
+    {
+        try {
+            $date = $request->get('date', now()->format('Y-m-d'));
+            $locationId = $request->get('location_id');
+            $targetDate = \Carbon\Carbon::parse($date)->endOfDay();
+
+            // Get products with their categories
+            $products = \App\Models\Product::with('category')
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name', 'product_code', 'category_id', 'base_unit', 'status']);
+
+            // Get locations for grouping
+            $locations = \App\Models\Location::where('status', 'active')->get(['id', 'name', 'type']);
+
+            // If location specified, only that one; otherwise group by all locations with stock
+            $targetLocations = $locationId
+                ? $locations->where('id', $locationId)
+                : $locations;
+
+            $result = [];
+
+            foreach ($targetLocations as $location) {
+                foreach ($products as $product) {
+                    // Stock at the given date
+                    $stockAtDate = InventoryMovement::where('product_id', $product->id)
+                        ->where('location_id', $location->id)
+                        ->where('created_at', '<=', $targetDate)
+                        ->selectRaw("
+                            COALESCE(SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END), 0) -
+                            COALESCE(SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END), 0) as stock
+                        ")
+                        ->value('stock') ?? 0;
+
+                    // Current stock (all time)
+                    $currentStock = InventoryMovement::where('product_id', $product->id)
+                        ->where('location_id', $location->id)
+                        ->selectRaw("
+                            COALESCE(SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END), 0) -
+                            COALESCE(SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END), 0) as stock
+                        ")
+                        ->value('stock') ?? 0;
+
+                    $differential = round((float)$currentStock - (float)$stockAtDate, 2);
+
+                    if ($stockAtDate != 0 || $currentStock != 0) {
+                        $result[] = [
+                            'location' => $location->name,
+                            'location_type' => $location->type,
+                            'product_code' => $product->product_code,
+                            'category' => $product->category?->name ?? 'Sin categoría',
+                            'product_name' => $product->name,
+                            'unit' => $product->base_unit,
+                            'stock_at_date' => round((float)$stockAtDate, 2),
+                            'differential' => $differential,
+                            'current_stock' => round((float)$currentStock, 2),
+                            'status' => $product->status === 'active' ? 'ACTIVO' : 'INACTIVO',
+                        ];
+                    }
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'date' => $date,
+                    'location' => $locationId ? $locations->firstWhere('id', $locationId)?->name : 'Todas',
+                    'products' => $result,
+                    'summary' => [
+                        'total' => count($result),
+                        'with_stock' => count(array_filter($result, fn($p) => $p['current_stock'] > 0)),
+                        'with_differential' => count(array_filter($result, fn($p) => $p['differential'] != 0)),
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el listado: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

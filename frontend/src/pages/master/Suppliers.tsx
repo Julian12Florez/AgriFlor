@@ -3,7 +3,7 @@ import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row,
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, PhoneOutlined, MailOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { suppliersApi } from '../../services/api';
+import { suppliersApi, handleApiError } from '../../services/api';
 import ResponsiveTable from '../../components/ResponsiveTable';
 
 interface SupplierContact {
@@ -65,7 +65,7 @@ const Suppliers: React.FC = () => {
       message.success('Proveedor creado exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al crear proveedor: ${error.message}`);
+      handleApiError(error, 'Error al crear proveedor', form);
     },
   });
 
@@ -80,7 +80,7 @@ const Suppliers: React.FC = () => {
       message.success('Proveedor actualizado exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al actualizar proveedor: ${error.message}`);
+      handleApiError(error, 'Error al actualizar proveedor', form);
     },
   });
 
@@ -92,7 +92,7 @@ const Suppliers: React.FC = () => {
       message.success('Proveedor eliminado exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al eliminar proveedor: ${error.message}`);
+      handleApiError(error, 'Error al eliminar proveedor');
     },
   });
 

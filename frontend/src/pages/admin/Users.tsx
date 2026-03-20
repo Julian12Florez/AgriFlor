@@ -3,7 +3,7 @@ import { Table, Button, Input, Space, Card, Tag, Popconfirm, message, Modal, For
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, MailOutlined, PhoneOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usersApi } from '../../services/api';
+import { usersApi, handleApiError } from '../../services/api';
 
 interface User {
   id: string;
@@ -53,7 +53,7 @@ const Users: React.FC = () => {
       message.success('Usuario creado exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al crear usuario: ${error.message}`);
+      handleApiError(error, 'Error al crear usuario', form);
     },
   });
 
@@ -68,7 +68,7 @@ const Users: React.FC = () => {
       message.success('Usuario actualizado exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al actualizar usuario: ${error.message}`);
+      handleApiError(error, 'Error al actualizar usuario', form);
     },
   });
 
@@ -80,7 +80,7 @@ const Users: React.FC = () => {
       message.success('Usuario eliminado exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al eliminar usuario: ${error.message}`);
+      handleApiError(error, 'Error al eliminar usuario');
     },
   });
 

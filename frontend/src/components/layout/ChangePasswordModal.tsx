@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Form, Input, message } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
-import { authApi } from '../../services/api';
+import { authApi, handleApiError } from '../../services/api';
 
 interface ChangePasswordModalProps {
   open: boolean;
@@ -31,9 +31,7 @@ const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({ open, onClose
         message.error(response.message || 'Error al cambiar la contraseña');
       }
     } catch (error: any) {
-      if (error?.message) {
-        message.error(error.message);
-      }
+      handleApiError(error, 'Error al cambiar la contraseña', form);
     } finally {
       setLoading(false);
     }

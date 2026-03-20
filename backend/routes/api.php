@@ -297,6 +297,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('inventory/movements/report', [InventoryController::class, 'movementsReport']);
     Route::get('inventory/movements/product/{productId}', [InventoryController::class, 'movementsByProduct']);
     Route::get('inventory/consumption/report', [InventoryController::class, 'consumptionReport']);
+    Route::get('inventory/monthly-report', [InventoryController::class, 'monthlyReport']);
+    Route::get('inventory/product-listing', [InventoryController::class, 'productListingReport']);
     Route::get('inventory/location/{locationId}', [InventoryController::class, 'byLocation']);
     Route::get('inventory/product/{productId}/details', [InventoryController::class, 'byProduct']);
     Route::get('inventory/{productId}', [InventoryController::class, 'show']);
@@ -365,6 +367,12 @@ Route::middleware('auth:api')->group(function () {
         // Kardex List (Inventory General) Exports
         Route::get('reports/kardex-list/export-excel', [ReportExportController::class, 'exportKardexListExcel']);
         Route::get('reports/kardex-list/export-pdf', [ReportExportController::class, 'exportKardexListPdf']);
+
+        // Monthly Inventory Report Export
+        Route::get('reports/monthly-inventory/export-excel', [ReportExportController::class, 'exportMonthlyExcel']);
+
+        // Product Listing Report Export
+        Route::get('reports/product-listing/export-excel', [ReportExportController::class, 'exportProductListingExcel']);
     });
 
     // ----------------------------------------

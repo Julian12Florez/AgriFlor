@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ordersApi, recipesApi, productsApi, brandsApi, locationsApi } from '../../services/api';
+import { ordersApi, recipesApi, productsApi, brandsApi, locationsApi, handleApiError } from '../../services/api';
 import type { TechnicalOrder } from '../../data/types';
 
 // Interfaces importadas desde types.ts
@@ -57,7 +57,7 @@ const Orders: React.FC = () => {
   // Fetch locations
   const { data: locationsData } = useQuery({
     queryKey: ['locations'],
-    queryFn: () => locationsApi.list(),
+    queryFn: () => locationsApi.list({ per_page: 999 }),
   });
 
   const orders = ordersData?.data || [];
@@ -76,7 +76,7 @@ const Orders: React.FC = () => {
       message.success('Orden técnica creada correctamente');
     },
     onError: (error: any) => {
-      message.error(`Error al crear orden técnica: ${error.message}`);
+      handleApiError(error, 'Error al crear orden técnica', form);
     },
   });
 
@@ -91,7 +91,7 @@ const Orders: React.FC = () => {
       message.success('Orden técnica actualizada correctamente');
     },
     onError: (error: any) => {
-      message.error(`Error al actualizar orden técnica: ${error.message}`);
+      handleApiError(error, 'Error al actualizar orden técnica', form);
     },
   });
 
@@ -103,7 +103,7 @@ const Orders: React.FC = () => {
       message.success('Orden técnica eliminada correctamente');
     },
     onError: (error: any) => {
-      message.error(`Error al eliminar orden técnica: ${error.message}`);
+      handleApiError(error, 'Error al eliminar orden técnica');
     },
   });
 

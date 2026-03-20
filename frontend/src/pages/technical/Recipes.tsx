@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, ExperimentOutlined, MinusCi
 import ResponsiveTable from '../../components/ResponsiveTable';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { recipesApi, productsApi, brandsApi } from '../../services/api';
+import { recipesApi, productsApi, brandsApi, handleApiError } from '../../services/api';
 import type { Recipe, RecipeProduct } from '../../data/types';
 
 
@@ -61,7 +61,7 @@ const Recipes: React.FC = () => {
       message.success('Receta creada correctamente');
     },
     onError: (error: any) => {
-      message.error(`Error al crear receta: ${error.message}`);
+      handleApiError(error, 'Error al crear receta', form);
     },
   });
 
@@ -76,7 +76,7 @@ const Recipes: React.FC = () => {
       message.success('Receta actualizada correctamente');
     },
     onError: (error: any) => {
-      message.error(`Error al actualizar receta: ${error.message}`);
+      handleApiError(error, 'Error al actualizar receta', form);
     },
   });
 
@@ -88,7 +88,7 @@ const Recipes: React.FC = () => {
       message.success('Receta eliminada correctamente');
     },
     onError: (error: any) => {
-      message.error(`Error al eliminar receta: ${error.message}`);
+      handleApiError(error, 'Error al eliminar receta');
     },
   });
 

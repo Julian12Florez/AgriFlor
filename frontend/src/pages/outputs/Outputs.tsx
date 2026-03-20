@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi } from '../../services/api';
+import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi, handleApiError } from '../../services/api';
 
 const { Text, Title } = Typography;
 import type { ProductOutput, OutputProduct, Product, PackagingUnit } from '../../data/types';
@@ -48,7 +48,7 @@ const Outputs: React.FC = () => {
   // Fetch locations
   const { data: locationsData } = useQuery({
     queryKey: ['locations'],
-    queryFn: () => locationsApi.list(),
+    queryFn: () => locationsApi.list({ per_page: 999 }),
   });
 
   // Fetch products
@@ -106,7 +106,7 @@ const Outputs: React.FC = () => {
       message.success('Salida creada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al crear la salida: ${error.message}`);
+      handleApiError(error, 'Error al crear la salida', form);
     },
   });
 
@@ -127,7 +127,7 @@ const Outputs: React.FC = () => {
       message.success('Salida actualizada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al actualizar la salida: ${error.message}`);
+      handleApiError(error, 'Error al actualizar la salida', form);
     },
   });
 
@@ -140,7 +140,7 @@ const Outputs: React.FC = () => {
       message.success('Salida aprobada exitosamente. Inventario actualizado con FIFO.');
     },
     onError: (error: any) => {
-      message.error(`Error al aprobar la salida: ${error.message}`);
+      handleApiError(error, 'Error al aprobar la salida');
     },
   });
 
@@ -383,8 +383,27 @@ const Outputs: React.FC = () => {
   const handleOutputTypeChange = (outputTypeId: string) => {
     setSelectedOutputTypeId(outputTypeId);
 
-    // If consumption type, auto-set destination to origin
     const selectedType = availableOutputTypes.find((t: any) => t.id === outputTypeId);
+
+    // If remanente type, clear invalid locations (origin must be farm, destination must be warehouse)
+    if (selectedType && selectedType.code === 'remanente') {
+      const currentOriginId = form.getFieldValue('originLocationId');
+      const currentDestId = form.getFieldValue('destinationLocationId');
+      const originLoc = availableLocations.find((loc: any) => loc.id === currentOriginId);
+      const destLoc = availableLocations.find((loc: any) => loc.id === currentDestId);
+
+      if (originLoc && originLoc.type !== 'farm') {
+        form.setFieldValue('originLocationId', undefined);
+        setSelectedOriginLocationId('');
+        setAvailableProducts([]);
+      }
+      if (destLoc && destLoc.type !== 'warehouse') {
+        form.setFieldValue('destinationLocationId', undefined);
+        setSelectedDestinationLocationId('');
+      }
+    }
+
+    // If consumption type, auto-set destination to origin
     if (selectedType && selectedType.code === 'consumption') {
       const originLocationId = form.getFieldValue('originLocationId');
       if (originLocationId) {
@@ -748,7 +767,12 @@ const Outputs: React.FC = () => {
               onChange={handleOriginLocationChange}
             >
               {availableLocations
-                .filter(loc => loc.status === 'active')
+                .filter(loc => {
+                  if (loc.status !== 'active') return false;
+                  const selectedType = availableOutputTypes.find((t: any) => t.id === selectedOutputTypeId);
+                  if (selectedType && selectedType.code === 'remanente') return loc.type === 'farm';
+                  return true;
+                })
                 .map(location => (
                   <Option key={location.id} value={location.id}>
                     {location.type === 'farm' ? '🏡' : '🏢'} {location.name} ({location.municipality})
@@ -765,9 +789,11 @@ const Outputs: React.FC = () => {
             tooltip={
               (() => {
                 const selectedType = availableOutputTypes.find((t: any) => t.id === selectedOutputTypeId);
-                return selectedType && selectedType.code === 'consumption'
-                  ? 'Para consumos, el destino se establece automáticamente igual al origen'
-                  : undefined;
+                if (selectedType && selectedType.code === 'consumption')
+                  return 'Para consumos, el destino se establece automáticamente igual al origen';
+                if (selectedType && selectedType.code === 'remanente')
+                  return 'Para remanentes, el destino debe ser una bodega';
+                return undefined;
               })()
             }
           >
@@ -780,7 +806,12 @@ const Outputs: React.FC = () => {
               })()}
             >
               {availableLocations
-                .filter(loc => loc.status === 'active')
+                .filter(loc => {
+                  if (loc.status !== 'active') return false;
+                  const selectedType = availableOutputTypes.find((t: any) => t.id === selectedOutputTypeId);
+                  if (selectedType && selectedType.code === 'remanente') return loc.type === 'warehouse';
+                  return true;
+                })
                 .map(location => (
                   <Option key={location.id} value={location.id}>
                     {location.type === 'farm' ? '🏡' : '🏢'} {location.name} ({location.municipality})

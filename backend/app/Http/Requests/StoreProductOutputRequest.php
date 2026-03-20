@@ -189,11 +189,11 @@ class StoreProductOutputRequest extends FormRequest
                 continue;
             }
 
-            // Get all inventory records for this product/brand/location (exclude only expired)
+            // Get all inventory records for this product/brand/location
+            // NOTE: Expired products included — users need to dispose of them via outputs
             $inventoryRecords = \App\Models\Inventory::where('location_id', $originLocationId)
                 ->where('product_id', $productId)
                 ->where('brand_id', $brandId)
-                ->whereNotIn('status', ['expired'])
                 ->where('quantity', '>', 0)
                 ->get();
 

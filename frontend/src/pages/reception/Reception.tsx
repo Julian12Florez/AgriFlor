@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { receptionsApi, productsApi, purchasesApi, locationsApi, outputsApi, usersApi } from '../../services/api';
+import { receptionsApi, productsApi, purchasesApi, locationsApi, outputsApi, usersApi, handleApiError } from '../../services/api';
 import type { Reception, ReceptionItem, ReceptionBatch, ReceptionBatchItem, Product, PackagingUnit } from '../../data/types';
 import { formatCurrency, formatQuantity, formatPercentage } from '../../utils/formatters';
 
@@ -79,7 +79,7 @@ const ReceptionPage: React.FC = () => {
   // Fetch locations
   const { data: locationsData } = useQuery({
     queryKey: ['locations'],
-    queryFn: () => locationsApi.list(),
+    queryFn: () => locationsApi.list({ per_page: 999 }),
   });
 
   // Fetch outputs (exclude completed ones that are fully received)
@@ -114,7 +114,7 @@ const ReceptionPage: React.FC = () => {
       setViewMode('receptions'); // Switch to receptions view after creating
     },
     onError: (error: any) => {
-      message.error(`Error al crear la recepción: ${error.message}`);
+      handleApiError(error, 'Error al crear la recepción', form);
     },
   });
 
@@ -132,7 +132,7 @@ const ReceptionPage: React.FC = () => {
       message.success('Recepción parcial registrada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al registrar la recepción: ${error.message}`);
+      handleApiError(error, 'Error al registrar la recepción', batchForm);
     },
   });
 
@@ -152,7 +152,7 @@ const ReceptionPage: React.FC = () => {
       setViewMode('receptions');
     },
     onError: (error: any) => {
-      message.error(`Error al registrar la recepción: ${error.message}`);
+      handleApiError(error, 'Error al registrar la recepción', sourceReceptionForm);
     },
   });
 
@@ -304,7 +304,7 @@ const ReceptionPage: React.FC = () => {
       observations: '',
       items: selectedReception.items?.map((item: any) => ({
         productId: item.productId,
-        quantityToReceive: 0,
+        quantityToReceive: undefined,
         condition: 'good',
         expirationDate: item.expirationDate
           ? dayjs(item.expirationDate)
@@ -492,7 +492,7 @@ const ReceptionPage: React.FC = () => {
         receptionItemId: item.id || undefined,
         productId: selectedSource.source_type === 'purchase' ? item.productId : item.productId || item.product_id,
         brandId: item.brandId || item.brand_id,
-        quantityReceived: 0,
+        quantityReceived: undefined,
         condition: 'good',
         expirationDate: item.expirationDate
           ? dayjs(item.expirationDate)
@@ -528,7 +528,7 @@ const ReceptionPage: React.FC = () => {
 
   const mobileColumns: ColumnsType<any> = [
     {
-      title: 'Recepción',
+      title: 'Productos',
       key: 'reception',
       render: (_, record) => {
         const completionPercentage = record.items?.length > 0
@@ -536,60 +536,40 @@ const ReceptionPage: React.FC = () => {
               record.items.reduce((sum: number, item: any) => sum + item.quantityExpected, 0)) * 100)
           : 0;
 
-        const sourceNumber = record.sourceType === 'purchase'
-          ? record.sourceDetails?.orderNumber
-          : record.sourceDetails?.outputNumber;
-
         return (
           <div>
-            <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: 4 }}>
+            <div style={{ fontWeight: 500, fontSize: 14, marginBottom: 4 }}>
               <InboxOutlined style={{ marginRight: 8, color: '#1890ff' }} />
               {record.receptionNumber}
             </div>
-            <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
+            <div style={{ marginBottom: 4 }}>
               <Tag color={getSourceTypeColor(record.sourceType)} icon={getSourceTypeIcon(record.sourceType)}>
                 {getSourceTypeText(record.sourceType)}
               </Tag>
-              <span style={{ marginLeft: 8, fontWeight: 500, color: '#1890ff' }}>
-                {sourceNumber || 'N/A'}
-              </span>
+              <Tag color={getStatusColor(record.status)} icon={getStatusIcon(record.status)}>
+                {getStatusText(record.status)}
+              </Tag>
             </div>
-            <div style={{ fontSize: '12px', color: '#666' }}>
-              <Progress
-                percent={completionPercentage}
-                size="small"
-                status={record.status === 'completed' ? 'success' : 'active'}
-              />
-            </div>
+            <Progress
+              percent={completionPercentage}
+              size="small"
+              status={record.status === 'completed' ? 'success' : 'active'}
+            />
           </div>
         );
       },
     },
     {
-      title: 'Estado',
-      dataIndex: 'status',
-      key: 'status',
-      width: 80,
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)}>
-          {getStatusText(status)}
-        </Tag>
-      ),
-    },
-    {
       title: 'Acciones',
       key: 'actions',
-      width: 100,
-      fixed: 'right' as const,
+      width: 50,
       render: (_, record) => (
         <Button
           type="link"
           icon={<EyeOutlined />}
           onClick={() => handleViewReception(record)}
           size="small"
-        >
-          Ver
-        </Button>
+        />
       ),
     },
   ];
@@ -710,6 +690,52 @@ const ReceptionPage: React.FC = () => {
   ];
 
   // Columns for available sources (purchases and outputs)
+  const availableSourcesMobileColumns: ColumnsType<any> = [
+    {
+      title: 'Productos',
+      key: 'products',
+      render: (_, record) => (
+        <div style={{ overflow: 'hidden' }}>
+          <div style={{ fontWeight: 500, fontSize: 13, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Tag color={getSourceTypeColor(record.source_type)} icon={getSourceTypeIcon(record.source_type)} style={{ margin: 0 }}>
+              {getSourceTypeText(record.source_type)}
+            </Tag>
+            <span style={{ color: '#999', fontSize: 11 }}>{record.document_number}</span>
+          </div>
+          <div style={{ marginBottom: 4 }}>
+            {(record.items_names || []).map((name: string, idx: number) => (
+              <div key={idx} style={{ fontSize: 13, color: '#333', lineHeight: '20px' }}>
+                • {name}
+              </div>
+            ))}
+          </div>
+          {record.reception ? (
+            <Progress
+              percent={record.reception.completion_percentage}
+              size="small"
+              status={record.reception.status === 'completed' ? 'success' : 'active'}
+            />
+          ) : (
+            <Tag color="default" style={{ fontSize: 11 }}>Sin iniciar</Tag>
+          )}
+        </div>
+      ),
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 44,
+      render: (_, record) => (
+        <Button
+          type="primary"
+          size="small"
+          icon={<EyeOutlined />}
+          onClick={() => handleViewAvailableSource(record)}
+        />
+      ),
+    },
+  ];
+
   const availableSourcesColumns: ColumnsType<any> = [
     {
       title: 'Documento',
@@ -1651,7 +1677,7 @@ const ReceptionPage: React.FC = () => {
   );
 
   return (
-    <div>
+    <div style={{ overflow: 'hidden' }}>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h1 style={{ margin: 0, color: '#2E7D32' }}>Recepción Unificada</h1>
@@ -1665,7 +1691,7 @@ const ReceptionPage: React.FC = () => {
         <div style={{ marginBottom: 16 }}>
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={24} md={24}>
-              <Space size="large" style={{ width: '100%', marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
                 <Button
                   type={viewMode === 'available' ? 'primary' : 'default'}
                   onClick={() => setViewMode('available')}
@@ -1680,7 +1706,7 @@ const ReceptionPage: React.FC = () => {
                 >
                   Recepciones ({receptions.length})
                 </Button>
-              </Space>
+              </div>
             </Col>
             <Col xs={24} sm={8} md={6}>
               <Search
@@ -1723,7 +1749,7 @@ const ReceptionPage: React.FC = () => {
 
         {viewMode === 'available' ? (
           <ResponsiveTable
-            mobileColumns={availableSourcesColumns}
+            mobileColumns={availableSourcesMobileColumns}
             desktopColumns={availableSourcesColumns}
             dataSource={filteredAvailableSources}
             rowKey="id"

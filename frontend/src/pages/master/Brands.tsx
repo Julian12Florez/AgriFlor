@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined } from '@ant
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { brandsApi } from '../../services/api';
+import { brandsApi, handleApiError } from '../../services/api';
 import type { Brand } from '../../data/types';
 
 
@@ -43,7 +43,7 @@ const Brands: React.FC = () => {
       message.success('Marca creada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error: ${error.message}`);
+      handleApiError(error, 'Error al crear marca', form);
     },
   });
 
@@ -58,7 +58,7 @@ const Brands: React.FC = () => {
       message.success('Marca actualizada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error: ${error.message}`);
+      handleApiError(error, 'Error al actualizar marca', form);
     },
   });
 
@@ -70,7 +70,7 @@ const Brands: React.FC = () => {
       message.success('Marca eliminada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error: ${error.message}`);
+      handleApiError(error, 'Error al eliminar marca');
     },
   });
 

@@ -3,7 +3,7 @@ import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row,
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { baseUnitsApi } from '../../services/api';
+import { baseUnitsApi, handleApiError } from '../../services/api';
 import ResponsiveTable from '../../components/ResponsiveTable';
 
 const { Search } = Input;
@@ -48,7 +48,7 @@ const BaseUnits: React.FC = () => {
       message.success('Unidad base creada exitosamente');
     },
     onError: (error: any) => {
-      message.error(error.response?.data?.message || 'Error al crear la unidad base');
+      handleApiError(error, 'Error al crear la unidad base', form);
     },
   });
 
@@ -63,7 +63,7 @@ const BaseUnits: React.FC = () => {
       message.success('Unidad base actualizada exitosamente');
     },
     onError: (error: any) => {
-      message.error(error.response?.data?.message || 'Error al actualizar la unidad base');
+      handleApiError(error, 'Error al actualizar la unidad base', form);
     },
   });
 
@@ -75,7 +75,7 @@ const BaseUnits: React.FC = () => {
       message.success('Unidad base eliminada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al eliminar: ${error.message}`);
+      handleApiError(error, 'Error al eliminar unidad base');
     },
   });
 

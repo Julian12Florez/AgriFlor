@@ -18,6 +18,7 @@ use App\Models\PurchaseItem;
 use App\Models\OutputProduct;
 use App\Models\InventoryMovement;
 use App\Models\Inventory;
+use App\Models\Product;
 use App\Models\PackagingUnit;
 use App\Models\Application;
 use App\Models\ApplicationProduct;
@@ -47,7 +48,7 @@ class ReceptionController extends Controller
 
         // Get purchases that are not cancelled or fully received
         $purchases = Purchase::whereNotIn('status', ['received', 'cancelled'])
-            ->with(['supplier', 'destinationLocation.responsibleUser', 'originLocation', 'purchaseItems'])
+            ->with(['supplier', 'destinationLocation.responsibleUser', 'originLocation', 'purchaseItems.product'])
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -76,6 +77,7 @@ class ReceptionController extends Controller
                 'supplier_name' => $purchase->supplier->name ?? null,
                 'total' => $purchase->total,
                 'items_count' => $purchase->purchaseItems->count(),
+                'items_names' => $purchase->purchaseItems->map(fn($item) => $item->product->name ?? 'N/A')->values()->toArray(),
                 'status' => $purchase->status,
                 'created_at' => $purchase->created_at,
                 'updated_at' => $purchase->updated_at,
@@ -114,7 +116,7 @@ class ReceptionController extends Controller
 
         // Get outputs that are not fully completed
         $outputs = ProductOutput::whereNotIn('status', ['completed'])
-            ->with(['originLocation', 'destinationLocation.responsibleUser', 'outputProducts'])
+            ->with(['originLocation', 'destinationLocation.responsibleUser', 'outputProducts.product'])
             ->orderBy('updated_at', 'desc')
             ->get();
 
@@ -143,6 +145,7 @@ class ReceptionController extends Controller
                 'supplier_name' => null,
                 'total' => null,
                 'items_count' => $output->outputProducts->count(),
+                'items_names' => $output->outputProducts->map(fn($item) => $item->product->name ?? 'N/A')->values()->toArray(),
                 'status' => $output->status,
                 'created_at' => $output->created_at,
                 'updated_at' => $output->updated_at,
@@ -574,6 +577,64 @@ class ReceptionController extends Controller
 
             // Get next batch number
             $batchNumber = $reception->receptionBatches()->max('batch_number') + 1;
+
+            // LOG-001 FIX: Validate inventory availability BEFORE processing for outputs
+            // This prevents cryptic errors deep in the transaction and provides clear feedback
+            if ($data['source_type'] === 'output') {
+                foreach ($data['items'] as $itemData) {
+                    $quantityReceived = floatval($itemData['quantity_received']);
+                    if ($quantityReceived <= 0 || ($itemData['condition'] ?? 'good') !== 'good') {
+                        continue; // Skip items with no quantity or not in good condition
+                    }
+
+                    // Find the ReceptionItem to get the unit
+                    $validationReceptionItem = ReceptionItem::where('reception_id', $reception->id)
+                        ->where('product_id', $itemData['product_id'])
+                        ->where('brand_id', $itemData['brand_id'])
+                        ->first();
+
+                    if (!$validationReceptionItem) {
+                        continue;
+                    }
+
+                    $unit = $validationReceptionItem->unit ?? 'unidades';
+
+                    // Calculate available inventory in origin location
+                    // NOTE: Expired products included — users need to dispose of them via outputs
+                    $inventoryBatches = Inventory::where('product_id', $itemData['product_id'])
+                        ->where('brand_id', $itemData['brand_id'])
+                        ->where('location_id', $reception->origin_location_id)
+                        ->where('quantity', '>', 0)
+                        ->get();
+
+                    $availableInBase = 0;
+                    foreach ($inventoryBatches as $invBatch) {
+                        $availableInBase += $this->inventoryService->toBaseUnit(
+                            floatval($invBatch->quantity),
+                            $invBatch->unit,
+                            $itemData['product_id']
+                        );
+                    }
+
+                    // Convert requested quantity to base units
+                    $requestedInBase = $this->inventoryService->toBaseUnit(
+                        $quantityReceived,
+                        $unit,
+                        $itemData['product_id']
+                    );
+
+                    if ($availableInBase < $requestedInBase - 0.01) {
+                        $product = Product::find($itemData['product_id']);
+                        $productName = $product?->name ?? 'Producto';
+                        throw new \Exception(
+                            "Inventario insuficiente para '{$productName}'. " .
+                            "Disponible: " . round($availableInBase, 2) . " unidades base, " .
+                            "Solicitado: " . round($requestedInBase, 2) . " unidades base. " .
+                            "El inventario puede haber sido consumido por otras operaciones."
+                        );
+                    }
+                }
+            }
 
             // Create batch
             $batch = ReceptionBatch::create([
@@ -1706,14 +1767,32 @@ class ReceptionController extends Controller
             $source = Purchase::find($reception->source_id);
             if ($source) {
                 $purchaseItem = $sourceItemId
-                    ? $source->purchaseItems()->find($sourceItemId)
+                    ? $source->purchaseItems()->with('packagingUnit')->find($sourceItemId)
                     : $source->purchaseItems()
+                        ->with('packagingUnit')
                         ->where('product_id', $productId)
                         ->where('brand_id', $brandId)
                         ->first();
 
                 if ($purchaseItem && $purchaseItem->unit_price) {
-                    return floatval($purchaseItem->unit_price);
+                    $pricePerPackaging = floatval($purchaseItem->unit_price);
+
+                    // Convert price from packaging unit to base unit
+                    // Example: $120,000/Bulto where 1 Bulto = 50 kg → $2,400/kg
+                    $packagingUnit = $purchaseItem->packagingUnit;
+                    if ($packagingUnit && floatval($packagingUnit->base_quantity) > 1) {
+                        $pricePerBase = $pricePerPackaging / floatval($packagingUnit->base_quantity);
+                        \Log::info('Price converted from packaging to base unit', [
+                            'product_id' => $productId,
+                            'packaging_unit' => $packagingUnit->name,
+                            'base_quantity' => $packagingUnit->base_quantity,
+                            'price_per_packaging' => $pricePerPackaging,
+                            'price_per_base' => round($pricePerBase, 2),
+                        ]);
+                        return round($pricePerBase, 2);
+                    }
+
+                    return $pricePerPackaging;
                 }
             }
 

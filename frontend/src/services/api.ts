@@ -1,7 +1,102 @@
 import type { ApiResponse, PaginatedResponse } from '../types/index';
+import type { FormInstance, MessageInstance } from 'antd';
 
 // API Configuration
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
+// Global message holder - set by AntdAppProvider via App.useApp()
+let globalMessage: MessageInstance | null = null;
+
+export function setGlobalMessage(msg: MessageInstance) {
+  globalMessage = msg;
+}
+
+function showMessage(type: 'success' | 'error' | 'warning' | 'info', content: string) {
+  if (globalMessage) {
+    globalMessage[type](content);
+  } else {
+    console.warn(`[message.${type}]`, content);
+  }
+}
+
+// Custom API Error that preserves backend response
+export class ApiError extends Error {
+  status: number;
+  errors?: Record<string, string[]>;
+  data?: any;
+
+  constructor(message: string, status: number, errors?: Record<string, string[]>, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.errors = errors;
+    this.data = data;
+  }
+}
+
+// Field name mapping: snake_case (backend) -> camelCase (frontend form fields)
+const FIELD_NAME_MAP: Record<string, string> = {
+  active_ingredient: 'activeIngredient',
+  brand_id: 'brandId',
+  base_unit: 'baseUnit',
+  min_stock: 'minStock',
+  product_code: 'productCode',
+  category_id: 'categoryId',
+  supplier_id: 'supplierId',
+  location_id: 'locationId',
+  destination_id: 'destinationId',
+  output_type_id: 'outputTypeId',
+  order_number: 'orderNumber',
+  expected_date: 'expectedDate',
+  delivery_date: 'deliveryDate',
+  source_type: 'sourceType',
+  source_id: 'sourceId',
+  packaging_unit_id: 'packagingUnitId',
+  base_unit_id: 'baseUnitId',
+  unit_price: 'unitPrice',
+  tax_rate: 'taxRate',
+  display_name: 'displayName',
+  role_id: 'roleId',
+  farm_lot_id: 'farmLotId',
+  application_date: 'applicationDate',
+  applied_by: 'appliedBy',
+  application_type: 'applicationType',
+  applied_area: 'appliedArea',
+  area_unit: 'areaUnit',
+  dosage_unit: 'dosageUnit',
+  worker_id: 'workerId',
+  task_id: 'taskId',
+  parent_id: 'parentId',
+  conversion_factor: 'conversionFactor',
+  password_confirmation: 'passwordConfirmation',
+  current_password: 'currentPassword',
+};
+
+/**
+ * Handle API errors in mutations: shows message.error and optionally sets form field errors.
+ */
+export function handleApiError(error: any, fallbackMessage: string, form?: FormInstance) {
+  if (error instanceof ApiError && error.errors && form) {
+    const backendErrors = error.errors;
+    const firstError = Object.values(backendErrors)[0];
+    showMessage('error', Array.isArray(firstError) ? (firstError as string[])[0] : String(firstError));
+
+    const formErrors = Object.keys(backendErrors).map(key => ({
+      name: FIELD_NAME_MAP[key] || key,
+      errors: backendErrors[key],
+    }));
+    form.setFields(formErrors);
+  } else {
+    showMessage('error', error.message || fallbackMessage);
+  }
+}
+
+/**
+ * Show a success message via the global antd message instance.
+ */
+export function showSuccess(content: string) {
+  showMessage('success', content);
+}
 
 // Token management
 let authToken: string | null = localStorage.getItem('auth_token');
@@ -65,7 +160,12 @@ class ApiService {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || `HTTP error! status: ${response.status}`);
+        throw new ApiError(
+          data.message || `HTTP error! status: ${response.status}`,
+          response.status,
+          data.errors,
+          data
+        );
       }
 
       return data;
@@ -402,6 +502,12 @@ export const inventoryApi = {
 
   getProductKardex: (productId: string, params?: Record<string, any>) =>
     api.get<ApiResponse<any>>(`/inventory/kardex/product/${productId}`, params),
+
+  getMonthlyReport: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/inventory/monthly-report', params),
+
+  getProductListing: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/inventory/product-listing', params),
 };
 
 // Locations API
@@ -667,6 +773,20 @@ export const reportExportsApi = {
     const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
     const url = `${API_BASE_URL}/reports/kardex-list/export-pdf${queryString}`;
     return downloadFile(url, 'inventario-actual.pdf');
+  },
+
+  // Monthly Inventory Report Export
+  exportMonthlyExcel: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/monthly-inventory/export-excel${queryString}`;
+    return downloadFile(url, 'inventario-mensual.xlsx');
+  },
+
+  // Product Listing Report Export
+  exportProductListingExcel: (params?: Record<string, any>) => {
+    const queryString = params ? '?' + new URLSearchParams(params as Record<string, string>).toString() : '';
+    const url = `${API_BASE_URL}/reports/product-listing/export-excel${queryString}`;
+    return downloadFile(url, 'listado-productos.xlsx');
   },
 };
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App as AntApp } from 'antd';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { antdTheme } from './config/theme';
 
@@ -8,6 +8,7 @@ import { antdTheme } from './config/theme';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/layout/MainLayout';
+import AntdAppProvider from './components/AntdAppProvider';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -43,6 +44,8 @@ import WorkerProductivityReport from './pages/reports/WorkerProductivityReport';
 import TaskAnalysisReport from './pages/reports/TaskAnalysisReport';
 import DeductionsBreakdownReport from './pages/reports/DeductionsBreakdownReport';
 import PeriodComparisonReport from './pages/reports/PeriodComparisonReport';
+import MonthlyInventoryReport from './pages/reports/MonthlyInventoryReport';
+import ProductListingReport from './pages/reports/ProductListingReport';
 import Login from './pages/auth/Login';
 import ResetPassword from './pages/auth/ResetPassword';
 
@@ -62,6 +65,8 @@ const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ConfigProvider theme={antdTheme}>
+          <AntApp>
+          <AntdAppProvider>
           <Router>
             <Routes>
               {/* Public routes */}
@@ -261,6 +266,22 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               } />
 
+              <Route path="/reports/monthly-inventory" element={
+                <ProtectedRoute module="inventory" showAccessDenied>
+                  <MainLayout>
+                    <MonthlyInventoryReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              <Route path="/reports/product-listing" element={
+                <ProtectedRoute module="inventory" showAccessDenied>
+                  <MainLayout>
+                    <ProductListingReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
               {/* Admin Routes - module: 'admin' */}
               <Route path="/admin/users" element={
                 <ProtectedRoute module="admin" showAccessDenied>
@@ -349,6 +370,8 @@ const App: React.FC = () => {
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Router>
+          </AntdAppProvider>
+          </AntApp>
         </ConfigProvider>
       </AuthProvider>
     </QueryClientProvider>

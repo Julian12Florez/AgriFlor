@@ -75,7 +75,85 @@ FEATURE_ANALISIS_    FEATURE_IMPLEMENTA-  FEATURE_PRUEBAS_
 │  Configura Docker, Nginx, SSL, CI/CD automaticamente           │
 │  Lee plan de: MIGRACION_VPS.md                                 │
 └─────────────────────────────────────────────────────────────────┘
+
+Pipeline Unificado (TODO EN UNO con Playwright):
+
+┌─────────────────────────────────────────────────────────────────┐
+│                       /dev-agri                                  │
+│                                                                 │
+│  Agente unificado: Analisis + Desarrollo + Playwright Testing   │
+│                                                                 │
+│  FASE 1: Analisis experto (backend PHP/Laravel + frontend React)│
+│  FASE 2: Desarrollo seguro (cambios sin romper nada)            │
+│  FASE 3: Playwright Testing OBLIGATORIO (localhost:5173)        │
+│  FASE 4: Autocorreccion (si falla, corrige y re-prueba x2)     │
+│  FASE 5: Reporte completo (DEV_AGRI_{ID}.md)                   │
+│                                                                 │
+│  Usa: MCP Playwright, 6 usuarios con roles distintos            │
+│  Conoce: Patrones Laravel, Ant Design, React Query, FIFO inv.  │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## /dev-agri - Agente Unificado de Desarrollo y Testing con Playwright
+
+### Caracteristicas
+- **Todo en uno**: Analisis + Desarrollo + Testing en un solo comando
+- Analisis **experto** en PHP/Laravel y React/TypeScript/Ant Design
+- Conoce **todos los patrones** del proyecto (UUIDs, Resources, FIFO, etc.)
+- **Desarrollo seguro**: Verifica contexto completo antes de cada cambio
+- **Playwright OBLIGATORIO**: Prueba en navegador real en `http://localhost:5173`
+- **Autocorreccion**: Si falla Playwright, corrige y re-prueba (max 2 intentos)
+- **6 usuarios de prueba** con roles distintos para testing de permisos
+- Acepta **lenguaje natural** como parametro
+
+### Prerequisitos
+```bash
+cd backend && php artisan serve    # Backend en puerto 8000
+cd frontend && npm run dev         # Frontend en puerto 5173
+```
+
+### Ejemplos de Uso
+
+```bash
+# Analizar todo + probar con Playwright
+/dev-agri
+
+# Bug fixes
+/dev-agri "arregla el login"
+/dev-agri "el inventario no descuenta bien"
+/dev-agri "la tabla de compras no carga"
+
+# Features
+/dev-agri "agrega filtro por fecha en compras"
+/dev-agri "mejora la tabla de productos"
+
+# Analisis + verificacion
+/dev-agri "revisa permisos de bodeguero"
+/dev-agri "solo analiza recepciones"
+/dev-agri "verifica que el dashboard carga bien"
+```
+
+### Fases
+1. **ANALISIS EXPERTO**: Lee backend + frontend, entiende relaciones, detecta problemas
+2. **DESARROLLO SEGURO**: Aplica cambios respetando convenciones, verifica que no rompe nada
+3. **PLAYWRIGHT TESTING**: Login, navegacion, interaccion, verificacion de datos, screenshots
+4. **AUTOCORRECCION**: Si falla, diagnostica, corrige y re-prueba
+5. **REPORTE**: `DEV_AGRI_{ID}.md` con todo documentado
+
+### Credenciales de Testing
+| Rol | Email | Password |
+|-----|-------|----------|
+| Administrador | admin@agriflor.com | admin123 |
+| Supervisor | supervisor@agriflor.com | supervisor123 |
+| Bodeguero | bodega@agriflor.com | bodega123 |
+| Operario Finca | finca@agriflor.com | finca123 |
+| Encargado Compras | compras@agriflor.com | compras123 |
+| Financiero | financiero@agriflor.com | financiero123 |
+
+### Output
+Archivo `DEV_AGRI_{ID}.md` con las 5 fases documentadas, screenshots y resultados de Playwright.
 
 ---
 
@@ -440,6 +518,12 @@ Cuando analizas un modulo, automaticamente se incluyen sus dependencias.
 | `FEATURE_IMPLEMENTACION_{ID}.md` | /implement | /test-feature | Log de archivos creados/modificados |
 | `FEATURE_PRUEBAS_{ID}.md` | /test-feature | - | Resultados + correcciones aplicadas |
 
+### Pipeline Unificado (dev-agri)
+
+| Archivo | Generado por | Leido por | Proposito |
+|---------|--------------|-----------|-----------|
+| `DEV_AGRI_{ID}.md` | /dev-agri | - | Reporte completo (analisis + cambios + Playwright) |
+
 ### Otros
 
 | Archivo | Generado por | Leido por | Proposito |
@@ -476,6 +560,7 @@ AgriFlor/
 │       ├── context/             # React context
 │       └── store/               # Zustand
 ├── .claude/commands/            # Agentes
+│   ├── dev-agri.md             # TODO EN UNO: Analisis + Desarrollo + Playwright
 │   ├── analyze.md              # Pipeline bugs: analisis
 │   ├── fix.md                  # Pipeline bugs: correccion
 │   ├── test.md                 # Pipeline bugs: pruebas

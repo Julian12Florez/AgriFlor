@@ -3,7 +3,7 @@ import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Fo
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { packagingUnitsApi, baseUnitsApi } from '../../services/api';
+import { packagingUnitsApi, baseUnitsApi, handleApiError } from '../../services/api';
 import ResponsiveTable from '../../components/ResponsiveTable';
 
 const { Text } = Typography;
@@ -58,7 +58,7 @@ const PackagingUnits: React.FC = () => {
       message.success('Unidad de empaque creada exitosamente');
     },
     onError: (error: any) => {
-      message.error(error.response?.data?.message || 'Error al crear la unidad de empaque');
+      handleApiError(error, 'Error al crear la unidad de empaque', form);
     },
   });
 
@@ -73,7 +73,7 @@ const PackagingUnits: React.FC = () => {
       message.success('Unidad de empaque actualizada exitosamente');
     },
     onError: (error: any) => {
-      message.error(error.response?.data?.message || 'Error al actualizar la unidad de empaque');
+      handleApiError(error, 'Error al actualizar la unidad de empaque', form);
     },
   });
 
@@ -85,7 +85,7 @@ const PackagingUnits: React.FC = () => {
       message.success('Unidad de empaque eliminada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al eliminar: ${error.message}`);
+      handleApiError(error, 'Error al eliminar unidad de empaque');
     },
   });
 

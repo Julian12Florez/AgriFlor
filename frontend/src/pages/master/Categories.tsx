@@ -4,7 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { categoriesApi } from '../../services/api';
+import { categoriesApi, handleApiError } from '../../services/api';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -52,7 +52,7 @@ const Categories: React.FC = () => {
       message.success('Categoría creada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error: ${error.message}`);
+      handleApiError(error, 'Error al crear categoría', form);
     },
   });
 
@@ -67,7 +67,7 @@ const Categories: React.FC = () => {
       message.success('Categoría actualizada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error: ${error.message}`);
+      handleApiError(error, 'Error al actualizar categoría', form);
     },
   });
 
@@ -79,7 +79,7 @@ const Categories: React.FC = () => {
       message.success('Categoría eliminada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error: ${error.message}`);
+      handleApiError(error, 'Error al eliminar categoría');
     },
   });
 

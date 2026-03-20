@@ -750,4 +750,63 @@ class ReportExportController extends Controller
 
         return $pdf->download('inventario_actual_' . now()->format('Y_m_d_His') . '.pdf');
     }
+
+    /**
+     * Export Monthly Inventory Report to Excel
+     */
+    public function exportMonthlyExcel(Request $request)
+    {
+        $month = (int) $request->get('month', now()->month);
+        $year = (int) $request->get('year', now()->year);
+
+        // Reuse the monthly report logic from InventoryController
+        $controller = app(\App\Http\Controllers\Api\InventoryController::class);
+        $response = $controller->monthlyReport($request);
+        $responseData = json_decode($response->getContent(), true);
+
+        if (!$responseData['success']) {
+            return response()->json(['success' => false, 'message' => 'Error generando reporte'], 500);
+        }
+
+        $data = $responseData['data'];
+        $months = ['', 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        $monthName = $months[$month] ?? $month;
+
+        $fileName = "inventario_mensual_{$monthName}_{$year}_" . now()->format('His') . '.xlsx';
+
+        return Excel::download(
+            new \App\Exports\MonthlyInventoryExport(
+                $data['products'],
+                $data['farm_columns'],
+                (string)$month,
+                (string)$year
+            ),
+            $fileName
+        );
+    }
+
+    /**
+     * Export Product Listing Report to Excel
+     */
+    public function exportProductListingExcel(Request $request)
+    {
+        $date = $request->get('date', now()->format('Y-m-d'));
+
+        $controller = app(\App\Http\Controllers\Api\InventoryController::class);
+        $response = $controller->productListingReport($request);
+        $responseData = json_decode($response->getContent(), true);
+
+        if (!$responseData['success']) {
+            return response()->json(['success' => false, 'message' => 'Error generando reporte'], 500);
+        }
+
+        $data = $responseData['data'];
+        $fileName = "listado_productos_{$date}_" . now()->format('His') . '.xlsx';
+
+        return Excel::download(
+            new \App\Exports\ProductListingExport($data['products'], $date),
+            $fileName
+        );
+    }
 }

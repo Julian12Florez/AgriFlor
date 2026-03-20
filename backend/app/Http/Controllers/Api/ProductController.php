@@ -239,9 +239,8 @@ class ProductController extends Controller
             'search' => 'nullable|string',
         ]);
 
-        // Get all inventory items for the location (exclude only expired)
+        // Get all inventory items for the location (including expired — users may need to dispose of them)
         $inventoryItems = Inventory::where('location_id', $request->location_id)
-            ->whereNotIn('status', ['expired'])
             ->where('quantity', '>', 0)
             ->with(['product.packagingUnits', 'brand'])
             ->orderBy('expiration_date', 'asc') // FIFO: Expiration date first
@@ -285,6 +284,9 @@ class ProductController extends Controller
                 }
             }
 
+            $isExpired = $item->status === 'expired' || ($daysToExpiry !== null && $daysToExpiry < 0);
+            $expiredLabel = $isExpired ? ' [VENCIDO]' : '';
+
             return [
                 'inventory_id' => $item->id,
                 'product_id' => $item->product_id,
@@ -295,6 +297,8 @@ class ProductController extends Controller
                 'expiration_date' => $expirationDate,
                 'expiration_date_raw' => $item->expiration_date ? $item->expiration_date->format('Y-m-d') : null,
                 'days_to_expiry' => $daysToExpiry,
+                'is_expired' => $isExpired,
+                'status' => $item->status,
                 'quantity' => $item->quantity,
                 'unit' => $item->unit,
                 'base_quantity' => $baseQuantity,
@@ -305,19 +309,21 @@ class ProductController extends Controller
                 'active_ingredient' => $item->product->active_ingredient,
                 // Display label for dropdown: "ProductName - ExpDate - ConvertedStock"
                 'display_label' => sprintf(
-                    '%s - %s - %s %s disponible',
+                    '%s - %s - %s %s disponible%s',
                     $item->product->name,
                     $expirationDate,
                     number_format($baseQuantity, 2),
-                    $baseUnit
+                    $baseUnit,
+                    $expiredLabel
                 ),
                 // Short label for mobile
                 'short_label' => sprintf(
-                    '%s - %s - %s %s',
+                    '%s - %s - %s %s%s',
                     $item->product->name,
                     $expirationDate,
                     number_format($baseQuantity, 2),
-                    $baseUnit
+                    $baseUnit,
+                    $expiredLabel
                 ),
             ];
         })->values();

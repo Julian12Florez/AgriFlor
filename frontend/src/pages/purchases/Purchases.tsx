@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { purchasesApi, suppliersApi, productsApi, locationsApi } from '../../services/api';
+import { purchasesApi, suppliersApi, productsApi, locationsApi, handleApiError } from '../../services/api';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
 const { Text, Title } = Typography;
@@ -111,7 +111,7 @@ const Purchases: React.FC = () => {
   // Fetch locations
   const { data: locationsData } = useQuery({
     queryKey: ['locations'],
-    queryFn: () => locationsApi.list(),
+    queryFn: () => locationsApi.list({ per_page: 999 }),
   });
 
   // Create purchase mutation
@@ -124,7 +124,7 @@ const Purchases: React.FC = () => {
       message.success('Orden de compra creada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al crear la compra: ${error.message}`);
+      handleApiError(error, 'Error al crear la compra', form);
     },
   });
 
@@ -136,7 +136,7 @@ const Purchases: React.FC = () => {
       message.success('Orden de compra cancelada exitosamente');
     },
     onError: (error: any) => {
-      message.error(`Error al cancelar la compra: ${error.message}`);
+      handleApiError(error, 'Error al cancelar la compra');
     },
   });
 

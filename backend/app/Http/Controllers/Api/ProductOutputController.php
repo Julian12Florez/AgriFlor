@@ -115,10 +115,10 @@ class ProductOutputController extends Controller
 
             foreach ($products as $productData) {
                 // Calculate cost and get expiration date from inventory
+                // NOTE: Expired products are included — users need to be able to dispose of them
                 $inventoryQuery = Inventory::where('location_id', $output->origin_location_id)
                     ->where('product_id', $productData['product_id'])
-                    ->where('brand_id', $productData['brand_id'])
-                    ->whereNotIn('status', ['expired']);
+                    ->where('brand_id', $productData['brand_id']);
 
                 if (isset($productData['batch_number'])) {
                     $inventoryQuery->where('batch_number', $productData['batch_number']);
@@ -238,10 +238,10 @@ class ProductOutputController extends Controller
 
                 foreach ($products as $productData) {
                     // Calculate cost and get expiration date from inventory
+                    // NOTE: Expired products included — users need to dispose of them
                     $inventoryQuery = Inventory::where('location_id', $output->origin_location_id)
                         ->where('product_id', $productData['product_id'])
-                        ->where('brand_id', $productData['brand_id'])
-                        ->whereNotIn('status', ['expired']);
+                        ->where('brand_id', $productData['brand_id']);
 
                     if (isset($productData['batch_number'])) {
                         $inventoryQuery->where('batch_number', $productData['batch_number']);
@@ -353,7 +353,7 @@ class ProductOutputController extends Controller
         try {
             DB::beginTransaction();
 
-            $output = ProductOutput::with('outputProducts.product')->findOrFail($id);
+            $output = ProductOutput::with(['outputProducts.product', 'outputType'])->findOrFail($id);
 
             // Check if output is pending
             if ($output->status !== 'pending') {
@@ -386,11 +386,11 @@ class ProductOutputController extends Controller
                 ->get();
 
             foreach ($output->outputProducts as $outputProduct) {
+                // NOTE: Expired products included — users need to dispose of them via outputs
                 $inventoryBatches = Inventory::lockForUpdate()
                     ->where('product_id', $outputProduct->product_id)
                     ->where('brand_id', $outputProduct->brand_id)
                     ->where('location_id', $output->origin_location_id)
-                    ->whereNotIn('status', ['expired'])
                     ->where('quantity', '>', 0)
                     ->get();
 
@@ -635,16 +635,17 @@ class ProductOutputController extends Controller
             'products.*.brand_id' => 'required|uuid|exists:brands,id',
             'products.*.quantity' => 'required|numeric|min:0.01',
             'products.*.unit' => 'nullable|string',
+            'allow_expired' => 'nullable|boolean',
         ]);
 
         $results = [];
         $allValid = true;
 
         foreach ($request->products as $productData) {
+            // NOTE: Expired products included — users need to dispose of them via outputs
             $inventoryBatches = Inventory::where('product_id', $productData['product_id'])
                 ->where('brand_id', $productData['brand_id'])
                 ->where('location_id', $request->location_id)
-                ->whereNotIn('status', ['expired'])
                 ->where('quantity', '>', 0)
                 ->orderBy('expiration_date', 'asc')
                 ->orderBy('created_at', 'asc')

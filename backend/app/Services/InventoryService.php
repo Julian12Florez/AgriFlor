@@ -88,11 +88,12 @@ class InventoryService
         }
 
         // Lock and get all inventory batches ordered by FIFO
+        // NOTE: Expired products ARE included — users need to be able to dispose of them
+        // FIFO ordering prioritizes by expiration date (expired first), then creation date
         $query = Inventory::lockForUpdate()
             ->where('product_id', $productId)
             ->where('brand_id', $brandId)
             ->where('location_id', $locationId)
-            ->whereNotIn('status', ['expired'])
             ->where('quantity', '>', 0);
 
         // INT-002: Filter by batch_number when specified
