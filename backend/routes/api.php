@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\FarmLotController;
 use App\Http\Controllers\Api\OutputTypeController;
 use App\Http\Controllers\Api\ReportExportController;
 use App\Http\Controllers\Api\WorkerController;
+use App\Http\Controllers\Api\ImportController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\DailyAssignmentController;
 use App\Http\Controllers\Api\LiquidationReportController;
@@ -373,6 +374,15 @@ Route::middleware('auth:api')->group(function () {
 
         // Product Listing Report Export
         Route::get('reports/product-listing/export-excel', [ReportExportController::class, 'exportProductListingExcel']);
+    });
+
+    // ----------------------------------------
+    // ADMIN IMPORT / MIGRATION ENDPOINTS (Admin only)
+    // ----------------------------------------
+    Route::middleware('role:admin')->group(function () {
+        Route::post('admin/import-inventory', [ImportController::class, 'importInventory']);
+        Route::post('admin/run-migrations', [ImportController::class, 'runMigrations']);
+        Route::post('admin/setup-brand', [ImportController::class, 'setupBrand']);
     });
 
     // ----------------------------------------
