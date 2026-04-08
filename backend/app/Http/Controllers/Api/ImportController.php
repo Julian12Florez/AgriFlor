@@ -215,7 +215,8 @@ class ImportController extends Controller
 
     private function importLocations(): array
     {
-        $fincas = ['ALQUERÍA','BREVA','CIRUELO','ESPÁRRAGOS','LA PALMA','VENTA','MANSIÓN','MELON','NARANJOS','ROBLE 1','ROBLE 2','SALADEROS','TORONJAS 2','TORONJAS','UVA','VILLA','ARANDANOS','LABORATORIO'];
+        // Updated list including BREVA LOTE 7 (added in March 2026 inventory)
+        $fincas = ['ALQUERÍA','BREVA','BREVA LOTE 7','CIRUELO','ESPÁRRAGOS','LA PALMA','VENTA','MANSIÓN','MELON','NARANJOS','ROBLE 1','ROBLE 2','SALADEROS','TORONJAS 2','TORONJAS','UVA','VILLA','ARANDANOS','LABORATORIO'];
         $created = 0;
         $existing = 0;
 
@@ -298,6 +299,40 @@ class ImportController extends Controller
         return ['created' => $created, 'existing' => $existing, 'errors' => $errors];
     }
 
+    /**
+     * Read header row and return map: header_name => column_index (0-based)
+     */
+    private function readHeaders($sheet): array
+    {
+        $headers = [];
+        $headerRow = $sheet->getRowIterator(1, 1)->current();
+        $cellIterator = $headerRow->getCellIterator();
+        $cellIterator->setIterateOnlyExistingCells(false);
+        foreach ($cellIterator as $cell) {
+            $val = trim($cell->getValue() ?? '');
+            if ($val !== '') {
+                $colIndex = Coordinate::columnIndexFromString($cell->getColumn()) - 1;
+                $headers[$val] = $colIndex;
+            }
+        }
+        return $headers;
+    }
+
+    /**
+     * Find column index by trying multiple possible header names
+     */
+    private function findCol(array $headers, array $possibleNames): ?int
+    {
+        foreach ($possibleNames as $name) {
+            foreach ($headers as $h => $idx) {
+                if (mb_strtolower(trim($h)) === mb_strtolower(trim($name))) {
+                    return $idx;
+                }
+            }
+        }
+        return null;
+    }
+
     private function importStockBodega($spreadsheet): array
     {
         $sheet = $spreadsheet->getSheetByName('INVENTARIOS');
@@ -307,22 +342,32 @@ class ImportController extends Controller
 
         if (!$bodega) return ['error' => 'No se encontró bodega principal'];
 
+        // Read headers dynamically to handle different Excel layouts
+        $headers = $this->readHeaders($sheet);
+        $codeCol = $this->findCol($headers, ['Codigo', 'Código']);
+        $nombreCol = $this->findCol($headers, ['Producto']);
+        $invFinalCol = $this->findCol($headers, ['INVENTARIO FINAL', 'INVENTARIO FINAL ', 'Inventario Final']);
+
+        if ($codeCol === null || $nombreCol === null || $invFinalCol === null) {
+            return ['error' => 'No se encontraron las columnas requeridas en INVENTARIOS', 'headers' => array_keys($headers)];
+        }
+
         $created = 0;
         $skipped = 0;
 
-        DB::transaction(function () use ($sheet, $bodega, $adminUser, $defaultBrand, &$created, &$skipped) {
+        DB::transaction(function () use ($sheet, $bodega, $adminUser, $defaultBrand, $codeCol, $nombreCol, $invFinalCol, &$created, &$skipped) {
             foreach ($sheet->getRowIterator(2) as $row) {
                 $cells = [];
-                $cellIterator = $row->getCellIterator('A', 'Z');
+                $cellIterator = $row->getCellIterator();
                 $cellIterator->setIterateOnlyExistingCells(false);
                 foreach ($cellIterator as $cell) {
                     $colIndex = Coordinate::columnIndexFromString($cell->getColumn()) - 1;
                     $cells[$colIndex] = $cell->getCalculatedValue();
                 }
 
-                $code = trim($cells[0] ?? '');
-                $nombre = trim($cells[2] ?? '');
-                $invFinal = floatval($cells[25] ?? 0);
+                $code = trim($cells[$codeCol] ?? '');
+                $nombre = trim($cells[$nombreCol] ?? '');
+                $invFinal = floatval($cells[$invFinalCol] ?? 0);
 
                 if (empty($nombre) || $invFinal <= 0) { if (!empty($nombre)) $skipped++; continue; }
 
@@ -351,7 +396,7 @@ class ImportController extends Controller
                     'quantity' => round($invFinal, 2),
                     'unit' => $product->base_unit,
                     'responsible_user' => $adminUser->id,
-                    'observations' => 'Ajuste inicial - Inventario final febrero 2026 (importado desde Excel)',
+                    'observations' => 'Ajuste inicial - Inventario final (importado desde Excel)',
                 ]);
                 $created++;
             }
@@ -365,47 +410,58 @@ class ImportController extends Controller
         $adminUser = User::where('email', 'admin@agriflor.com')->first();
         $defaultBrand = Brand::where('name', 'Sin Marca')->first();
 
-        $remanenteFincaCols = [
-            4 => 'ALQUERÍA', 5 => 'BREVA', 6 => 'CIRUELO', 7 => 'ESPÁRRAGOS',
-            8 => 'LA PALMA', 9 => 'VENTA', 10 => 'MANSIÓN', 11 => 'MELON',
-            12 => 'NARANJOS', 13 => 'ROBLE 1', 14 => 'ROBLE 2', 15 => 'SALADEROS',
-            16 => 'TORONJAS 2', 17 => 'TORONJAS', 18 => 'UVA', 19 => 'VILLA',
-            20 => 'ARANDANOS', 21 => 'LABORATORIO',
-        ];
+        // Read headers dynamically
+        $headers = $this->readHeaders($sheet);
+        $codeCol = $this->findCol($headers, ['Codigo', 'Código']);
+        $nombreCol = $this->findCol($headers, ['Producto']);
 
+        if ($codeCol === null || $nombreCol === null) {
+            return ['error' => 'No se encontraron columnas requeridas en REMANENTES', 'headers' => array_keys($headers)];
+        }
+
+        // Excluded columns (not fincas)
+        $excludeHeaders = ['Codigo', 'Código', 'Grupo Insumo', 'Producto', 'Unidad Medida', 'INVENTARIO FINAL', 'INVENTARIO FINAL ', 'TOTAL'];
+        $excludeLower = array_map(fn($e) => mb_strtolower(trim($e)), $excludeHeaders);
+
+        // Build location map from headers (any header that matches a Location name)
         $locations = Location::all();
         $locationMap = [];
-        foreach ($remanenteFincaCols as $col => $fincaName) {
-            $found = $locations->first(fn($loc) => mb_strtolower(trim($loc->name)) === mb_strtolower(trim($fincaName)));
-            if ($found) $locationMap[$col] = $found;
+        foreach ($headers as $header => $colIdx) {
+            if (in_array(mb_strtolower(trim($header)), $excludeLower)) continue;
+            $found = $locations->first(fn($loc) => mb_strtolower(trim($loc->name)) === mb_strtolower(trim($header)));
+            if ($found) {
+                $locationMap[$colIdx] = $found;
+            }
         }
 
         $created = 0;
         $skipped = 0;
+        $unmatchedFincas = [];
+        foreach ($headers as $h => $idx) {
+            if (in_array(mb_strtolower(trim($h)), $excludeLower)) continue;
+            if (!isset($locationMap[$idx])) $unmatchedFincas[] = $h;
+        }
 
-        DB::transaction(function () use ($sheet, $locationMap, $adminUser, $defaultBrand, $remanenteFincaCols, &$created, &$skipped) {
+        DB::transaction(function () use ($sheet, $locationMap, $adminUser, $defaultBrand, $codeCol, $nombreCol, &$created, &$skipped) {
             foreach ($sheet->getRowIterator(2) as $row) {
                 $cells = [];
-                $cellIterator = $row->getCellIterator('A', 'W');
+                $cellIterator = $row->getCellIterator();
                 $cellIterator->setIterateOnlyExistingCells(false);
                 foreach ($cellIterator as $cell) {
                     $colIndex = Coordinate::columnIndexFromString($cell->getColumn()) - 1;
                     $cells[$colIndex] = $cell->getCalculatedValue();
                 }
 
-                $code = trim($cells[0] ?? '');
-                $nombre = trim($cells[2] ?? '');
+                $code = trim($cells[$codeCol] ?? '');
+                $nombre = trim($cells[$nombreCol] ?? '');
                 if (empty($nombre)) continue;
 
                 $product = Product::where('product_code', (string)$code)->first();
                 if (!$product) continue;
 
-                foreach ($remanenteFincaCols as $colIdx => $fincaName) {
+                foreach ($locationMap as $colIdx => $location) {
                     $qty = floatval($cells[$colIdx] ?? 0);
                     if ($qty <= 0) continue;
-
-                    $location = $locationMap[$colIdx] ?? null;
-                    if (!$location) continue;
 
                     if (Inventory::where('product_id', $product->id)->where('location_id', $location->id)->exists()) {
                         $skipped++;
@@ -429,12 +485,17 @@ class ImportController extends Controller
                         'quantity' => round($qty, 2),
                         'unit' => $product->base_unit,
                         'responsible_user' => $adminUser->id,
-                        'observations' => "Remanente febrero 2026 en {$location->name} (importado desde Excel)",
+                        'observations' => "Remanente en {$location->name} (importado desde Excel)",
                     ]);
                     $created++;
                 }
             }
         });
-        return ['created' => $created, 'skipped' => $skipped];
+        return [
+            'created' => $created,
+            'skipped' => $skipped,
+            'fincas_matched' => count($locationMap),
+            'fincas_unmatched' => $unmatchedFincas,
+        ];
     }
 }
