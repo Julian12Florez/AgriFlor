@@ -53,6 +53,10 @@ class FarmLotController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'area' => ['nullable', 'numeric', 'min:0'],
             'area_unit' => ['nullable', 'string', 'max:50'],
+            'total_trees' => ['nullable', 'numeric', 'min:0'],
+            'area_hectares' => ['nullable', 'numeric', 'min:0'],
+            'total_cubic_meters' => ['nullable', 'numeric', 'min:0'],
+            'total_linear_meters' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'status' => ['nullable', Rule::in(['active', 'inactive'])],
         ]);
@@ -103,6 +107,10 @@ class FarmLotController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'area' => ['nullable', 'numeric', 'min:0'],
             'area_unit' => ['nullable', 'string', 'max:50'],
+            'total_trees' => ['nullable', 'numeric', 'min:0'],
+            'area_hectares' => ['nullable', 'numeric', 'min:0'],
+            'total_cubic_meters' => ['nullable', 'numeric', 'min:0'],
+            'total_linear_meters' => ['nullable', 'numeric', 'min:0'],
             'description' => ['nullable', 'string'],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
         ]);

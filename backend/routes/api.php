@@ -23,6 +23,11 @@ use App\Http\Controllers\Api\OutputTypeController;
 use App\Http\Controllers\Api\ReportExportController;
 use App\Http\Controllers\Api\WorkerController;
 use App\Http\Controllers\Api\ImportController;
+use App\Http\Controllers\Api\TaskCatalogController;
+use App\Http\Controllers\Api\PerformanceSettingsController;
+use App\Http\Controllers\Api\TaskScheduleController;
+use App\Http\Controllers\Api\PerformanceReportController;
+use App\Http\Controllers\Api\TaskCategoryController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\DailyAssignmentController;
 use App\Http\Controllers\Api\LiquidationReportController;
@@ -447,6 +452,84 @@ Route::middleware('auth:api')->group(function () {
         Route::get('reports/analytics/{type}/export-excel', [LiquidationAnalyticsController::class, 'exportExcel']);
         Route::get('reports/analytics/{type}/export-pdf', [LiquidationAnalyticsController::class, 'exportPdf']);
     });
+
+    // ═══════════════════════════════════════════════════════════════
+    // PERFORMANCE MODULE (Rendimiento de Tareas Agricolas)
+    // ═══════════════════════════════════════════════════════════════
+
+    // Task Categories
+    Route::get('performance/task-categories', [TaskCategoryController::class, 'index']);
+    Route::middleware('role:admin,supervisor')->group(function () {
+        Route::post('performance/task-categories', [TaskCategoryController::class, 'store']);
+        Route::put('performance/task-categories/{id}', [TaskCategoryController::class, 'update']);
+        Route::delete('performance/task-categories/{id}', [TaskCategoryController::class, 'destroy']);
+    });
+
+    // Worker Availability
+    Route::get('performance/worker-availability', [TaskScheduleController::class, 'workerAvailability']);
+
+    // Task Catalog - Read
+    Route::get('performance/task-catalog', [TaskCatalogController::class, 'index']);
+    Route::get('performance/task-catalog/categories', [TaskCatalogController::class, 'categories']);
+    Route::get('performance/task-catalog/{id}', [TaskCatalogController::class, 'show']);
+
+    // Performance Settings - Read
+    Route::get('performance/settings', [PerformanceSettingsController::class, 'show']);
+
+    // Schedules - Read
+    Route::get('performance/schedules', [TaskScheduleController::class, 'index']);
+    Route::get('performance/schedules/{id}', [TaskScheduleController::class, 'show']);
+    Route::get('performance/schedules/{id}/logs', [TaskScheduleController::class, 'logs']);
+
+    // Panel del Dia
+    Route::get('performance/panel', [TaskScheduleController::class, 'panel']);
+
+    // Estimacion Ad-Hoc
+    Route::post('performance/schedules/estimate-ad-hoc', [TaskScheduleController::class, 'estimateAdHoc']);
+
+    // Task Catalog - Write (admin, supervisor)
+    Route::middleware('role:admin,supervisor')->group(function () {
+        Route::post('performance/task-catalog', [TaskCatalogController::class, 'store']);
+        Route::put('performance/task-catalog/{id}', [TaskCatalogController::class, 'update']);
+        Route::patch('performance/task-catalog/{id}/toggle', [TaskCatalogController::class, 'toggleActive']);
+    });
+
+    // Performance Settings - Write (admin only)
+    Route::middleware('role:admin')->group(function () {
+        Route::put('performance/settings', [PerformanceSettingsController::class, 'update']);
+    });
+
+    // Schedules - Write (admin, supervisor)
+    Route::middleware('role:admin,supervisor')->group(function () {
+        Route::post('performance/schedules', [TaskScheduleController::class, 'store']);
+        Route::put('performance/schedules/{id}', [TaskScheduleController::class, 'update']);
+        Route::post('performance/schedules/{id}/cancel', [TaskScheduleController::class, 'cancel']);
+    });
+
+    // Daily Performance Report (read all)
+    Route::get('performance/schedules/{id}/daily-performance', [TaskScheduleController::class, 'dailyPerformance']);
+
+    // Daily Logs - Write (admin, supervisor, farm_operator)
+    Route::middleware('role:admin,supervisor,farm_operator')->group(function () {
+        Route::post('performance/schedules/{id}/logs', [TaskScheduleController::class, 'storeLog']);
+    });
+
+    // Finalize manual (admin, supervisor)
+    Route::middleware('role:admin,supervisor')->group(function () {
+        Route::post('performance/schedules/{id}/finalize', [TaskScheduleController::class, 'finalize']);
+    });
+
+    // Daily Logs - Delete (admin only)
+    Route::middleware('role:admin')->group(function () {
+        Route::delete('performance/logs/{id}', [TaskScheduleController::class, 'deleteLog']);
+    });
+
+    // Performance Reports (all authenticated)
+    Route::get('performance/reports/by-task', [PerformanceReportController::class, 'performanceByTask']);
+    Route::get('performance/reports/compliance', [PerformanceReportController::class, 'compliance']);
+    Route::get('performance/reports/gantt', [PerformanceReportController::class, 'gantt']);
+    Route::post('performance/reports/farm-comparison', [PerformanceReportController::class, 'farmComparison']);
+    Route::get('performance/reports/projection', [PerformanceReportController::class, 'projection']);
 });
 
 /*
@@ -505,5 +588,12 @@ Route::middleware('auth:api')->group(function () {
 |   - Receptions (read)
 |   - Purchases (read)
 |   - Farm lots (read)
+|
+| PERFORMANCE MODULE (Rendimiento de Tareas Agricolas):
+|   - Task catalog: read (all), write (admin, supervisor)
+|   - Settings: read (all), write (admin)
+|   - Schedules: read (all), write (admin, supervisor)
+|   - Daily logs: read (all), write (admin, supervisor, farm_operator)
+|   - Panel: read (all)
 |
 */

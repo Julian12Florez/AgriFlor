@@ -33,6 +33,7 @@ class Location extends Model
         'coordinates_lng',
         'responsible_user_id',
         'status',
+        'total_workers',
     ];
 
     protected $casts = [
@@ -40,6 +41,7 @@ class Location extends Model
         'coordinates_lat' => 'decimal:8',
         'coordinates_lng' => 'decimal:8',
         'status' => 'string',
+        'total_workers' => 'integer',
         'created_at' => 'datetime',
     ];
 

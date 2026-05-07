@@ -100,6 +100,81 @@ class ProductOutputController extends Controller
             $products = $data['products'];
             unset($data['products']);
 
+            // Validar stock disponible REAL (físico - comprometido por otras salidas pendientes)
+            // antes de crear la salida. Evita comprometer stock que ya está en tránsito.
+            // Solo se cuentan estados approved/in_transit/partial (alineado con approve()).
+            // Las salidas 'pending' aún no están aprobadas y no deben bloquear stock.
+            $originLocationId = $data['origin_location_id'];
+            $otherCommittedOutputs = ProductOutput::where('origin_location_id', $originLocationId)
+                ->whereIn('status', ['approved', 'in_transit', 'partial'])
+                ->get();
+
+            foreach ($products as $productData) {
+                $productId = $productData['product_id'];
+                $brandId = $productData['brand_id'];
+                $unit = $productData['unit'];
+                $requestedQty = floatval($productData['quantity_delivered']);
+
+                // Stock físico
+                $physicalQty = Inventory::where('location_id', $originLocationId)
+                    ->where('product_id', $productId)
+                    ->where('brand_id', $brandId)
+                    ->sum('quantity');
+
+                // Convertir a base
+                $physicalBase = $this->inventoryService->toBaseUnit($physicalQty, $unit, $productId);
+                $requestedBase = $this->inventoryService->toBaseUnit($requestedQty, $unit, $productId);
+
+                // Calcular comprometido por otras salidas (no recibidas)
+                // FIX: usar 'output_id' (FK real en OutputProduct), no 'product_output_id'
+                $committedBase = 0;
+                foreach ($otherCommittedOutputs as $otherOutput) {
+                    $otherProducts = OutputProduct::where('output_id', $otherOutput->id)
+                        ->where('product_id', $productId)
+                        ->where('brand_id', $brandId)
+                        ->get();
+
+                    foreach ($otherProducts as $otherProduct) {
+                        $deliveredBase = $this->inventoryService->toBaseUnit(
+                            floatval($otherProduct->quantity_delivered),
+                            $otherProduct->unit,
+                            $productId
+                        );
+                        // Restar lo ya recibido
+                        $receivedBase = 0;
+                        $reception = Reception::where('source_id', $otherOutput->id)
+                            ->where('source_type', 'output')->first();
+                        if ($reception) {
+                            $items = $reception->receptionItems()
+                                ->where('product_id', $productId)
+                                ->where('brand_id', $brandId)
+                                ->get();
+                            foreach ($items as $item) {
+                                $receivedBase += $this->inventoryService->toBaseUnit(
+                                    floatval($item->quantity_received), $item->unit, $productId
+                                );
+                            }
+                        }
+                        $committedBase += max(0, $deliveredBase - $receivedBase);
+                    }
+                }
+
+                $availableBase = $physicalBase - $committedBase;
+                if ($availableBase < $requestedBase - 0.01) {
+                    DB::rollBack();
+                    $product = \App\Models\Product::find($productId);
+                    $productName = $product?->name ?? 'producto';
+                    $msg = "Stock insuficiente para {$productName}. Físico: " . round($physicalBase, 2)
+                        . " | Comprometido en otras salidas pendientes: " . round($committedBase, 2)
+                        . " | Disponible real: " . round($availableBase, 2)
+                        . " | Solicitado: " . round($requestedBase, 2);
+                    return response()->json([
+                        'success' => false,
+                        'message' => $msg,
+                    ], 422);
+                }
+            }
+
             // Generate output number automatically
             $data['output_number'] = ProductOutput::generateOutputNumber();
 
@@ -405,9 +480,10 @@ class ProductOutputController extends Controller
                 }
 
                 // Calculate committed inventory from other approved/partial outputs
+                // FIX: usar 'output_id' (FK real en OutputProduct), no 'product_output_id'
                 $committedInBase = 0;
                 foreach ($otherApprovedOutputs as $otherOutput) {
-                    $otherProducts = OutputProduct::where('product_output_id', $otherOutput->id)
+                    $otherProducts = OutputProduct::where('output_id', $otherOutput->id)
                         ->where('product_id', $outputProduct->product_id)
                         ->where('brand_id', $outputProduct->brand_id)
                         ->get();

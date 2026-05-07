@@ -18,12 +18,20 @@ class FarmLot extends Model
         'name',
         'area',
         'area_unit',
+        'total_trees',
+        'area_hectares',
+        'total_cubic_meters',
+        'total_linear_meters',
         'description',
         'status',
     ];
 
     protected $casts = [
         'area' => 'decimal:2',
+        'total_trees' => 'decimal:0',
+        'area_hectares' => 'decimal:2',
+        'total_cubic_meters' => 'decimal:2',
+        'total_linear_meters' => 'decimal:2',
         'status' => 'string',
         'created_at' => 'datetime',
     ];

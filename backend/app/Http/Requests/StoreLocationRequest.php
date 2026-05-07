@@ -23,6 +23,7 @@ class StoreLocationRequest extends FormRequest
             'coordinates_lat' => ['nullable', 'numeric', 'between:-90,90'],
             'coordinates_lng' => ['nullable', 'numeric', 'between:-180,180'],
             'status' => ['sometimes', Rule::in(['active', 'inactive'])],
+            'total_workers' => ['nullable', 'integer', 'min:0'],
         ];
     }
 

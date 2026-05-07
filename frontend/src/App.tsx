@@ -49,6 +49,13 @@ import ProductListingReport from './pages/reports/ProductListingReport';
 import Login from './pages/auth/Login';
 import ResetPassword from './pages/auth/ResetPassword';
 
+// Performance Module
+import TaskCatalog from './pages/performance/TaskCatalog';
+import PerformanceSettings from './pages/performance/PerformanceSettings';
+import ScheduleList from './pages/performance/ScheduleList';
+import DailyPanel from './pages/performance/DailyPanel';
+import PerformanceReports from './pages/performance/PerformanceReports';
+
 // Create a client for React Query
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -361,6 +368,43 @@ const App: React.FC = () => {
                 <ProtectedRoute module="reports" showAccessDenied>
                   <MainLayout>
                     <PeriodComparisonReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              {/* Performance Module Routes - module: 'performance' */}
+              <Route path="/performance/catalog" element={
+                <ProtectedRoute authOnly>
+                  <MainLayout>
+                    <TaskCatalog />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/performance/settings" element={
+                <ProtectedRoute authOnly>
+                  <MainLayout>
+                    <PerformanceSettings />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/performance/schedules" element={
+                <ProtectedRoute authOnly>
+                  <MainLayout>
+                    <ScheduleList />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/performance/daily" element={
+                <ProtectedRoute authOnly>
+                  <MainLayout>
+                    <DailyPanel />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/performance/reports" element={
+                <ProtectedRoute authOnly>
+                  <MainLayout>
+                    <PerformanceReports />
                   </MainLayout>
                 </ProtectedRoute>
               } />

@@ -128,6 +128,7 @@ const Locations: React.FC = () => {
       address: record.address,
       responsible_user_id: record.responsible_user_id,
       status: record.status,
+      total_workers: record.total_workers,
       coordinates: record.coordinates ? {
         lat: record.coordinates.lat,
         lng: record.coordinates.lng
@@ -160,6 +161,7 @@ const Locations: React.FC = () => {
         address: values.address,
         responsible_user_id: values.responsible_user_id,
         status: values.status || 'active',
+        total_workers: values.total_workers ?? null,
         coordinates: (lat && lng && !isNaN(Number(lat)) && !isNaN(Number(lng)))
           ? { lat: Number(lat), lng: Number(lng) }
           : undefined
@@ -188,6 +190,10 @@ const Locations: React.FC = () => {
             name: lot.name,
             area: lot.area || null,
             area_unit: lot.area_unit || 'hectares',
+            total_trees: lot.total_trees ?? null,
+            area_hectares: lot.area_hectares ?? null,
+            total_cubic_meters: lot.total_cubic_meters ?? null,
+            total_linear_meters: lot.total_linear_meters ?? null,
             description: lot.description || null,
             status: lot.status || 'active',
           };
@@ -603,6 +609,17 @@ const Locations: React.FC = () => {
             {({ getFieldValue }) =>
               getFieldValue('type') === 'farm' ? (
                 <>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item
+                        name="total_workers"
+                        label="Total Trabajadores en Finca"
+                        tooltip="Cantidad total de trabajadores disponibles en esta finca. Se usa para validar disponibilidad al programar tareas."
+                      >
+                        <InputNumber min={0} style={{ width: '100%' }} placeholder="Ej: 15" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
                   <Divider>Lotes de Finca</Divider>
                   <Form.List name="lots">
                     {(fields, { add, remove }) => (
@@ -646,6 +663,71 @@ const Locations: React.FC = () => {
                                     <Option value="m2">m²</Option>
                                     <Option value="acres">Acres</Option>
                                   </Select>
+                                </Form.Item>
+                              </Col>
+                            </Row>
+                            <Divider orientation="left" plain style={{ fontSize: 12, color: '#888', margin: '8px 0' }}>
+                              Capacidades del Lote (para módulo de Rendimiento)
+                            </Divider>
+                            <Row gutter={16}>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'total_trees']}
+                                  label="Total de Árboles"
+                                  tooltip="Cantidad total de árboles del lote. Se usa para tareas como Podas, Plateo, Abonar."
+                                >
+                                  <InputNumber
+                                    min={0}
+                                    precision={0}
+                                    style={{ width: '100%' }}
+                                    placeholder="Ej: 300"
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'area_hectares']}
+                                  label="Hectáreas"
+                                  tooltip="Área en hectáreas. Se usa para tareas como Guadaña, Fumigación, Herbicida."
+                                >
+                                  <InputNumber
+                                    min={0}
+                                    precision={2}
+                                    style={{ width: '100%' }}
+                                    placeholder="Ej: 2.50"
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'total_cubic_meters']}
+                                  label="Metros Cúbicos (m³)"
+                                  tooltip="Volumen para aplicaciones de riego y drench."
+                                >
+                                  <InputNumber
+                                    min={0}
+                                    precision={2}
+                                    style={{ width: '100%' }}
+                                    placeholder="Ej: 50.00"
+                                  />
+                                </Form.Item>
+                              </Col>
+                              <Col span={6}>
+                                <Form.Item
+                                  {...restField}
+                                  name={[name, 'total_linear_meters']}
+                                  label="Metros Lineales"
+                                  tooltip="Longitud para tareas como Vías, Cercos, Drenajes."
+                                >
+                                  <InputNumber
+                                    min={0}
+                                    precision={2}
+                                    style={{ width: '100%' }}
+                                    placeholder="Ej: 200.00"
+                                  />
                                 </Form.Item>
                               </Col>
                             </Row>

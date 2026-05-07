@@ -1057,7 +1057,7 @@ class ReceptionController extends Controller
             // Use source_item_id for exact match, fallback to product_id+brand_id
             $outputProduct = $item->source_item_id
                 ? OutputProduct::find($item->source_item_id)
-                : OutputProduct::where('product_output_id', $reception->source_id)
+                : OutputProduct::where('output_id', $reception->source_id)
                     ->where('product_id', $item->product_id)
                     ->where('brand_id', $item->brand_id)
                     ->first();

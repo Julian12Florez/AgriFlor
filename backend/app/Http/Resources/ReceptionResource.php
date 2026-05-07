@@ -74,7 +74,7 @@ class ReceptionResource extends JsonResource
                     if (!$suggestedExpirationDate && $this->source_type === 'output' && $this->origin_location_id) {
                         $outputProduct = $item->source_item_id
                             ? \App\Models\OutputProduct::find($item->source_item_id)
-                            : \App\Models\OutputProduct::where('product_output_id', $this->source_id)
+                            : \App\Models\OutputProduct::where('output_id', $this->source_id)
                                 ->where('product_id', $item->product_id)
                                 ->where('brand_id', $item->brand_id)
                                 ->first();

@@ -17,6 +17,7 @@ import {
   LogoutOutlined,
   LockOutlined,
   DollarOutlined,
+  LineChartOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 import usePermissions from '../../hooks/usePermissions';
@@ -169,6 +170,20 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         ],
       });
     }
+
+    // Rendimiento - acceso para todos los autenticados
+    items.push({
+      key: 'sub8',
+      icon: <LineChartOutlined />,
+      label: 'Rendimiento',
+      children: [
+        { key: '/performance/catalog', label: 'Catálogo de Tareas' },
+        { key: '/performance/schedules', label: 'Programación' },
+        { key: '/performance/daily', label: 'Registro Diario' },
+        { key: '/performance/reports', label: 'Reportes' },
+        { key: '/performance/settings', label: 'Configuración' },
+      ],
+    });
 
     // Administración - module: 'admin'
     if (hasModuleAccess('admin')) {

@@ -960,3 +960,109 @@ async function downloadFile(url: string, filename: string): Promise<void> {
     throw error;
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Performance Module API (Rendimiento de Tareas Agricolas)
+// ═══════════════════════════════════════════════════════════════
+
+export const taskCategoryApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/task-categories', params),
+
+  create: (data: any) =>
+    api.post<ApiResponse<any>>('/performance/task-categories', data),
+
+  update: (id: string, data: any) =>
+    api.put<ApiResponse<any>>(`/performance/task-categories/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<ApiResponse<any>>(`/performance/task-categories/${id}`),
+};
+
+export const workerAvailabilityApi = {
+  get: (params: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/worker-availability', params),
+};
+
+export const performanceSettingsApi = {
+  get: () =>
+    api.get<ApiResponse<any>>('/performance/settings'),
+
+  update: (data: any) =>
+    api.put<ApiResponse<any>>('/performance/settings', data),
+};
+
+export const taskCatalogApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<PaginatedResponse<any>>('/performance/task-catalog', params),
+
+  get: (id: string) =>
+    api.get<ApiResponse<any>>(`/performance/task-catalog/${id}`),
+
+  create: (data: any) =>
+    api.post<ApiResponse<any>>('/performance/task-catalog', data),
+
+  update: (id: string, data: any) =>
+    api.put<ApiResponse<any>>(`/performance/task-catalog/${id}`, data),
+
+  toggleActive: (id: string) =>
+    api.put<ApiResponse<any>>(`/performance/task-catalog/${id}/toggle`, {}),
+
+  categories: () =>
+    api.get<ApiResponse<string[]>>('/performance/task-catalog/categories'),
+};
+
+export const taskScheduleApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<PaginatedResponse<any>>('/performance/schedules', params),
+
+  get: (id: string) =>
+    api.get<ApiResponse<any>>(`/performance/schedules/${id}`),
+
+  create: (data: any) =>
+    api.post<ApiResponse<any>>('/performance/schedules', data),
+
+  update: (id: string, data: any) =>
+    api.put<ApiResponse<any>>(`/performance/schedules/${id}`, data),
+
+  cancel: (id: string, reason: string) =>
+    api.post<ApiResponse<any>>(`/performance/schedules/${id}/cancel`, { reason }),
+
+  estimateAdHoc: (data: any) =>
+    api.post<ApiResponse<any>>('/performance/schedules/estimate-ad-hoc', data),
+
+  logs: (scheduleId: string) =>
+    api.get<ApiResponse<any>>(`/performance/schedules/${scheduleId}/logs`),
+
+  createLog: (scheduleId: string, data: any) =>
+    api.post<ApiResponse<any>>(`/performance/schedules/${scheduleId}/logs`, data),
+
+  deleteLog: (logId: string) =>
+    api.delete<ApiResponse<any>>(`/performance/logs/${logId}`),
+
+  finalize: (scheduleId: string) =>
+    api.post<ApiResponse<any>>(`/performance/schedules/${scheduleId}/finalize`, {}),
+
+  dailyPerformance: (scheduleId: string) =>
+    api.get<ApiResponse<any>>(`/performance/schedules/${scheduleId}/daily-performance`),
+
+  panel: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/panel', params),
+};
+
+export const performanceReportsApi = {
+  byTask: (params: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/reports/by-task', params),
+
+  compliance: (params: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/reports/compliance', params),
+
+  gantt: (params: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/reports/gantt', params),
+
+  farmComparison: (data: any) =>
+    api.post<ApiResponse<any>>('/performance/reports/farm-comparison', data),
+
+  projection: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/performance/reports/projection', params),
+};
