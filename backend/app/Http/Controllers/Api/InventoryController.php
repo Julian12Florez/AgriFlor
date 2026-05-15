@@ -461,44 +461,74 @@ class InventoryController extends Controller
             }
 
             $products = $productsQuery->get();
+            $productIds = $products->pluck('product_id')->all();
+
+            // Single query: load all inventory rows for the product set joined with brands/locations
+            $inventoryQuery = DB::table('inventory')
+                ->select([
+                    'inventory.id',
+                    'inventory.product_id',
+                    'inventory.brand_id',
+                    'inventory.location_id',
+                    'inventory.batch_number',
+                    'inventory.quantity',
+                    'inventory.unit',
+                    'inventory.expiration_date',
+                    'inventory.unit_price',
+                    'inventory.total_value',
+                    'inventory.status',
+                    'brands.name as brand_name',
+                    'locations.name as location_name',
+                    'locations.type as location_type'
+                ])
+                ->join('brands', 'inventory.brand_id', '=', 'brands.id')
+                ->join('locations', 'inventory.location_id', '=', 'locations.id')
+                ->whereIn('inventory.product_id', $productIds ?: ['__none__']);
+
+            if ($locationId) {
+                $inventoryQuery->where('inventory.location_id', $locationId);
+            }
+
+            $allInventory = $inventoryQuery->get()->groupBy('product_id');
+
+            // Pre-load all packaging units used in this inventory in ONE query
+            $unitProductPairs = [];
+            foreach ($allInventory as $items) {
+                foreach ($items as $it) {
+                    $unitProductPairs[$it->product_id . '|' . strtolower($it->unit)] = [
+                        'product_id' => $it->product_id,
+                        'unit' => $it->unit,
+                    ];
+                }
+            }
+            $packagingMap = [];
+            if (!empty($unitProductPairs)) {
+                $unitNames = array_unique(array_map(fn($p) => strtolower($p['unit']), array_values($unitProductPairs)));
+                $rows = DB::table('packaging_units')
+                    ->join('product_packaging_units', 'product_packaging_units.packaging_unit_id', '=', 'packaging_units.id')
+                    ->whereIn('product_packaging_units.product_id', $productIds ?: ['__none__'])
+                    ->whereIn(DB::raw('LOWER(packaging_units.name)'), $unitNames)
+                    ->select('product_packaging_units.product_id', 'packaging_units.name', 'packaging_units.base_quantity')
+                    ->get();
+                foreach ($rows as $r) {
+                    $packagingMap[$r->product_id . '|' . strtolower($r->name)] = floatval($r->base_quantity);
+                }
+            }
+            $toBase = function ($qty, $unit, $productId) use ($packagingMap) {
+                $key = $productId . '|' . strtolower($unit);
+                return isset($packagingMap[$key]) ? floatval($qty) * $packagingMap[$key] : floatval($qty);
+            };
 
             // Build inventory data for each product
             $kardexData = [];
 
             foreach ($products as $product) {
-                // Get inventory for this product
-                $inventoryQuery = DB::table('inventory')
-                    ->select([
-                        'inventory.id',
-                        'inventory.product_id',
-                        'inventory.brand_id',
-                        'inventory.location_id',
-                        'inventory.batch_number',
-                        'inventory.quantity',
-                        'inventory.unit',
-                        'inventory.expiration_date',
-                        'inventory.unit_price',
-                        'inventory.total_value',
-                        'inventory.status',
-                        'brands.name as brand_name',
-                        'locations.name as location_name',
-                        'locations.type as location_type'
-                    ])
-                    ->join('brands', 'inventory.brand_id', '=', 'brands.id')
-                    ->join('locations', 'inventory.location_id', '=', 'locations.id')
-                    ->where('inventory.product_id', $product->product_id);
-
-                // Filter by location if specified
-                if ($locationId) {
-                    $inventoryQuery->where('inventory.location_id', $locationId);
-                }
-
-                $inventoryItems = $inventoryQuery->get();
+                $inventoryItems = $allInventory->get($product->product_id, collect());
 
                 // Calculate totals (convert each item to base unit before summing)
                 $totalQuantity = 0;
                 foreach ($inventoryItems as $item) {
-                    $totalQuantity += $this->inventoryService->toBaseUnit(
+                    $totalQuantity += $toBase(
                         floatval($item->quantity),
                         $item->unit,
                         $product->product_id
@@ -559,7 +589,7 @@ class InventoryController extends Controller
                         ];
                     }
 
-                    $qtyInBase = $this->inventoryService->toBaseUnit(
+                    $qtyInBase = $toBase(
                         floatval($item->quantity),
                         $item->unit,
                         $product->product_id
