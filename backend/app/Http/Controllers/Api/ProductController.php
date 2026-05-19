@@ -252,6 +252,7 @@ class ProductController extends Controller
             $search = strtolower($request->search);
             $inventoryItems = $inventoryItems->filter(function ($item) use ($search) {
                 return str_contains(strtolower($item->product->name), $search) ||
+                       str_contains(strtolower($item->product->product_code ?? ''), $search) ||
                        str_contains(strtolower($item->product->active_ingredient ?? ''), $search) ||
                        str_contains(strtolower($item->brand->name ?? ''), $search);
             });
@@ -307,19 +308,22 @@ class ProductController extends Controller
                 'category' => $item->product->category?->name,
                 'category_id' => $item->product->category_id,
                 'active_ingredient' => $item->product->active_ingredient,
-                // Display label for dropdown: "ProductName - ExpDate - ConvertedStock"
+                // Display label for dropdown: "ProductName [code] - Brand - ExpDate - ConvertedStock"
                 'display_label' => sprintf(
-                    '%s - %s - %s %s disponible%s',
+                    '%s%s%s - %s - %s %s disponible%s',
                     $item->product->name,
+                    $item->product->product_code ? ' [' . $item->product->product_code . ']' : '',
+                    $item->brand && $item->brand->name ? ' - ' . $item->brand->name : '',
                     $expirationDate,
                     number_format($baseQuantity, 2),
                     $baseUnit,
                     $expiredLabel
                 ),
-                // Short label for mobile
+                // Short label for mobile (incluye código para búsqueda)
                 'short_label' => sprintf(
-                    '%s - %s - %s %s%s',
+                    '%s%s - %s - %s %s%s',
                     $item->product->name,
+                    $item->product->product_code ? ' [' . $item->product->product_code . ']' : '',
                     $expirationDate,
                     number_format($baseQuantity, 2),
                     $baseUnit,
