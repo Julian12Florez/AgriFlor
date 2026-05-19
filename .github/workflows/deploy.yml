@@ -88,7 +88,7 @@ jobs:
       - name: Build
         working-directory: frontend
         env:
-          VITE_API_URL: https://agriflor-api.onrender.com/api
+          VITE_API_URL: https://agriflor-api.duckdns.org/api
         run: npx vite build
 
       - name: Deploy to Cloudflare Pages
@@ -99,59 +99,37 @@ jobs:
           command: pages deploy frontend/dist --project-name agriflor --branch main
 
   # -----------------------------------------------------------
-  # Deploy Backend a Render (trigger rebuild)
+  # Deploy Backend al VPS Hetzner via SSH
   # -----------------------------------------------------------
   deploy-backend:
     needs: detect-changes
     if: needs.detect-changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render Deploy
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/agriflor/repo
+            git fetch origin main
+            git reset --hard origin/main
+            cd /opt/agriflor
+            docker compose build backend
+            docker compose up -d backend
+            docker exec agriflor-backend php artisan migrate --force
+            docker exec agriflor-backend php artisan config:cache
+            docker exec agriflor-backend php artisan route:cache
+            echo "Deploy OK"
+
+      - name: Summary
         run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
-            "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
-            -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-            -H "Accept: application/json" \
-            -H "Content-Type: application/json" \
-            -d '{}')
-
-          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-          BODY=$(echo "$RESPONSE" | head -1)
-
-          if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "202" ]; then
-            DEPLOY_ID=$(echo "$BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id', d.get('deploy',{}).get('id','unknown')))" 2>/dev/null || echo "accepted")
-            echo "### Backend Deploy Triggered" >> $GITHUB_STEP_SUMMARY
-            echo "- Deploy ID: $DEPLOY_ID" >> $GITHUB_STEP_SUMMARY
-            echo "- HTTP Code: $HTTP_CODE" >> $GITHUB_STEP_SUMMARY
-            echo "- Dashboard: https://dashboard.render.com/web/${{ secrets.RENDER_SERVICE_ID }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Deploy trigger failed with HTTP $HTTP_CODE"
-            echo "$BODY"
-            exit 1
-          fi
-
-      - name: Wait for deploy
-        run: |
-          echo "Waiting for Render deploy to complete..."
-          for i in $(seq 1 20); do
-            sleep 30
-            STATUS=$(curl -s \
-              "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys?limit=1" \
-              -H "Authorization: Bearer ${{ secrets.RENDER_API_KEY }}" \
-              -H "Accept: application/json" | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['deploy']['status'])" 2>/dev/null)
-
-            echo "Check $i: $STATUS"
-
-            if [ "$STATUS" = "live" ]; then
-              echo "### Backend Deploy Successful" >> $GITHUB_STEP_SUMMARY
-              exit 0
-            elif [ "$STATUS" = "build_failed" ] || [ "$STATUS" = "update_failed" ]; then
-              echo "### Backend Deploy FAILED ($STATUS)" >> $GITHUB_STEP_SUMMARY
-              exit 1
-            fi
-          done
-          echo "Deploy timed out after 10 minutes"
-          exit 1
+          echo "### Backend Deploy" >> $GITHUB_STEP_SUMMARY
+          echo "- Target: ${{ secrets.VPS_HOST }} (Hetzner Cloud cpx21)" >> $GITHUB_STEP_SUMMARY
+          echo "- URL: https://agriflor-api.duckdns.org" >> $GITHUB_STEP_SUMMARY
 
   # -----------------------------------------------------------
   # Verificacion post-deploy
@@ -177,7 +155,7 @@ jobs:
         run: |
           # Wait for potential cold start
           sleep 5
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://agriflor-api.onrender.com/up)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" https://agriflor-api.duckdns.org/up)
           if [ "$HTTP_CODE" = "200" ]; then
             echo "Backend OK ($HTTP_CODE)"
           else
@@ -189,5 +167,5 @@ jobs:
         run: |
           echo "### Deployment Verification" >> $GITHUB_STEP_SUMMARY
           echo "- Frontend: https://agriflor.pages.dev" >> $GITHUB_STEP_SUMMARY
-          echo "- Backend: https://agriflor-api.onrender.com" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: https://agriflor-api.duckdns.org" >> $GITHUB_STEP_SUMMARY
           echo "- Status: Verified" >> $GITHUB_STEP_SUMMARY
