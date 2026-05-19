@@ -102,10 +102,10 @@ const Purchases: React.FC = () => {
     queryFn: () => suppliersApi.list(),
   });
 
-  // Fetch products
+  // Fetch products (per_page alto para traer todos, no solo la primera página)
   const { data: productsData } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => productsApi.list(),
+    queryKey: ['products', 'all-for-order'],
+    queryFn: () => productsApi.list({ per_page: 9999 }),
   });
 
   // Fetch locations
@@ -843,8 +843,15 @@ const Purchases: React.FC = () => {
                             rules={[{ required: true, message: 'Selecciona un producto' }]}
                           >
                             <Select
-                              placeholder="Selecciona producto"
+                              placeholder="Buscar producto por nombre o código..."
                               loading={!productsData}
+                              showSearch
+                              optionFilterProp="label"
+                              filterOption={(input, option) =>
+                                (option?.label ?? '').toString().toLowerCase().includes(input.toLowerCase())
+                              }
+                              virtual
+                              listHeight={320}
                               onChange={(productId) => {
                                 const product = products.find((p: any) => p.id === productId);
                                 if (product) {
@@ -865,11 +872,16 @@ const Purchases: React.FC = () => {
                                 }
                               }}
                             >
-                              {products.map((product: any) => (
-                                <Select.Option key={product.id} value={product.id}>
-                                  {product.name} {product.brand?.name ? `- ${product.brand.name}` : ''}
-                                </Select.Option>
-                              ))}
+                              {products.map((product: any) => {
+                                const code = product.product_code || product.productCode || '';
+                                const brand = product.brand?.name || product.brand_name || '';
+                                const display = `${product.name}${code ? ` [${code}]` : ''}${brand ? ` - ${brand}` : ''}`;
+                                return (
+                                  <Select.Option key={product.id} value={product.id} label={display}>
+                                    {display}
+                                  </Select.Option>
+                                );
+                              })}
                             </Select>
                           </Form.Item>
                         </Col>

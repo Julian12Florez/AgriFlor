@@ -42,10 +42,10 @@ const Orders: React.FC = () => {
     queryFn: () => recipesApi.list(),
   });
 
-  // Fetch products
+  // Fetch products (per_page alto para traer todos)
   const { data: productsData } = useQuery({
-    queryKey: ['products'],
-    queryFn: () => productsApi.list(),
+    queryKey: ['products', 'all-for-select'],
+    queryFn: () => productsApi.list({ per_page: 9999 }),
   });
 
   // Fetch brands
