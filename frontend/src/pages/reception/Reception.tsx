@@ -1345,7 +1345,8 @@ const ReceptionPage: React.FC = () => {
                               validator: (_, value) => {
                                 const quantityReceived = sourceReceptionForm.getFieldValue(['items', name, 'quantityReceived']);
 
-                                // Only required if quantity > 0 AND source is purchase
+                                // Solo para COMPRAS: vencimiento obligatorio y futuro
+                                // (producto nuevo del proveedor no debe llegar ya vencido)
                                 if (quantityReceived > 0 && selectedSource.source_type === 'purchase') {
                                   if (!value) {
                                     return Promise.reject('Fecha de vencimiento requerida');
@@ -1355,11 +1356,8 @@ const ReceptionPage: React.FC = () => {
                                   }
                                 }
 
-                                // For outputs, validate only if value is provided
-                                if (value && value.isBefore(dayjs(), 'day')) {
-                                  return Promise.reject('La fecha debe ser mayor o igual a hoy');
-                                }
-
+                                // Para REMANENTES/SALIDAS: el vencimiento puede ser cualquier fecha
+                                // (un remanente que vuelve de finca puede estar ya vencido y aún así debe registrarse)
                                 return Promise.resolve();
                               }
                             }
@@ -1371,6 +1369,8 @@ const ReceptionPage: React.FC = () => {
                             placeholder="Vencimiento"
                             disabled={selectedSource?.source_type !== 'purchase'}
                             disabledDate={(current) => {
+                              // Solo bloquear fechas pasadas en COMPRAS; remanentes permiten cualquier fecha
+                              if (selectedSource?.source_type !== 'purchase') return false;
                               return current && current.isBefore(dayjs().startOf('day'));
                             }}
                           />
@@ -1597,7 +1597,8 @@ const ReceptionPage: React.FC = () => {
                             validator: (_, value) => {
                               const quantityToReceive = batchForm.getFieldValue(['items', name, 'quantityToReceive']);
 
-                              // Only required if quantity > 0 AND source is purchase
+                              // Solo para COMPRAS: vencimiento obligatorio y futuro
+                              // (producto nuevo del proveedor no debe llegar ya vencido)
                               if (quantityToReceive > 0 && selectedReception?.sourceType === 'purchase') {
                                 if (!value) {
                                   return Promise.reject('Fecha de vencimiento requerida');
@@ -1607,11 +1608,8 @@ const ReceptionPage: React.FC = () => {
                                 }
                               }
 
-                              // For outputs, validate only if value is provided
-                              if (value && value.isBefore(dayjs(), 'day')) {
-                                return Promise.reject('La fecha debe ser mayor o igual a hoy');
-                              }
-
+                              // Para REMANENTES/SALIDAS: el vencimiento puede ser cualquier fecha
+                              // (un remanente que vuelve de finca puede estar ya vencido y aún así debe registrarse)
                               return Promise.resolve();
                             }
                           }
@@ -1623,6 +1621,8 @@ const ReceptionPage: React.FC = () => {
                           placeholder="Vencimiento"
                           disabled={selectedReception?.sourceType !== 'purchase'}
                           disabledDate={(current) => {
+                            // Solo bloquear fechas pasadas en COMPRAS; remanentes permiten cualquier fecha
+                            if (selectedReception?.sourceType !== 'purchase') return false;
                             return current && current.isBefore(dayjs().startOf('day'));
                           }}
                         />
