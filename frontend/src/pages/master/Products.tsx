@@ -34,26 +34,26 @@ const Products: React.FC = () => {
 
   // Fetch categories
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => categoriesApi.list({ status: 'active' }),
+    queryKey: ['categories', 'all-for-select'],
+    queryFn: () => categoriesApi.list({ status: 'active', per_page: 9999 }),
   });
 
-  // Fetch brands
+  // Fetch brands (per_page alto para traer todas, no solo la primera página)
   const { data: brandsData } = useQuery({
-    queryKey: ['brands'],
-    queryFn: () => brandsApi.list(),
+    queryKey: ['brands', 'all-for-select'],
+    queryFn: () => brandsApi.list({ per_page: 9999 }),
   });
 
   // Fetch packaging units
   const { data: packagingUnitsData } = useQuery({
-    queryKey: ['packagingUnits'],
-    queryFn: () => packagingUnitsApi.list(),
+    queryKey: ['packagingUnits', 'all-for-select'],
+    queryFn: () => packagingUnitsApi.list({ per_page: 9999 }),
   });
 
   // Fetch base units
   const { data: baseUnitsData } = useQuery({
-    queryKey: ['baseUnits'],
-    queryFn: () => baseUnitsApi.list(),
+    queryKey: ['baseUnits', 'all-for-select'],
+    queryFn: () => baseUnitsApi.list({ per_page: 9999 }),
   });
 
   const products = productsData?.data || [];

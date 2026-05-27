@@ -43,8 +43,8 @@ const Recipes: React.FC = () => {
 
   // Fetch brands
   const { data: brandsData } = useQuery({
-    queryKey: ['brands'],
-    queryFn: () => brandsApi.list(),
+    queryKey: ['brands', 'all-for-select'],
+    queryFn: () => brandsApi.list({ per_page: 9999 }),
   });
 
   const recipes = recipesData?.data || [];

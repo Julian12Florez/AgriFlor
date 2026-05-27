@@ -34,7 +34,9 @@ class ProductResource extends JsonResource
             'base_unit' => $this->base_unit, // For compatibility
             'unit' => $this->base_unit, // For compatibility
             'activeIngredient' => $this->active_ingredient,
+            'active_ingredient' => $this->active_ingredient, // For compatibility
             'minStock' => $this->min_stock,
+            'min_stock' => $this->min_stock, // For compatibility
             'status' => $this->status,
             'iva' => $this->iva,
             'description' => $this->description,
