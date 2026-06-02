@@ -890,10 +890,14 @@ const Purchases: React.FC = () => {
                             {...restField}
                             name={[name, 'quantity']}
                             label="Cantidad"
-                            rules={[{ required: true, message: 'Ingresa cantidad' }]}
+                            rules={[
+                              { required: true, message: 'Ingresa cantidad' },
+                              { validator: (_, value) => (value == null || value > 0) ? Promise.resolve() : Promise.reject(new Error('La cantidad debe ser mayor a 0')) },
+                            ]}
                           >
                             <InputNumber
-                              min={1}
+                              min={0}
+                              step={0.01}
                               style={{ width: '100%' }}
                               formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                               parser={(value) => value!.replace(/\$\s?|(,*)/g, '')}

@@ -128,6 +128,7 @@ class ProductOutputController extends Controller
                 // Calcular comprometido por otras salidas (no recibidas)
                 // FIX: usar 'output_id' (FK real en OutputProduct), no 'product_output_id'
                 $committedBase = 0;
+                $blockingOutputs = []; // salidas que retienen este stock (para el mensaje de error)
                 foreach ($otherCommittedOutputs as $otherOutput) {
                     $otherProducts = OutputProduct::where('output_id', $otherOutput->id)
                         ->where('product_id', $productId)
@@ -155,7 +156,12 @@ class ProductOutputController extends Controller
                                 );
                             }
                         }
-                        $committedBase += max(0, $deliveredBase - $receivedBase);
+                        $pendingBase = max(0, $deliveredBase - $receivedBase);
+                        if ($pendingBase > 0.01) {
+                            $committedBase += $pendingBase;
+                            $blockingOutputs[] = ($otherOutput->output_number ?? $otherOutput->id)
+                                . ' (' . round($pendingBase, 2) . ')';
+                        }
                     }
                 }
 
@@ -164,10 +170,14 @@ class ProductOutputController extends Controller
                     DB::rollBack();
                     $product = \App\Models\Product::find($productId);
                     $productName = $product?->name ?? 'producto';
+                    $blockingMsg = !empty($blockingOutputs)
+                        ? " | Retenido por: " . implode(', ', $blockingOutputs)
+                        : '';
                     $msg = "Stock insuficiente para {$productName}. Físico: " . round($physicalBase, 2)
                         . " | Comprometido en otras salidas pendientes: " . round($committedBase, 2)
                         . " | Disponible real: " . round($availableBase, 2)
-                        . " | Solicitado: " . round($requestedBase, 2);
+                        . " | Solicitado: " . round($requestedBase, 2)
+                        . $blockingMsg;
                     return response()->json([
                         'success' => false,
                         'message' => $msg,

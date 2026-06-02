@@ -626,11 +626,43 @@ class ReceptionController extends Controller
                     if ($availableInBase < $requestedInBase - 0.01) {
                         $product = Product::find($itemData['product_id']);
                         $productName = $product?->name ?? 'Producto';
+                        $brand = \App\Models\Brand::find($itemData['brand_id']);
+                        $brandName = $brand?->name ?? 'sin marca';
+
+                        // Verificar si existe stock del MISMO producto bajo OTRA marca en la misma bodega.
+                        // Causa frecuente de confusión: se compró el producto con una marca distinta
+                        // a la que reservó la salida (el inventario se segrega por producto + marca).
+                        $otherBrandStock = Inventory::where('product_id', $itemData['product_id'])
+                            ->where('brand_id', '!=', $itemData['brand_id'])
+                            ->where('location_id', $reception->origin_location_id)
+                            ->where('quantity', '>', 0)
+                            ->with('brand')
+                            ->get();
+                        $otherBrandsMsg = '';
+                        if ($otherBrandStock->isNotEmpty()) {
+                            $detalle = $otherBrandStock
+                                ->groupBy('brand_id')
+                                ->map(function ($rows) use ($itemData) {
+                                    $base = 0;
+                                    foreach ($rows as $r) {
+                                        $base += $this->inventoryService->toBaseUnit(
+                                            floatval($r->quantity), $r->unit, $itemData['product_id']
+                                        );
+                                    }
+                                    $bn = $rows->first()->brand?->name ?? 'sin marca';
+                                    return "{$bn}: " . round($base, 2);
+                                })
+                                ->values()
+                                ->implode(', ');
+                            $otherBrandsMsg = " Existe stock de este producto bajo OTRA(S) marca(s) que NO aplica(n) a esta salida ({$detalle}). " .
+                                "Verifica que la compra y la salida usen la misma marca.";
+                        }
+
                         throw new \Exception(
-                            "Inventario insuficiente para '{$productName}'. " .
+                            "Inventario insuficiente para '{$productName}' (marca: {$brandName}). " .
                             "Disponible: " . round($availableInBase, 2) . " unidades base, " .
-                            "Solicitado: " . round($requestedInBase, 2) . " unidades base. " .
-                            "El inventario puede haber sido consumido por otras operaciones."
+                            "Solicitado: " . round($requestedInBase, 2) . " unidades base." .
+                            $otherBrandsMsg
                         );
                     }
                 }
