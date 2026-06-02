@@ -289,6 +289,7 @@ Route::middleware('auth:api')->group(function () {
         Route::post('receptions/{id}/batches', [ReceptionController::class, 'addBatch']);
         Route::put('receptions/{id}/complete', [ReceptionController::class, 'complete']);
         Route::put('receptions/{id}/cancel', [ReceptionController::class, 'cancel']);
+        Route::post('receptions/{id}/close-with-available', [ReceptionController::class, 'closeOutputReception']);
     });
 
     // ----------------------------------------

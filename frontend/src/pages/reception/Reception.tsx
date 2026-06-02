@@ -136,6 +136,35 @@ const ReceptionPage: React.FC = () => {
     },
   });
 
+  // Mutation: cerrar recepción de salida con lo disponible (libera stock comprometido)
+  const closeWithAvailableMutation = useMutation({
+    mutationFn: (receptionId: string) => receptionsApi.closeWithAvailable(receptionId),
+    onSuccess: (resp: any) => {
+      queryClient.invalidateQueries({ queryKey: ['receptions'] });
+      queryClient.invalidateQueries({ queryKey: ['available-sources'] });
+      queryClient.invalidateQueries({ queryKey: ['outputs'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+      setIsDetailModalVisible(false);
+      setSelectedReception(null);
+      message.success(resp?.message || 'Salida cerrada con lo disponible. Stock liberado.');
+    },
+    onError: (error: any) => {
+      handleApiError(error, 'Error al cerrar la salida');
+    },
+  });
+
+  const doCloseWithAvailable = (receptionId?: string) => {
+    const id = receptionId || selectedReception?.id;
+    if (!id) return;
+    closeWithAvailableMutation.mutate(id);
+  };
+  const closeWithAvailableTitle = 'Cerrar salida con lo disponible';
+  const closeWithAvailableDescription = (
+    <div style={{ maxWidth: 320 }}>
+      Se recibirá el stock que <strong>físicamente haya</strong> y el remanente que no alcance se <strong>descartará</strong>. La salida queda <strong>cerrada</strong> y el stock reservado se <strong>libera</strong>. <span style={{ color: '#cf1322' }}>No se puede deshacer.</span>
+    </div>
+  );
+
   // Mutation for creating direct reception from source
   const createDirectReceptionMutation = useMutation({
     mutationFn: (data: any) => receptionsApi.createDirectReception(data),
@@ -1025,14 +1054,35 @@ const ReceptionPage: React.FC = () => {
 
         {selectedReception.status !== 'completed' && selectedReception.status !== 'cancelled' && (
           <div style={{ textAlign: 'center', marginTop: 24 }}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleNewPartialReception}
-              size="large"
-            >
-              Nueva Recepción Parcial
-            </Button>
+            <Space wrap>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleNewPartialReception}
+                size="large"
+              >
+                Nueva Recepción Parcial
+              </Button>
+              {selectedReception.sourceType === 'output' && (
+                <Popconfirm
+                  title={closeWithAvailableTitle}
+                  description={closeWithAvailableDescription}
+                  okText="Sí, cerrar y liberar"
+                  cancelText="Cancelar"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => doCloseWithAvailable()}
+                >
+                  <Button danger size="large" loading={closeWithAvailableMutation.isPending}>
+                    Cerrar salida con lo disponible
+                  </Button>
+                </Popconfirm>
+              )}
+            </Space>
+            {selectedReception.sourceType === 'output' && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+                Usa "Cerrar con lo disponible" si la salida quedó atascada porque ya no hay stock suficiente para completarla.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2138,19 +2188,38 @@ const ReceptionPage: React.FC = () => {
 
                     return (
                       <div style={{ textAlign: 'center', marginTop: 24 }}>
-                        <Button
-                          type="primary"
-                          icon={selectedSource.reception ? <PlusOutlined /> : <PlusOutlined />}
-                          size="large"
-                          onClick={handleOpenReceptionFromSource}
-                        >
-                          {selectedSource.reception ? 'Nueva Recepción Parcial' : 'Crear Recepción'}
-                        </Button>
+                        <Space wrap>
+                          <Button
+                            type="primary"
+                            icon={selectedSource.reception ? <PlusOutlined /> : <PlusOutlined />}
+                            size="large"
+                            onClick={handleOpenReceptionFromSource}
+                          >
+                            {selectedSource.reception ? 'Nueva Recepción Parcial' : 'Crear Recepción'}
+                          </Button>
+                          {selectedSource.source_type === 'output' && selectedSource.reception?.id && (
+                            <Popconfirm
+                              title={closeWithAvailableTitle}
+                              description={closeWithAvailableDescription}
+                              okText="Sí, cerrar y liberar"
+                              cancelText="Cancelar"
+                              okButtonProps={{ danger: true }}
+                              onConfirm={() => doCloseWithAvailable(selectedSource.reception.id)}
+                            >
+                              <Button danger size="large" loading={closeWithAvailableMutation.isPending}>
+                                Cerrar salida con lo disponible
+                              </Button>
+                            </Popconfirm>
+                          )}
+                        </Space>
                         <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
                           {selectedSource.reception
                             ? 'Agregar un nuevo lote de recepción a esta orden'
                             : 'Se abrirá el formulario para recepcionar productos'
                           }
+                          {selectedSource.source_type === 'output' && selectedSource.reception?.id && (
+                            <span> · Si quedó atascada por falta de stock, usa "Cerrar salida con lo disponible".</span>
+                          )}
                         </div>
                       </div>
                     );

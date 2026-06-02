@@ -351,6 +351,11 @@ export const receptionsApi = {
 
   cancel: (id: string) =>
     api.put<ApiResponse<any>>(`/receptions/${id}/cancel`, {}),
+
+  // Cierra una recepción de salida con lo disponible: recibe el físico que hay y
+  // descarta el remanente no entregable, liberando el stock comprometido.
+  closeWithAvailable: (id: string) =>
+    api.post<ApiResponse<any>>(`/receptions/${id}/close-with-available`, {}),
 };
 
 // Product Outputs API

@@ -1078,6 +1078,179 @@ class ReceptionController extends Controller
     }
 
     /**
+     * Cerrar una recepción de SALIDA con lo disponible.
+     *
+     * Resuelve el deadlock de sobre-compromiso: cuando el físico del origen ya no
+     * alcanza para lo que la salida reservó (porque otras recepciones consumieron
+     * el stock compartido), la recepción normal no se puede completar y la salida
+     * queda 'partial' para siempre comprometiendo stock.
+     *
+     * Esta acción:
+     *  1) Recibe lo que físicamente HAY disponible (min(pendiente, físico)) por cada
+     *     producto, deduciendo FIFO del origen y sumando al destino (lógica idéntica
+     *     a una recepción normal vía processInventoryMovements).
+     *  2) Ajusta quantity_delivered de la salida a lo realmente entregado → el
+     *     remanente no entregado se descarta y deja de comprometer stock.
+     *  3) Marca la recepción y la salida como 'completed'.
+     *
+     * NO sobre-recibe (toReceive nunca supera el físico), por lo que reduceInventoryFIFO
+     * jamás falla. Todo dentro de una transacción.
+     */
+    public function closeOutputReception(string $receptionId): JsonResponse
+    {
+        try {
+            DB::beginTransaction();
+
+            $reception = Reception::with('receptionItems')->findOrFail($receptionId);
+
+            if ($reception->source_type !== 'output') {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Esta acción solo aplica a recepciones de salidas.'
+                ], 422);
+            }
+
+            if (in_array($reception->status, ['completed', 'cancelled'])) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La recepción ya está completada o cancelada.'
+                ], 422);
+            }
+
+            $output = ProductOutput::find($reception->source_id);
+            $userId = auth()->id();
+
+            // Crear lote final para registrar lo que se reciba en este cierre
+            $batchNumber = ($reception->receptionBatches()->max('batch_number') ?? 0) + 1;
+            $batch = ReceptionBatch::create([
+                'reception_id' => $reception->id,
+                'batch_number' => $batchNumber,
+                'reception_date' => now()->toDateString(),
+                'received_by' => $userId,
+                'observations' => 'Cierre de salida con lo disponible (remanente descartado)',
+            ]);
+
+            $totalRecibidoAhora = 0;
+            $detalle = [];
+
+            foreach ($reception->receptionItems as $item) {
+                $pending = floatval($item->quantity_pending);
+                $unit = $item->unit ?? 'unidades';
+
+                if ($pending > 0.01) {
+                    // Físico disponible en origen para este producto+marca (en base)
+                    $availableInBase = 0;
+                    $invBatches = Inventory::where('product_id', $item->product_id)
+                        ->where('brand_id', $item->brand_id)
+                        ->where('location_id', $reception->origin_location_id)
+                        ->where('quantity', '>', 0)
+                        ->get();
+                    foreach ($invBatches as $invBatch) {
+                        $availableInBase += $this->inventoryService->toBaseUnit(
+                            floatval($invBatch->quantity), $invBatch->unit, $item->product_id
+                        );
+                    }
+
+                    $pendingInBase = $this->inventoryService->toBaseUnit($pending, $unit, $item->product_id);
+                    $toReceiveInBase = min($pendingInBase, $availableInBase);
+                    $toReceiveInUnit = $this->inventoryService->fromBaseUnit($toReceiveInBase, $unit, $item->product_id);
+
+                    if ($toReceiveInUnit > 0.01) {
+                        // Registrar batch item + mover inventario (FIFO out + entry destino) con la lógica probada
+                        ReceptionBatchItem::create([
+                            'batch_id' => $batch->id,
+                            'product_id' => $item->product_id,
+                            'reception_item_id' => $item->id,
+                            'quantity_received' => $toReceiveInUnit,
+                            'condition' => 'good',
+                            'expiration_date' => null,
+                            'observations' => 'Recibido en cierre con lo disponible',
+                        ]);
+
+                        $this->processInventoryMovements(
+                            $reception,
+                            [
+                                'product_id' => $item->product_id,
+                                'brand_id' => $item->brand_id,
+                                'quantity_received' => $toReceiveInUnit,
+                                'condition' => 'good',
+                                'expiration_date' => null,
+                            ],
+                            $item,
+                            $batchNumber,
+                            $userId
+                        );
+
+                        $totalRecibidoAhora += $toReceiveInUnit;
+                    }
+
+                    $nuevoRecibido = floatval($item->quantity_received) + $toReceiveInUnit;
+                } else {
+                    $nuevoRecibido = floatval($item->quantity_received);
+                }
+
+                // Cerrar la línea: lo entregado = lo recibido; remanente descartado
+                $item->update([
+                    'quantity_received' => $nuevoRecibido,
+                    'quantity_expected' => $nuevoRecibido,
+                    'quantity_pending' => 0,
+                ]);
+
+                // Liberar el compromiso: la salida entregó exactamente lo recibido
+                if ($output) {
+                    $op = OutputProduct::where('output_id', $output->id)
+                        ->where('product_id', $item->product_id)
+                        ->where('brand_id', $item->brand_id)
+                        ->first();
+                    if ($op) {
+                        $op->update(['quantity_delivered' => $nuevoRecibido]);
+                    }
+                }
+
+                $detalle[] = "{$item->product_id}: recibido total {$nuevoRecibido} {$unit}";
+            }
+
+            // Finalizar recepción y salida
+            $reception->update([
+                'total_expected' => $reception->receptionItems()->sum('quantity_expected'),
+                'total_received' => $reception->receptionItems()->sum('quantity_received'),
+                'completion_percentage' => 100,
+                'status' => 'completed',
+            ]);
+
+            if ($output && $output->status !== 'completed') {
+                $output->update(['status' => 'completed']);
+            }
+
+            DB::commit();
+
+            $reception->load([
+                'originLocation', 'destinationLocation', 'responsibleUser',
+                'receptionItems.product', 'receptionItems.brand'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Salida cerrada con lo disponible. El remanente no entregado se descartó y el stock quedó liberado.',
+                'data' => new ReceptionResource($reception),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error al cerrar salida con lo disponible', [
+                'reception_id' => $receptionId,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cerrar la salida: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Format a reception item for API responses.
      * Uses source_item_id for exact OutputProduct lookup (handles duplicate product+brand).
      */
