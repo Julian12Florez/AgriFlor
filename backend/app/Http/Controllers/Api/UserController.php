@@ -20,7 +20,7 @@ class UserController extends Controller
      */
     public function listSimple(Request $request): JsonResponse
     {
-        $query = User::query()->select('id', 'name', 'role', 'status');
+        $query = User::query()->visible()->select('id', 'name', 'role', 'status');
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
@@ -38,7 +38,7 @@ class UserController extends Controller
      */
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = User::query();
+        $query = User::query()->visible();
 
         // Filter by role
         if ($request->has('role')) {
@@ -97,7 +97,7 @@ class UserController extends Controller
      */
     public function show(string $id): JsonResponse
     {
-        $user = User::with('roleRelation.permissions')->findOrFail($id);
+        $user = User::visible()->with('roleRelation.permissions')->findOrFail($id);
 
         return response()->json([
             'success' => true,
@@ -110,7 +110,7 @@ class UserController extends Controller
      */
     public function update(UpdateUserRequest $request, string $id): JsonResponse
     {
-        $user = User::findOrFail($id);
+        $user = User::visible()->findOrFail($id);
         $data = $request->validated();
 
         // Only update password if provided
@@ -141,7 +141,7 @@ class UserController extends Controller
      */
     public function destroy(string $id): JsonResponse
     {
-        $user = User::findOrFail($id);
+        $user = User::visible()->findOrFail($id);
 
         // Prevent deleting the authenticated user
         if ($user->id === auth()->id()) {
@@ -168,7 +168,7 @@ class UserController extends Controller
             'status' => ['required', 'in:active,inactive']
         ]);
 
-        $user = User::findOrFail($id);
+        $user = User::visible()->findOrFail($id);
 
         // Prevent deactivating the authenticated user
         if ($user->id === auth()->id() && $request->status === 'inactive') {

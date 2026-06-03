@@ -73,6 +73,26 @@ class User extends Authenticatable implements JWTSubject
         return $query->where('role', $role);
     }
 
+    /**
+     * Roles "secretos": usuarios que NO deben aparecer en ningún listado ni
+     * gestión de usuarios (ej. el auditor). Siguen pudiendo autenticarse: este
+     * scope solo se aplica en los endpoints de gestión, no en el login.
+     */
+    public const SECRET_ROLES = ['auditor'];
+
+    /**
+     * Excluye usuarios secretos de listados y operaciones de gestión.
+     */
+    public function scopeVisible($query)
+    {
+        return $query->whereNotIn('role', self::SECRET_ROLES);
+    }
+
+    public function isSecret(): bool
+    {
+        return in_array($this->role, self::SECRET_ROLES, true);
+    }
+
     // Relationships
 
     // Role relationship
