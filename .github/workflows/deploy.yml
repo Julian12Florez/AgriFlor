@@ -120,6 +120,17 @@ jobs:
             cd /opt/agriflor
             docker compose build backend
             docker compose up -d backend
+            # Esperar a que el contenedor termine de arrancar. start.sh ya corre
+            # 'migrate' al boot; esperar a que /up responda evita la race condition
+            # de dos 'migrate' concurrentes (boot vs deploy) que marcaba el job en rojo.
+            echo "Esperando a que el backend arranque..."
+            for i in $(seq 1 40); do
+              if curl -sf -o /dev/null https://agriflor-api.duckdns.org/up; then
+                echo "Backend arriba (intento $i)"; break
+              fi
+              sleep 3
+            done
+            # Migración idempotente: si start.sh ya migró, esto reporta "Nothing to migrate".
             docker exec agriflor-backend php artisan migrate --force
             docker exec agriflor-backend php artisan config:cache
             docker exec agriflor-backend php artisan route:cache
