@@ -42,34 +42,34 @@ export default function AuditLog() {
   const models = filtersData?.data?.models || [];
   const events = filtersData?.data?.events || [];
 
-  // Renderiza un resumen legible de los cambios (antes → después)
+  // Renderiza la acción de forma humana: resumen + cambios ya resueltos
+  // (nombres en vez de IDs, etiquetas en español) que envía el backend.
   const renderChanges = (record: any) => {
-    const oldV = record.oldValues || {};
-    const newV = record.newValues || {};
-    if (record.event === 'created') {
-      const keys = Object.keys(newV).slice(0, 6);
-      return <Text type="secondary">{keys.map(k => `${k}: ${fmt(newV[k])}`).join(' · ') || 'Registro creado'}</Text>;
-    }
-    if (record.event === 'deleted') {
-      return <Text type="danger">Registro eliminado</Text>;
-    }
-    const keys = Array.from(new Set([...Object.keys(oldV), ...Object.keys(newV)]));
-    if (keys.length === 0) return <Text type="secondary">—</Text>;
+    const changes: Array<{ label: string; from: string | null; to: string | null }> = record.changes || [];
     return (
-      <Space direction="vertical" size={0}>
-        {keys.map((k) => (
-          <span key={k} style={{ fontSize: 12 }}>
-            <strong>{k}:</strong> <Text delete type="secondary">{fmt(oldV[k])}</Text> → <Text type="success">{fmt(newV[k])}</Text>
-          </span>
-        ))}
+      <Space direction="vertical" size={2} style={{ width: '100%' }}>
+        {record.summary && (
+          <Text strong style={{ fontSize: 13 }}>{record.summary}</Text>
+        )}
+        {record.event === 'deleted' && <Text type="danger">Registro eliminado</Text>}
+        {record.event !== 'deleted' && changes.length > 0 && (
+          <Space direction="vertical" size={0}>
+            {changes.map((c, i) => (
+              <span key={i} style={{ fontSize: 12 }}>
+                <strong>{c.label}:</strong>{' '}
+                {c.from !== null && c.from !== '' ? (
+                  <><Text delete type="secondary">{c.from}</Text> → </>
+                ) : null}
+                <Text type="success">{c.to ?? '∅'}</Text>
+              </span>
+            ))}
+          </Space>
+        )}
+        {!record.summary && record.event !== 'deleted' && changes.length === 0 && (
+          <Text type="secondary">—</Text>
+        )}
       </Space>
     );
-  };
-
-  const fmt = (v: any) => {
-    if (v === null || v === undefined || v === '') return '∅';
-    if (typeof v === 'object') return JSON.stringify(v);
-    return String(v);
   };
 
   const columns = [
@@ -100,7 +100,7 @@ export default function AuditLog() {
       render: (v: string) => <Tag>{v}</Tag>,
     },
     {
-      title: 'Cambios',
+      title: 'Detalle',
       key: 'changes',
       render: (_: any, r: any) => renderChanges(r),
     },
