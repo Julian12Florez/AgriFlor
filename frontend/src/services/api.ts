@@ -654,6 +654,13 @@ export const ordersApi = {
 };
 
 // Users API
+export const auditsApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<PaginatedResponse<any>>('/audits', params),
+  filters: () =>
+    api.get<ApiResponse<any>>('/audits/filters'),
+};
+
 export const usersApi = {
   list: (params?: Record<string, any>) =>
     api.get<PaginatedResponse<any>>('/users', params),

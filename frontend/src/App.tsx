@@ -35,6 +35,7 @@ import InventoryAudit from './pages/reports/InventoryAudit';
 import StockReport from './pages/reports/StockReport';
 import ConsumptionReport from './pages/reports/ConsumptionReport';
 import Users from './pages/admin/Users';
+import AuditLog from './pages/admin/AuditLog';
 import Workers from './pages/liquidation/Workers';
 import Tasks from './pages/liquidation/Tasks';
 import DailyAssignments from './pages/liquidation/DailyAssignments';
@@ -294,6 +295,13 @@ const App: React.FC = () => {
                 <ProtectedRoute module="admin" showAccessDenied>
                   <MainLayout>
                     <Users />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/audit" element={
+                <ProtectedRoute module="admin" showAccessDenied>
+                  <MainLayout>
+                    <AuditLog />
                   </MainLayout>
                 </ProtectedRoute>
               } />

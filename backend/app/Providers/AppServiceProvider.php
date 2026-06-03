@@ -31,6 +31,13 @@ class AppServiceProvider extends ServiceProvider
             'purchase' => 'App\Models\Purchase',
             'output' => 'App\Models\ProductOutput',
             'application' => 'App\Models\Application',
+            // Modelos auditados (owen-it/laravel-auditing usa morph para auditable_type)
+            'product' => 'App\Models\Product',
+            'reception' => 'App\Models\Reception',
+            'brand' => 'App\Models\Brand',
+            'location' => 'App\Models\Location',
+            'supplier' => 'App\Models\Supplier',
+            'user' => 'App\Models\User',
         ]);
 
         // Register model observers for automatic inventory management

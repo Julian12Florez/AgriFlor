@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
+use OwenIt\Auditing\Auditable;
 
-class Purchase extends Model
+class Purchase extends Model implements AuditableContract
 {
-    use HasUuids;
+    use HasUuids, Auditable;
 
     protected $table = 'purchases';
 

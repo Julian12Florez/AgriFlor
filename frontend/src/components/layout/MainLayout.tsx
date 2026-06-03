@@ -193,6 +193,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         label: 'Administración',
         children: [
           { key: '/admin/users', label: 'Usuarios' },
+          { key: '/admin/audit', label: 'Auditoría' },
         ],
       });
     }

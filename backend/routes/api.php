@@ -90,6 +90,9 @@ Route::middleware('auth:api')->group(function () {
     Route::middleware('role:admin')->group(function () {
         Route::apiResource('users', UserController::class);
         Route::patch('users/{id}/status', [UserController::class, 'updateStatus']);
+        // Auditoría (quién hizo qué en el core) — solo lectura, solo admin
+        Route::get('audits', [\App\Http\Controllers\Api\AuditController::class, 'index']);
+        Route::get('audits/filters', [\App\Http\Controllers\Api\AuditController::class, 'filters']);
     });
 
     // ----------------------------------------
