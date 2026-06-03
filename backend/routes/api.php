@@ -90,7 +90,14 @@ Route::middleware('auth:api')->group(function () {
     Route::middleware('role:admin')->group(function () {
         Route::apiResource('users', UserController::class);
         Route::patch('users/{id}/status', [UserController::class, 'updateStatus']);
-        // Auditoría (quién hizo qué en el core) — solo lectura, solo admin
+    });
+
+    // ----------------------------------------
+    // AUDITORÍA (quién hizo qué en el core) — SOLO LECTURA, SOLO rol 'auditor'
+    // Requisito de seguridad: ningún otro rol (ni siquiera admin) puede verla.
+    // role:auditor compara el nombre del rol de forma exacta => admin queda fuera.
+    // ----------------------------------------
+    Route::middleware('role:auditor')->group(function () {
         Route::get('audits', [\App\Http\Controllers\Api\AuditController::class, 'index']);
         Route::get('audits/filters', [\App\Http\Controllers\Api\AuditController::class, 'filters']);
     });

@@ -298,8 +298,9 @@ const App: React.FC = () => {
                   </MainLayout>
                 </ProtectedRoute>
               } />
+              {/* Auditoría - acceso EXCLUSIVO del rol 'auditor' (ni siquiera admin) */}
               <Route path="/admin/audit" element={
-                <ProtectedRoute module="admin" showAccessDenied>
+                <ProtectedRoute allowedRoles={['auditor']} showAccessDenied>
                   <MainLayout>
                     <AuditLog />
                   </MainLayout>

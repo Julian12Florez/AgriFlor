@@ -12,6 +12,7 @@ import {
   BankOutlined,
   BarChartOutlined,
   SettingOutlined,
+  SafetyCertificateOutlined,
   UserOutlined,
   BellOutlined,
   LogoutOutlined,
@@ -40,7 +41,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { user, hasModuleAccess, getRoleDisplayName } = usePermissions();
+  const { user, hasModuleAccess, getRoleDisplayName, getRoleName } = usePermissions();
 
   // Detectar cambios de tamaño de pantalla
   useEffect(() => {
@@ -185,7 +186,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       ],
     });
 
-    // Administración - module: 'admin'
+    // Administración - module: 'admin' (la Auditoría NO va aquí: ni admin la ve)
     if (hasModuleAccess('admin')) {
       items.push({
         key: 'sub6',
@@ -193,13 +194,21 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         label: 'Administración',
         children: [
           { key: '/admin/users', label: 'Usuarios' },
-          { key: '/admin/audit', label: 'Auditoría' },
         ],
       });
     }
 
+    // Auditoría - EXCLUSIVO del rol 'auditor' (ningún otro rol, ni siquiera admin)
+    if (getRoleName() === 'auditor') {
+      items.push({
+        key: '/admin/audit',
+        icon: <SafetyCertificateOutlined />,
+        label: 'Auditoría',
+      });
+    }
+
     return items;
-  }, [hasModuleAccess]);
+  }, [hasModuleAccess, getRoleName]);
 
   // Dropdown del usuario
   const userMenuItems: MenuProps['items'] = [

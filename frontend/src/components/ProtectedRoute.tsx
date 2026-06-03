@@ -24,6 +24,12 @@ interface ProtectedRouteProps {
    */
   module?: string;
   /**
+   * Restrict access to specific role names (exact match).
+   * Use for routes that must be visible to ONE role only (e.g. 'auditor'),
+   * bypassing the full-access ('all') module fallback that admin has.
+   */
+  allowedRoles?: string[];
+  /**
    * Fallback path if permission is denied (default: '/dashboard')
    */
   fallbackPath?: string;
@@ -74,6 +80,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   anyPermission,
   allPermissions,
   module,
+  allowedRoles,
   fallbackPath = '/dashboard',
   showAccessDenied = false,
   authOnly = false,
@@ -85,6 +92,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
     hasAnyPermission,
     hasAllPermissions,
     hasModuleAccess,
+    getRoleName,
   } = usePermissions();
 
   // Check if user has a valid token
@@ -138,6 +146,10 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
 
   if (module) {
     hasAccess = hasAccess && hasModuleAccess(module);
+  }
+
+  if (allowedRoles && allowedRoles.length > 0) {
+    hasAccess = hasAccess && allowedRoles.includes(getRoleName());
   }
 
   // If no access, either show denied page or redirect

@@ -9,7 +9,8 @@ use OwenIt\Auditing\Models\Audit;
 
 /**
  * Consulta del registro de auditoría (quién hizo qué en el core).
- * Solo lectura. Solo admin.
+ * Solo lectura. Acceso EXCLUSIVO del rol 'auditor' (ni siquiera admin);
+ * el control real está en routes/api.php (middleware role:auditor).
  */
 class AuditController extends Controller
 {
