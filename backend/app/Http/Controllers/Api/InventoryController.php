@@ -818,9 +818,11 @@ class InventoryController extends Controller
                     }),
                     'summary' => [
                         'total_movements' => count($kardexMovements),
-                        'total_entries' => array_sum(array_column($kardexMovements, 'quantity_in')),
-                        'total_exits' => array_sum(array_column($kardexMovements, 'quantity_out')),
-                        'current_balance' => $balance,
+                        // round(): evita residuos de punto flotante (p.ej. 3.55e-15)
+                        // que aparecían como "Saldo Actual" en el modal de Kardex.
+                        'total_entries' => round(array_sum(array_column($kardexMovements, 'quantity_in')), 4),
+                        'total_exits' => round(array_sum(array_column($kardexMovements, 'quantity_out')), 4),
+                        'current_balance' => round($balance, 4),
                         'current_stock' => round($currentStockBase, 4)
                     ]
                 ]
@@ -1388,9 +1390,17 @@ class InventoryController extends Controller
 
             $result = [];
 
+            // Stock ACTUAL por bodega = fuente autoritativa (tabla inventory), igual que
+            // "Stock Actual"/Kardex. Se precarga agrupado por producto para evitar N+1.
+            $inventoryByProduct = \App\Models\Inventory::where('location_id', $warehouseId)
+                ->get(['product_id', 'quantity', 'unit'])
+                ->groupBy('product_id');
+
             foreach ($products as $product) {
-                // 1. Initial stock at start of month (sum of all inventory movements before start date)
+                // 1. Initial stock at start of month — SOLO la bodega del reporte
+                //    (antes sumaba TODAS las ubicaciones, inflando el valor de la bodega).
                 $initialStock = InventoryMovement::where('product_id', $product->id)
+                    ->where('location_id', $warehouseId)
                     ->where('created_at', '<=', $prevEndDate)
                     ->selectRaw("
                         SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END) -
@@ -1434,14 +1444,22 @@ class InventoryController extends Controller
                     ->whereBetween('created_at', [$startDate, $endDate])
                     ->sum('quantity');
 
-                // 5. Final stock at end of month
+                // 5. Final stock at end of month — SOLO la bodega del reporte (cierre histórico)
                 $finalStock = InventoryMovement::where('product_id', $product->id)
+                    ->where('location_id', $warehouseId)
                     ->where('created_at', '<=', $endDate)
                     ->selectRaw("
                         SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END) -
                         SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END) as stock
                     ")
                     ->value('stock') ?? 0;
+
+                // 5b. Stock ACTUAL real en la bodega (tabla inventory, convertido a unidad base).
+                //     Es el valor que coincide con "Stock Actual" y con el Excel del cliente.
+                $currentStock = 0;
+                foreach (($inventoryByProduct[$product->id] ?? []) as $inv) {
+                    $currentStock += $this->inventoryService->toBaseUnit((float) $inv->quantity, $inv->unit, $product->id);
+                }
 
                 // 6. Increases (adjustments positive - not purchases, not remanentes)
                 $increases = InventoryMovement::where('product_id', $product->id)
@@ -1471,7 +1489,7 @@ class InventoryController extends Controller
                 $variation = round((float)$finalStock - (float)$initialStock - $totalMov, 2);
 
                 // Only include products that have any activity or stock
-                if ($initialStock != 0 || $purchases > 0 || $totalShipped > 0 || $returns > 0 || $finalStock != 0 || $increases > 0 || $decreases > 0) {
+                if ($initialStock != 0 || $purchases > 0 || $totalShipped > 0 || $returns > 0 || $finalStock != 0 || $increases > 0 || $decreases > 0 || $currentStock != 0) {
                     $result[] = [
                         'product_id' => $product->id,
                         'product_code' => $product->product_code,
@@ -1488,6 +1506,8 @@ class InventoryController extends Controller
                         'total_movements' => $totalMov,
                         'variation' => $variation,
                         'final_stock' => round((float) $finalStock, 2),
+                        // Stock actual real en bodega (coincide con Stock Actual / Excel)
+                        'current_stock' => round((float) $currentStock, 2),
                     ];
                 }
             }

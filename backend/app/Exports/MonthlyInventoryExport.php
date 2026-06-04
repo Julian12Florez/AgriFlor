@@ -37,7 +37,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
 
     public function headings(): array
     {
-        $headers = ['Codigo', 'Grupo Insumo', 'Producto', 'Unidad Medida', 'INVEN INICIAL', 'INV FINAL', 'DIFERENCIA'];
+        $headers = ['Codigo', 'Grupo Insumo', 'Producto', 'Unidad Medida', 'INVEN INICIAL', 'INV FINAL (CIERRE MES)', 'STOCK ACTUAL (BODEGA)', 'DIFERENCIA'];
 
         foreach ($this->farmColumns as $farm) {
             $headers[] = strtoupper($farm['name']);
@@ -63,6 +63,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
                 $product['unit'],
                 $product['initial_stock'],
                 $product['final_stock'],
+                $product['current_stock'] ?? 0,
                 $product['initial_stock'] - $product['final_stock'],
             ];
 
@@ -99,7 +100,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
     public function styles(Worksheet $sheet): array
     {
         $lastRow = count($this->data) + 1;
-        $lastCol = 7 + count($this->farmColumns) + 5; // 7 fixed + farms + 5 extra
+        $lastCol = 8 + count($this->farmColumns) + 5; // 8 fijas + fincas + 5 extra
         $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($lastCol);
 
         return [

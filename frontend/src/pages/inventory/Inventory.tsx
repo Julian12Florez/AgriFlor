@@ -624,6 +624,7 @@ const Inventory: React.FC = () => {
                   <Statistic
                     title="Total Entradas"
                     value={productKardexData.data.summary.total_entries}
+                    precision={2}
                     valueStyle={{ color: '#52c41a', fontSize: 16 }}
                     suffix={selectedProduct?.base_unit}
                   />
@@ -632,6 +633,7 @@ const Inventory: React.FC = () => {
                   <Statistic
                     title="Total Salidas"
                     value={productKardexData.data.summary.total_exits}
+                    precision={2}
                     valueStyle={{ color: '#f5222d', fontSize: 16 }}
                     suffix={selectedProduct?.base_unit}
                   />
@@ -640,6 +642,7 @@ const Inventory: React.FC = () => {
                   <Statistic
                     title="Saldo Actual"
                     value={productKardexData.data.summary.current_balance}
+                    precision={2}
                     valueStyle={{ color: '#1890ff', fontSize: 16 }}
                     suffix={selectedProduct?.base_unit}
                   />

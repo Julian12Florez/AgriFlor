@@ -44,6 +44,7 @@ interface ProductRow {
   total_movements: number;
   variation: number;
   final_stock: number;
+  current_stock: number;
 }
 
 interface MonthlyReportData {
@@ -150,8 +151,11 @@ const MonthlyInventoryReport: React.FC = () => {
       { title: 'Categoría', dataIndex: 'category', key: 'cat', width: 120, render: (c: string) => <Tag color="green">{c}</Tag> },
       { title: 'Unidad', dataIndex: 'unit', key: 'unit', width: 60, align: 'center' as const },
       { title: 'Inv. Inicial', dataIndex: 'initial_stock', key: 'init', width: 100, align: 'right' as const, render: fmt },
-      { title: 'Inv. Final', dataIndex: 'final_stock', key: 'final', width: 100, align: 'right' as const,
+      { title: 'Inv. Final (cierre mes)', dataIndex: 'final_stock', key: 'final', width: 130, align: 'right' as const,
         render: (v: number) => <span style={{ fontWeight: 600, color: v > 0 ? '#1890ff' : v < 0 ? '#ff4d4f' : '#999' }}>{fmt(v)}</span>
+      },
+      { title: 'Stock actual (bodega)', dataIndex: 'current_stock', key: 'current', width: 130, align: 'right' as const,
+        render: (v: number) => <span style={{ fontWeight: 700, color: '#2E7D32' }}>{fmt(v)}</span>
       },
       { title: 'Diferencia', key: 'diff', width: 90, align: 'right' as const,
         render: (_: any, r: ProductRow) => {
