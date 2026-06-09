@@ -538,12 +538,18 @@ class TaskScheduleController extends Controller
             'observations' => ['nullable', 'string'],
         ]);
 
-        // Validar que log_date esté dentro del rango del schedule
+        // Validar el rango permitido para el avance.
+        // Se permite registrar avance desde la fecha de CREACIÓN de la programación
+        // (no solo desde start_date), para poder avanzar tareas programadas a futuro.
         $logDate = Carbon::parse($validated['log_date']);
-        if ($logDate->lt($schedule->start_date) || $logDate->gt($schedule->end_date)) {
+        $minDate = $schedule->created_at->copy()->startOfDay();
+        if ($schedule->start_date->copy()->startOfDay()->lt($minDate)) {
+            $minDate = $schedule->start_date->copy()->startOfDay();
+        }
+        if ($logDate->lt($minDate) || $logDate->gt($schedule->end_date)) {
             return response()->json([
                 'success' => false,
-                'message' => "La fecha de registro ({$validated['log_date']}) debe estar dentro del periodo de la programación ({$schedule->start_date->format('Y-m-d')} a {$schedule->end_date->format('Y-m-d')}).",
+                'message' => "La fecha de registro ({$validated['log_date']}) debe estar entre la creación de la programación ({$minDate->format('Y-m-d')}) y el fin del periodo ({$schedule->end_date->format('Y-m-d')}).",
             ], 422);
         }
 
