@@ -12,7 +12,7 @@ import {
   FallOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { inventoryApi, reportExportsApi } from '../../services/api';
+import { inventoryApi, reportExportsApi, locationsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   BarChart, Bar, PieChart, Pie, Cell,
@@ -68,13 +68,28 @@ const MonthlyInventoryReport: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
   const [exporting, setExporting] = useState(false);
+  // Ubicación del reporte: undefined = bodega principal; o una finca/bodega específica.
+  const [locationId, setLocationId] = useState<string | undefined>(undefined);
 
   const month = selectedMonth.month() + 1;
   const year = selectedMonth.year();
 
+  // Ubicaciones para el selector (bodegas primero, luego fincas).
+  const { data: locationsResp } = useQuery({
+    queryKey: ['locations-for-monthly-report'],
+    queryFn: () => locationsApi.list({ per_page: 200, status: 'active' }),
+  });
+  const locations = useMemo(() => {
+    const raw: any = (locationsResp as any)?.data ?? [];
+    const arr: any[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+    return [...arr].sort((a, b) =>
+      a.type === b.type ? String(a.name).localeCompare(String(b.name)) : a.type === 'warehouse' ? -1 : 1
+    );
+  }, [locationsResp]);
+
   const { data: reportResponse, isLoading, refetch } = useQuery({
-    queryKey: ['monthly-inventory', month, year],
-    queryFn: () => inventoryApi.getMonthlyReport({ month, year }),
+    queryKey: ['monthly-inventory', month, year, locationId],
+    queryFn: () => inventoryApi.getMonthlyReport({ month, year, ...(locationId ? { location_id: locationId } : {}) }),
   });
 
   const reportData: MonthlyReportData | null = reportResponse?.data ?? null;
@@ -133,6 +148,7 @@ const MonthlyInventoryReport: React.FC = () => {
       await reportExportsApi.exportMonthlyExcel({
         month: String(month),
         year: String(year),
+        ...(locationId ? { location_id: locationId } : {}),
       });
       message.success('Excel exportado correctamente');
     } catch {
@@ -209,7 +225,7 @@ const MonthlyInventoryReport: React.FC = () => {
       {/* Filters */}
       <Card style={{ marginBottom: 16 }}>
         <Row gutter={[16, 16]} align="middle">
-          <Col xs={24} sm={6} md={5}>
+          <Col xs={24} sm={8} md={5}>
             <DatePicker
               picker="month"
               value={selectedMonth}
@@ -220,12 +236,29 @@ const MonthlyInventoryReport: React.FC = () => {
               suffixIcon={<CalendarOutlined />}
             />
           </Col>
-          <Col xs={24} sm={6} md={5}>
+          <Col xs={24} sm={8} md={5}>
+            <Select
+              allowClear
+              showSearch
+              optionFilterProp="children"
+              placeholder="Bodega principal"
+              value={locationId}
+              onChange={setLocationId}
+              style={{ width: '100%' }}
+            >
+              {locations.map((loc: any) => (
+                <Option key={loc.id} value={loc.id}>
+                  {loc.type === 'farm' ? '🌱 ' : '🏬 '}{loc.name}
+                </Option>
+              ))}
+            </Select>
+          </Col>
+          <Col xs={24} sm={8} md={4}>
             <Select allowClear placeholder="Filtrar por categoría" value={categoryFilter} onChange={setCategoryFilter} style={{ width: '100%' }}>
               {categories.map(cat => <Option key={cat} value={cat}>{cat}</Option>)}
             </Select>
           </Col>
-          <Col xs={24} sm={6} md={5}>
+          <Col xs={24} sm={12} md={4}>
             <input
               type="text"
               placeholder="Buscar producto..."
@@ -234,7 +267,7 @@ const MonthlyInventoryReport: React.FC = () => {
               style={{ width: '100%', padding: '4px 11px', border: '1px solid #d9d9d9', borderRadius: 6, height: 32, fontSize: 14 }}
             />
           </Col>
-          <Col xs={24} sm={6} md={9}>
+          <Col xs={24} sm={12} md={6}>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} style={{ marginRight: 8 }}>Actualizar</Button>
             <Button type="primary" icon={<FileExcelOutlined />} onClick={handleExport} loading={exporting} style={{ background: '#2E7D32' }}>
               Exportar Excel

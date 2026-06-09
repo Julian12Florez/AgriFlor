@@ -1529,7 +1529,7 @@ class InventoryController extends Controller
                 'data' => [
                     'month' => $month,
                     'year' => $year,
-                    'warehouse' => $warehouses->firstWhere('id', $warehouseId)?->name ?? 'N/A',
+                    'warehouse' => $locations->firstWhere('id', $warehouseId)?->name ?? 'N/A',
                     'farm_columns' => $farmColumns,
                     'products' => $result,
                     'summary' => [
