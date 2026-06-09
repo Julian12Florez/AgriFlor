@@ -381,10 +381,18 @@ class ReceptionController extends Controller
             $query->where('created_at', '<=', $request->date_to);
         }
 
-        // Search by reception number
-        if ($request->has('search')) {
+        // Búsqueda por N° de recepción, producto, código de producto o ubicación (origen/destino)
+        if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('reception_number', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('reception_number', 'like', "%{$search}%")
+                    ->orWhereHas('receptionItems.product', function ($p) use ($search) {
+                        $p->where('name', 'like', "%{$search}%")
+                            ->orWhere('product_code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('originLocation', fn ($l) => $l->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('destinationLocation', fn ($l) => $l->where('name', 'like', "%{$search}%"));
+            });
         }
 
         $perPage = $request->get('per_page', 15);

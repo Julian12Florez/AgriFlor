@@ -79,6 +79,7 @@ const Purchases: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [isNewPurchaseModalVisible, setIsNewPurchaseModalVisible] = useState(false);
   const [form] = Form.useForm();
@@ -89,10 +90,12 @@ const Purchases: React.FC = () => {
 
   // Fetch purchases from API
   const { data: purchasesData, isLoading: purchasesLoading } = useQuery({
-    queryKey: ['purchases', searchText, statusFilter],
+    queryKey: ['purchases', searchText, statusFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD')],
     queryFn: () => purchasesApi.list({
       search: searchText || undefined,
-      status: statusFilter || undefined
+      status: statusFilter || undefined,
+      date_from: dateRange?.[0]?.format('YYYY-MM-DD'),
+      date_to: dateRange?.[1]?.format('YYYY-MM-DD'),
     }),
   });
 
@@ -649,7 +652,7 @@ const Purchases: React.FC = () => {
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={8}>
               <Search
-                placeholder="Buscar órdenes de compra..."
+                placeholder="Buscar por orden, producto, código, proveedor o finca..."
                 allowClear
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
@@ -667,6 +670,15 @@ const Purchases: React.FC = () => {
                 <Option value="received">Recibido</Option>
                 <Option value="cancelled">Cancelado</Option>
               </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <DatePicker.RangePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                placeholder={['Fecha desde', 'Fecha hasta']}
+                value={dateRange as any}
+                onChange={(v) => setDateRange(v as any)}
+              />
             </Col>
           </Row>
         </div>

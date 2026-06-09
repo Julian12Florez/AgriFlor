@@ -24,6 +24,7 @@ const Outputs: React.FC = () => {
   const [editingOutput, setEditingOutput] = useState<any | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>();
   const [selectedOriginLocationId, setSelectedOriginLocationId] = useState<string | undefined>();
   const [selectedDestinationLocationId, setSelectedDestinationLocationId] = useState<string | undefined>();
@@ -38,10 +39,12 @@ const Outputs: React.FC = () => {
 
   // Fetch outputs from backend
   const { data: outputsData, isLoading: outputsLoading } = useQuery({
-    queryKey: ['outputs', searchText, statusFilter],
+    queryKey: ['outputs', searchText, statusFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD')],
     queryFn: () => outputsApi.list({
       search: searchText || undefined,
-      status: statusFilter || undefined
+      status: statusFilter || undefined,
+      start_date: dateRange?.[0]?.format('YYYY-MM-DD'),
+      end_date: dateRange?.[1]?.format('YYYY-MM-DD'),
     }),
   });
 
@@ -487,12 +490,11 @@ const Outputs: React.FC = () => {
     }
   };
 
+  // La búsqueda y el estado se resuelven en el backend (por producto, código, finca, etc.).
+  // No se filtra por texto en cliente para no ocultar resultados que matchean por producto/finca.
   const filteredOutputs = outputs.filter((output: any) => {
-    const matchesSearch = output.outputNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
-                         output.responsibleUser?.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-                         output.destinationLocation?.name?.toLowerCase().includes(searchText.toLowerCase());
     const matchesStatus = !statusFilter || output.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    return matchesStatus;
   });
 
   const mobileColumns: ColumnsType<ProductOutput> = [
@@ -1398,7 +1400,7 @@ const Outputs: React.FC = () => {
           <Row gutter={[16, 16]}>
             <Col xs={24} sm={12} md={8}>
               <Search
-                placeholder="Buscar salidas..."
+                placeholder="Buscar por N° salida, producto, código o finca..."
                 allowClear
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
@@ -1416,6 +1418,15 @@ const Outputs: React.FC = () => {
                 <Option value="partial">Parcial</Option>
                 <Option value="completed">Completada</Option>
               </Select>
+            </Col>
+            <Col xs={24} sm={12} md={8}>
+              <DatePicker.RangePicker
+                style={{ width: '100%' }}
+                format="DD/MM/YYYY"
+                placeholder={['Fecha desde', 'Fecha hasta']}
+                value={dateRange as any}
+                onChange={(v) => setDateRange(v as any)}
+              />
             </Col>
           </Row>
         </div>

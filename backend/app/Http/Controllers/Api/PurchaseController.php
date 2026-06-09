@@ -50,10 +50,19 @@ class PurchaseController extends Controller
             $query->where('supplier_id', $request->supplier_id);
         }
 
-        // Search by order_number
-        if ($request->has('search')) {
+        // Búsqueda por N° de orden, producto, código de producto, proveedor o ubicación (finca/bodega)
+        if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('order_number', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%")
+                    ->orWhereHas('purchaseItems.product', function ($p) use ($search) {
+                        $p->where('name', 'like', "%{$search}%")
+                            ->orWhere('product_code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('supplier', fn ($s) => $s->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('destinationLocation', fn ($l) => $l->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('originLocation', fn ($l) => $l->where('name', 'like', "%{$search}%"));
+            });
         }
 
         // Filter by date range

@@ -75,10 +75,18 @@ class ProductOutputController extends Controller
             $query->where('output_date', '<=', $request->end_date);
         }
 
-        // Search by output_number
-        if ($request->has('search')) {
+        // Búsqueda por N° de salida, producto, código de producto o ubicación (origen/finca destino)
+        if ($request->filled('search')) {
             $search = $request->search;
-            $query->where('output_number', 'like', "%{$search}%");
+            $query->where(function ($q) use ($search) {
+                $q->where('output_number', 'like', "%{$search}%")
+                    ->orWhereHas('outputProducts.product', function ($p) use ($search) {
+                        $p->where('name', 'like', "%{$search}%")
+                            ->orWhere('product_code', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('originLocation', fn ($l) => $l->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('destinationLocation', fn ($l) => $l->where('name', 'like', "%{$search}%"));
+            });
         }
 
         $perPage = $request->get('per_page', 15);

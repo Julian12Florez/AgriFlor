@@ -26,6 +26,7 @@ const ReceptionPage: React.FC = () => {
   const [selectedSource, setSelectedSource] = useState<any | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [sourceTypeFilter, setSourceTypeFilter] = useState<string | undefined>();
   const [viewMode, setViewMode] = useState<'available' | 'receptions'>('available'); // New state for view toggle
   const [form] = Form.useForm();
@@ -43,10 +44,12 @@ const ReceptionPage: React.FC = () => {
 
   // Fetch receptions from backend (only completed receptions)
   const { data: receptionsData, isLoading: receptionsLoading } = useQuery({
-    queryKey: ['receptions', searchText, sourceTypeFilter],
+    queryKey: ['receptions', searchText, sourceTypeFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD')],
     queryFn: () => receptionsApi.list({
       search: searchText || undefined,
-      sourceType: sourceTypeFilter || undefined
+      sourceType: sourceTypeFilter || undefined,
+      date_from: dateRange?.[0]?.format('YYYY-MM-DD'),
+      date_to: dateRange?.[1]?.format('YYYY-MM-DD'),
     }),
   });
 
@@ -537,14 +540,10 @@ const ReceptionPage: React.FC = () => {
   };
 
   const filteredReceptions = receptions.filter((reception: any) => {
-    const matchesSearch = reception.receptionNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
-                         reception.sourceDetails?.outputNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
-                         reception.sourceDetails?.orderNumber?.toLowerCase().includes(searchText.toLowerCase()) ||
-                         reception.destinationLocation?.name?.toLowerCase().includes(searchText.toLowerCase());
+    // La búsqueda (N° recepción, producto, código, finca) se resuelve en el backend;
+    // no se filtra por texto en cliente para no ocultar matches por producto/finca.
     const matchesSourceType = !sourceTypeFilter || reception.sourceType === sourceTypeFilter;
-
-    // Backend already filters for completed receptions only
-    return matchesSearch && matchesSourceType;
+    return matchesSourceType;
   });
 
   const filteredAvailableSources = availableSources.filter((source: any) => {
@@ -1760,7 +1759,7 @@ const ReceptionPage: React.FC = () => {
             </Col>
             <Col xs={24} sm={8} md={6}>
               <Search
-                placeholder={viewMode === 'available' ? 'Buscar fuentes...' : 'Buscar recepciones...'}
+                placeholder={viewMode === 'available' ? 'Buscar por documento, producto o finca...' : 'Buscar por N° recepción, producto, código o finca...'}
                 allowClear
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
@@ -1780,6 +1779,17 @@ const ReceptionPage: React.FC = () => {
                   <Option value="completed">Completada</Option>
                   <Option value="cancelled">Cancelada</Option>
                 </Select>
+              </Col>
+            )}
+            {viewMode === 'receptions' && (
+              <Col xs={24} sm={8} md={6}>
+                <DatePicker.RangePicker
+                  style={{ width: '100%' }}
+                  format="DD/MM/YYYY"
+                  placeholder={['Fecha desde', 'Fecha hasta']}
+                  value={dateRange as any}
+                  onChange={(v) => setDateRange(v as any)}
+                />
               </Col>
             )}
             <Col xs={24} sm={8} md={6}>
