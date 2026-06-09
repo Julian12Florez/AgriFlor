@@ -315,6 +315,8 @@ Route::middleware('auth:api')->group(function () {
     Route::get('inventory/movements/product/{productId}', [InventoryController::class, 'movementsByProduct']);
     Route::get('inventory/consumption/report', [InventoryController::class, 'consumptionReport']);
     Route::get('inventory/monthly-report', [InventoryController::class, 'monthlyReport']);
+    Route::get('inventory/farm-monthly-report', [InventoryController::class, 'farmMonthlyReport']);
+    Route::get('inventory/farm-entries-report', [InventoryController::class, 'farmEntriesReport']);
     Route::get('inventory/product-listing', [InventoryController::class, 'productListingReport']);
     Route::get('inventory/location/{locationId}', [InventoryController::class, 'byLocation']);
     Route::get('inventory/product/{productId}/details', [InventoryController::class, 'byProduct']);

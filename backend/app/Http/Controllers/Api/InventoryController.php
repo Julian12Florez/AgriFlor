@@ -1408,13 +1408,19 @@ class InventoryController extends Controller
                     ")
                     ->value('stock') ?? 0;
 
-                // 2. Purchases during the month (entries from purchases)
+                // 2. Purchases during the month (entries received at the warehouse).
+                //    Fix: el tipo de documento se guarda con namespace completo
+                //    ('App\Models\Reception' / 'App\Models\Purchase'); antes se comparaba
+                //    contra 'reception'/'purchase' y nunca casaba, por lo que las compras
+                //    recibidas caían en "Variación" en vez de "Compras".
+                //    Se filtra por bodega para no contar envíos a finca como compras.
                 $purchases = InventoryMovement::where('product_id', $product->id)
                     ->where('type', 'entry')
+                    ->where('location_id', $warehouseId)
                     ->whereBetween('created_at', [$startDate, $endDate])
                     ->where(function ($q) {
-                        $q->where('related_document_type', 'purchase')
-                            ->orWhere('related_document_type', 'reception')
+                        $q->where('related_document_type', 'like', '%Reception')
+                            ->orWhere('related_document_type', 'like', '%Purchase')
                             ->orWhereNull('related_document_type');
                     })
                     ->sum('quantity');
@@ -1539,6 +1545,172 @@ class InventoryController extends Controller
                 'success' => false,
                 'message' => 'Error al generar el reporte mensual: ' . $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * REPORTE 1 (cierre de mes): Inventario mensual POR FINCA seleccionada.
+     * Por producto: inv. inicial (finca) + entradas (envíos a la finca) − consumo
+     * − remanente devuelto a bodega = inv. final (finca).
+     * Entradas/inicial salen de inventory_movements (type='entry' en la finca).
+     * Remanente y consumo salen de los documentos de salida (output_type 'remanente'
+     * y 'consumption') con origen = la finca. Hoy están en 0 y se llenarán cuando se
+     * registren esas devoluciones/consumos; las columnas ya quedan listas.
+     */
+    public function farmMonthlyReport(Request $request): JsonResponse
+    {
+        try {
+            $month = (int) $request->get('month', now()->month);
+            $year = (int) $request->get('year', now()->year);
+            $fincaId = $request->get('location_id');
+
+            if (!$fincaId) {
+                return response()->json(['success' => false, 'message' => 'Debe seleccionar una finca (location_id).'], 422);
+            }
+            $finca = \App\Models\Location::find($fincaId);
+            if (!$finca) {
+                return response()->json(['success' => false, 'message' => 'Finca no encontrada.'], 404);
+            }
+
+            $startDate = \Carbon\Carbon::create($year, $month, 1)->startOfDay();
+            $endDate = $startDate->copy()->endOfMonth()->endOfDay();
+            $prevEnd = $startDate->copy()->subSecond();
+
+            // Remanente a bodega y consumo: desde documentos de salida por tipo, origen = finca
+            $remanenteByProduct = $this->farmOutputQtyByProduct($fincaId, 'remanente', $startDate, $endDate);
+            $consumoByProduct = $this->farmOutputQtyByProduct($fincaId, 'consumption', $startDate, $endDate);
+
+            $products = \App\Models\Product::with('category')
+                ->where('status', 'active')->orderBy('name')
+                ->get(['id', 'name', 'product_code', 'category_id', 'base_unit']);
+
+            $result = [];
+            foreach ($products as $product) {
+                $initial = (float) (InventoryMovement::where('product_id', $product->id)
+                    ->where('location_id', $fincaId)
+                    ->where('created_at', '<=', $prevEnd)
+                    ->selectRaw("SUM(CASE WHEN type='entry' THEN quantity ELSE 0 END) - SUM(CASE WHEN type IN ('exit','application') THEN quantity ELSE 0 END) as s")
+                    ->value('s') ?? 0);
+
+                $entries = (float) InventoryMovement::where('product_id', $product->id)
+                    ->where('location_id', $fincaId)
+                    ->where('type', 'entry')
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->sum('quantity');
+
+                $remanente = (float) ($remanenteByProduct[$product->id] ?? 0);
+                $consumo = (float) ($consumoByProduct[$product->id] ?? 0);
+                $final = round($initial + $entries - $consumo - $remanente, 2);
+
+                if ($initial != 0 || $entries > 0 || $remanente > 0 || $consumo > 0) {
+                    $result[] = [
+                        'product_id' => $product->id,
+                        'product_code' => $product->product_code,
+                        'product_name' => $product->name,
+                        'category' => $product->category?->name ?? 'Sin categoría',
+                        'unit' => $product->base_unit,
+                        'initial_stock' => round($initial, 2),
+                        'entries' => round($entries, 2),
+                        'consumption' => round($consumo, 2),
+                        'remanente_to_warehouse' => round($remanente, 2),
+                        'final_stock' => $final,
+                    ];
+                }
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'month' => $month,
+                    'year' => $year,
+                    'farm' => $finca->name,
+                    'farm_id' => $finca->id,
+                    'products' => $result,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error al generar el inventario por finca: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Suma de cantidad entregada por producto, desde salidas de un tipo dado
+     * (output_type code) con origen en la finca, en el rango de fechas.
+     */
+    private function farmOutputQtyByProduct(string $fincaId, string $typeCode, $start, $end): array
+    {
+        return \App\Models\OutputProduct::query()
+            ->selectRaw('output_products.product_id, SUM(output_products.quantity_delivered) as q')
+            ->join('product_outputs', 'product_outputs.id', '=', 'output_products.output_id')
+            ->join('output_types', 'output_types.id', '=', 'product_outputs.output_type_id')
+            ->where('output_types.code', $typeCode)
+            ->where('product_outputs.origin_location_id', $fincaId)
+            ->where('product_outputs.status', '!=', 'cancelled')
+            ->whereBetween('product_outputs.output_date', [$start, $end])
+            ->groupBy('output_products.product_id')
+            ->pluck('q', 'output_products.product_id')
+            ->toArray();
+    }
+
+    /**
+     * REPORTE 2 (cierre de mes): Informe consolidado de ENTRADAS a una finca X.
+     * Lista por producto las entradas (envíos recibidos) a la finca en el rango.
+     */
+    public function farmEntriesReport(Request $request): JsonResponse
+    {
+        try {
+            $fincaId = $request->get('location_id');
+            if (!$fincaId) {
+                return response()->json(['success' => false, 'message' => 'Debe seleccionar una finca (location_id).'], 422);
+            }
+            $finca = \App\Models\Location::find($fincaId);
+            if (!$finca) {
+                return response()->json(['success' => false, 'message' => 'Finca no encontrada.'], 404);
+            }
+
+            $query = InventoryMovement::query()
+                ->selectRaw('inventory_movements.product_id, products.product_code, products.name as product_name, inventory_movements.unit, brands.name as brand_name, SUM(inventory_movements.quantity) as total_quantity, COUNT(*) as movements')
+                ->join('products', 'products.id', '=', 'inventory_movements.product_id')
+                ->leftJoin('brands', 'brands.id', '=', 'inventory_movements.brand_id')
+                ->where('inventory_movements.type', 'entry')
+                ->where('inventory_movements.location_id', $fincaId);
+
+            if ($request->filled('date_from')) {
+                $query->where('inventory_movements.created_at', '>=', $request->date_from . ' 00:00:00');
+            }
+            if ($request->filled('date_to')) {
+                $query->where('inventory_movements.created_at', '<=', $request->date_to . ' 23:59:59');
+            }
+
+            $rows = $query->groupBy('inventory_movements.product_id', 'products.product_code', 'products.name', 'inventory_movements.unit', 'brands.name')
+                ->orderByDesc('total_quantity')
+                ->get()
+                ->map(fn ($r) => [
+                    'product_id' => $r->product_id,
+                    'product_code' => $r->product_code,
+                    'product_name' => $r->product_name,
+                    'brand_name' => $r->brand_name ?? 'Sin Marca',
+                    'unit' => $r->unit,
+                    'total_quantity' => round((float) $r->total_quantity, 2),
+                    'movements' => (int) $r->movements,
+                ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'farm' => $finca->name,
+                    'farm_id' => $finca->id,
+                    'date_from' => $request->date_from,
+                    'date_to' => $request->date_to,
+                    'products' => $rows,
+                    'summary' => [
+                        'total_products' => $rows->count(),
+                        'total_movements' => $rows->sum('movements'),
+                    ],
+                ],
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Error al generar entradas por finca: ' . $e->getMessage()], 500);
         }
     }
 

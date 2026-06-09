@@ -511,6 +511,12 @@ export const inventoryApi = {
   getMonthlyReport: (params?: Record<string, any>) =>
     api.get<ApiResponse<any>>('/inventory/monthly-report', params),
 
+  getFarmMonthlyReport: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/inventory/farm-monthly-report', params),
+
+  getFarmEntriesReport: (params?: Record<string, any>) =>
+    api.get<ApiResponse<any>>('/inventory/farm-entries-report', params),
+
   getProductListing: (params?: Record<string, any>) =>
     api.get<ApiResponse<any>>('/inventory/product-listing', params),
 };

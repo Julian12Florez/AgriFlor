@@ -47,6 +47,8 @@ import DeductionsBreakdownReport from './pages/reports/DeductionsBreakdownReport
 import PeriodComparisonReport from './pages/reports/PeriodComparisonReport';
 import MonthlyInventoryReport from './pages/reports/MonthlyInventoryReport';
 import ProductListingReport from './pages/reports/ProductListingReport';
+import FarmMonthlyReport from './pages/reports/FarmMonthlyReport';
+import FarmEntriesReport from './pages/reports/FarmEntriesReport';
 import Login from './pages/auth/Login';
 import ResetPassword from './pages/auth/ResetPassword';
 
@@ -286,6 +288,20 @@ const App: React.FC = () => {
                 <ProtectedRoute module="inventory" showAccessDenied>
                   <MainLayout>
                     <ProductListingReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/farm-monthly" element={
+                <ProtectedRoute module="inventory" showAccessDenied>
+                  <MainLayout>
+                    <FarmMonthlyReport />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/farm-entries" element={
+                <ProtectedRoute module="inventory" showAccessDenied>
+                  <MainLayout>
+                    <FarmEntriesReport />
                   </MainLayout>
                 </ProtectedRoute>
               } />
