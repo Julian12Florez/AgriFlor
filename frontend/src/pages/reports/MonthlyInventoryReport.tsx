@@ -198,6 +198,8 @@ const MonthlyInventoryReport: React.FC = () => {
     cols.push(
       { title: 'Compras', dataIndex: 'purchases', key: 'purch', width: 100, align: 'right' as const,
         render: (v: number) => v ? <span style={{ color: '#52c41a', fontWeight: 500 }}>{fmt(v)}</span> : '-' },
+      { title: 'Remanente', dataIndex: 'returns', key: 'rem', width: 100, align: 'right' as const,
+        render: (v: number) => v ? <span style={{ color: '#e65100', fontWeight: 500 }}>{fmt(v)}</span> : '-' },
       { title: 'Aumentos', dataIndex: 'increases', key: 'inc', width: 90, align: 'right' as const,
         render: (v: number) => v ? <span style={{ color: '#1976D2' }}>{fmt(v)}</span> : '-' },
       { title: 'Disminuc.', dataIndex: 'decreases', key: 'dec', width: 90, align: 'right' as const,
@@ -218,7 +220,8 @@ const MonthlyInventoryReport: React.FC = () => {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, margin: 0 }}>Inventario Mensual</h1>
         <p style={{ color: '#666', margin: 0 }}>
-          Control de existencias mensuales: inicio, movimientos por finca y cierre
+          Control de existencias mensuales: inicio, movimientos por finca y cierre.
+          Las columnas de fincas muestran lo enviado <strong>desde la ubicación seleccionada</strong> hacia cada finca.
         </p>
       </div>
 

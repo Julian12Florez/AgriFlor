@@ -1396,6 +1396,23 @@ class InventoryController extends Controller
                 ->get(['product_id', 'quantity', 'unit'])
                 ->groupBy('product_id');
 
+            // Envíos "desde la ubicación seleccionada": cada envío se registra como exit en
+            // el ORIGEN + entry en el DESTINO, ligados por related_document_id. Para que la
+            // matriz de fincas muestre SOLO lo que salió DESDE la ubicación elegida
+            // (bodega→fincas, o finca→fincas) sin mezclar movimientos de otras ubicaciones,
+            // atribuimos cada entrada en una finca al lugar de su exit emparejado.
+            $originExitDocIds = InventoryMovement::where('location_id', $warehouseId)
+                ->where('type', 'exit')
+                ->whereNotNull('related_document_id')
+                ->pluck('related_document_id')
+                ->unique()
+                ->values()
+                ->all();
+
+            // Remanente devuelto a la ubicación seleccionada (output_type 'remanente' con
+            // destino = esa ubicación). Hoy puede estar en 0 hasta que se registren.
+            $remanenteByProduct = $this->outputQtyByDestination($warehouseId, 'remanente', $startDate, $endDate);
+
             foreach ($products as $product) {
                 // 1. Initial stock at start of month — SOLO la bodega del reporte
                 //    (antes sumaba TODAS las ubicaciones, inflando el valor de la bodega).
@@ -1425,30 +1442,34 @@ class InventoryController extends Controller
                     })
                     ->sum('quantity');
 
-                // 3. Shipments to each farm (exits/transfers during the month)
+                // 3. Envíos a cada finca DESDE la ubicación seleccionada (entradas en la
+                //    finca emparejadas con un exit en la ubicación origen). Se excluye la
+                //    propia ubicación seleccionada (no es destino de sí misma). Si la
+                //    ubicación no tiene salidas, no hay envíos que atribuirle.
                 $farmShipments = [];
                 $totalShipped = 0;
-                foreach ($farms as $farm) {
-                    // Entries at the farm = shipments TO the farm
-                    $shipped = InventoryMovement::where('product_id', $product->id)
-                        ->where('location_id', $farm->id)
-                        ->where('type', 'entry')
-                        ->whereBetween('created_at', [$startDate, $endDate])
-                        ->sum('quantity');
+                if (!empty($originExitDocIds)) {
+                    foreach ($farms as $farm) {
+                        if ($farm->id === $warehouseId) {
+                            continue;
+                        }
+                        $shipped = InventoryMovement::where('product_id', $product->id)
+                            ->where('location_id', $farm->id)
+                            ->where('type', 'entry')
+                            ->whereBetween('created_at', [$startDate, $endDate])
+                            ->whereIn('related_document_id', $originExitDocIds)
+                            ->sum('quantity');
 
-                    if ($shipped > 0) {
-                        $farmShipments[$farm->id] = round((float) $shipped, 2);
-                        $totalShipped += $shipped;
+                        if ($shipped > 0) {
+                            $farmShipments[$farm->id] = round((float) $shipped, 2);
+                            $totalShipped += $shipped;
+                        }
                     }
                 }
 
-                // 4. Returns/Remanentes (exits from farms back to warehouse)
-                $returns = InventoryMovement::where('product_id', $product->id)
-                    ->where('location_id', $warehouseId)
-                    ->where('type', 'entry')
-                    ->where('observations', 'like', '%remanente%')
-                    ->whereBetween('created_at', [$startDate, $endDate])
-                    ->sum('quantity');
+                // 4. Remanente devuelto a la ubicación (documentos de salida tipo
+                //    'remanente' con destino = la ubicación seleccionada).
+                $returns = (float) ($remanenteByProduct[$product->id] ?? 0);
 
                 // 5. Final stock at end of month — SOLO la bodega del reporte (cierre histórico)
                 $finalStock = InventoryMovement::where('product_id', $product->id)
@@ -1645,6 +1666,26 @@ class InventoryController extends Controller
             ->join('output_types', 'output_types.id', '=', 'product_outputs.output_type_id')
             ->where('output_types.code', $typeCode)
             ->where('product_outputs.origin_location_id', $fincaId)
+            ->where('product_outputs.status', '!=', 'cancelled')
+            ->whereBetween('product_outputs.output_date', [$start, $end])
+            ->groupBy('output_products.product_id')
+            ->pluck('q', 'output_products.product_id')
+            ->toArray();
+    }
+
+    /**
+     * Suma de cantidad entregada por producto, desde salidas de un tipo dado
+     * (output_type code) con DESTINO en una ubicación, en el rango de fechas.
+     * Usado por el inventario mensual para el remanente devuelto a la bodega/ubicación.
+     */
+    private function outputQtyByDestination(string $destLocationId, string $typeCode, $start, $end): array
+    {
+        return \App\Models\OutputProduct::query()
+            ->selectRaw('output_products.product_id, SUM(output_products.quantity_delivered) as q')
+            ->join('product_outputs', 'product_outputs.id', '=', 'output_products.output_id')
+            ->join('output_types', 'output_types.id', '=', 'product_outputs.output_type_id')
+            ->where('output_types.code', $typeCode)
+            ->where('product_outputs.destination_location_id', $destLocationId)
             ->where('product_outputs.status', '!=', 'cancelled')
             ->whereBetween('product_outputs.output_date', [$start, $end])
             ->groupBy('output_products.product_id')

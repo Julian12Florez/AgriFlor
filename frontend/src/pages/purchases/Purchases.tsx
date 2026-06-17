@@ -99,10 +99,11 @@ const Purchases: React.FC = () => {
     }),
   });
 
-  // Fetch suppliers
+  // Fetch suppliers (per_page alto + solo activos: el default del backend pagina a 15
+  // ordenados por created_at, así que proveedores antiguos no aparecían en el selector)
   const { data: suppliersData } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: () => suppliersApi.list(),
+    queryKey: ['suppliers', 'active-all'],
+    queryFn: () => suppliersApi.list({ per_page: 999, status: 'active' }),
   });
 
   // Fetch products (per_page alto para traer todos, no solo la primera página)
@@ -754,12 +755,22 @@ const Purchases: React.FC = () => {
                 label="Proveedor"
                 rules={[{ required: true, message: 'Selecciona un proveedor' }]}
               >
-                <Select placeholder="Selecciona un proveedor" loading={!suppliersData}>
-                  {suppliers.map((supplier: any) => (
-                    <Select.Option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </Select.Option>
-                  ))}
+                <Select
+                  placeholder="Selecciona un proveedor"
+                  loading={!suppliersData}
+                  showSearch
+                  optionFilterProp="children"
+                  filterOption={(input, option) =>
+                    String(option?.children ?? '').toLowerCase().includes(input.toLowerCase())
+                  }
+                >
+                  {[...suppliers]
+                    .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)))
+                    .map((supplier: any) => (
+                      <Select.Option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </Select.Option>
+                    ))}
                 </Select>
               </Form.Item>
             </Col>

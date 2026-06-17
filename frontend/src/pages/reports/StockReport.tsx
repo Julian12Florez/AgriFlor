@@ -678,7 +678,7 @@ const StockReport: React.FC = () => {
             >
               {productsData?.data?.map((product: any) => (
                 <Option key={product.id} value={product.id}>
-                  {product.name}
+                  {product.product_code ? `${product.product_code} - ${product.name}` : product.name}
                 </Option>
               ))}
             </Select>
