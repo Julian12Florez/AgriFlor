@@ -371,18 +371,18 @@
                 <tr>
                     <td>
                         <strong>Empresa:</strong><br>
-                        {{ config('app.billing_company_name', 'AGUACATES FLOREZ S.A.S') }}<br><br>
+                        {{ config('app.billing_company_name', 'AGRILOGISTIC URRAO SAS.') }}<br><br>
                         <strong>NIT:</strong><br>
-                        {{ config('app.billing_nit', '901.060.667-7') }}<br><br>
+                        {{ config('app.billing_nit', '901.441.688-7') }}<br><br>
                         <strong>Direccion:</strong><br>
-                        {{ config('app.billing_address', 'URRAO') }}<br>
+                        {{ config('app.billing_address', 'PRJ La Dorada Vda El Chuscal') }}<br>
                         {{ config('app.billing_city', 'URRAO - ANTIOQUIA') }}
                     </td>
                     <td>
                         <strong>E-mail:</strong><br>
-                        {{ config('app.billing_email', 'compras@aguacatesflorez.com') }}<br><br>
+                        {{ config('app.billing_email', 'info@agrilogistic.co') }}<br><br>
                         <strong>Telefono:</strong><br>
-                        {{ config('app.billing_phone', '312-853-42-84') }}
+                        {{ config('app.billing_phone', '3127150757') }}
                     </td>
                 </tr>
             </table>

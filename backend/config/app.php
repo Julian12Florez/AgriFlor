@@ -65,11 +65,11 @@ return [
     |
     */
 
-    'company_name' => env('COMPANY_NAME', 'AgriFlor S.A.S.'),
-    'company_nit' => env('COMPANY_NIT', ''),
-    'company_address' => env('COMPANY_ADDRESS', ''),
-    'company_phone' => env('COMPANY_PHONE', ''),
-    'company_email' => env('COMPANY_EMAIL', ''),
+    'company_name' => env('COMPANY_NAME', 'AGRILOGISTIC URRAO SAS.'),
+    'company_nit' => env('COMPANY_NIT', '901.441.688-7'),
+    'company_address' => env('COMPANY_ADDRESS', 'PRJ La Dorada Vda El Chuscal, Urrao - Antioquia'),
+    'company_phone' => env('COMPANY_PHONE', '3127150757 / 6046174223'),
+    'company_email' => env('COMPANY_EMAIL', 'info@agrilogistic.co'),
 
     /*
     |--------------------------------------------------------------------------
@@ -80,12 +80,12 @@ return [
     |
     */
 
-    'billing_company_name' => env('BILLING_COMPANY_NAME', 'AGUACATES FLOREZ S.A.S'),
-    'billing_nit' => env('BILLING_NIT', '901.060.667-7'),
-    'billing_address' => env('BILLING_ADDRESS', 'URRAO'),
+    'billing_company_name' => env('BILLING_COMPANY_NAME', 'AGRILOGISTIC URRAO SAS.'),
+    'billing_nit' => env('BILLING_NIT', '901.441.688-7'),
+    'billing_address' => env('BILLING_ADDRESS', 'PRJ La Dorada Vda El Chuscal'),
     'billing_city' => env('BILLING_CITY', 'URRAO - ANTIOQUIA'),
-    'billing_email' => env('BILLING_EMAIL', 'compras@aguacatesflorez.com'),
-    'billing_phone' => env('BILLING_PHONE', '312-853-42-84'),
+    'billing_email' => env('BILLING_EMAIL', 'info@agrilogistic.co'),
+    'billing_phone' => env('BILLING_PHONE', '3127150757'),
 
     /*
     |--------------------------------------------------------------------------

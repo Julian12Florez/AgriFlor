@@ -464,7 +464,7 @@ class PurchaseController extends Controller
 
         $data = [
             'purchase' => $purchase,
-            'companyName' => config('app.company_name', 'AgriFlor S.A.S.'),
+            'companyName' => config('app.company_name', 'AGRILOGISTIC URRAO SAS.'),
             'companyAddress' => config('app.company_address', ''),
             'companyPhone' => config('app.company_phone', ''),
             'companyEmail' => config('app.company_email', ''),
