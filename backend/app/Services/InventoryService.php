@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Inventory;
 use App\Models\PackagingUnit;
+use App\Models\Product;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -184,8 +185,13 @@ class InventoryService
                 'deficit_in_base' => round($remainingInBase, 4),
             ]);
 
+            // Mensaje claro: nombra el producto y muestra requerido/disponible/faltante,
+            // para que en recepciones de varios productos se sepa CUÁL bloquea.
+            $productName = Product::where('id', $productId)->value('name') ?? $productId;
+            $availableInBase = round($requestedInBase - $remainingInBase, 2);
             throw new \Exception(
-                "Inventario insuficiente. Faltan " . round($remainingInBase, 2) . " unidades base."
+                "Inventario insuficiente de '{$productName}': se requieren " . round($requestedInBase, 2) .
+                " y solo hay " . $availableInBase . " unidades base disponibles (faltan " . round($remainingInBase, 2) . ")."
             );
         }
 
