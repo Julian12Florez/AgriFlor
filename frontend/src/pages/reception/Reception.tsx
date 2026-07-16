@@ -139,9 +139,10 @@ const ReceptionPage: React.FC = () => {
     },
   });
 
-  // Mutation: cerrar recepción de salida con lo disponible (libera stock comprometido)
-  const closeWithAvailableMutation = useMutation({
-    mutationFn: (receptionId: string) => receptionsApi.closeWithAvailable(receptionId),
+  // Mutation: finalizar recepción con la cantidad ya recibida (libera el remanente
+  // comprometido, SIN recibir ni mover inventario adicional).
+  const finalizeMutation = useMutation({
+    mutationFn: (receptionId: string) => receptionsApi.finalize(receptionId),
     onSuccess: (resp: any) => {
       queryClient.invalidateQueries({ queryKey: ['receptions'] });
       queryClient.invalidateQueries({ queryKey: ['available-sources'] });
@@ -149,22 +150,22 @@ const ReceptionPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       setIsDetailModalVisible(false);
       setSelectedReception(null);
-      message.success(resp?.message || 'Salida cerrada con lo disponible. Stock liberado.');
+      message.success(resp?.message || 'Recepción finalizada. Remanente liberado.');
     },
     onError: (error: any) => {
-      handleApiError(error, 'Error al cerrar la salida');
+      handleApiError(error, 'Error al finalizar la recepción');
     },
   });
 
-  const doCloseWithAvailable = (receptionId?: string) => {
+  const doFinalize = (receptionId?: string) => {
     const id = receptionId || selectedReception?.id;
     if (!id) return;
-    closeWithAvailableMutation.mutate(id);
+    finalizeMutation.mutate(id);
   };
-  const closeWithAvailableTitle = 'Cerrar salida con lo disponible';
-  const closeWithAvailableDescription = (
+  const finalizeTitle = 'Finalizar recepción';
+  const finalizeDescription = (
     <div style={{ maxWidth: 320 }}>
-      Se recibirá el stock que <strong>físicamente haya</strong> y el remanente que no alcance se <strong>descartará</strong>. La salida queda <strong>cerrada</strong> y el stock reservado se <strong>libera</strong>. <span style={{ color: '#cf1322' }}>No se puede deshacer.</span>
+      La recepción se cierra con la <strong>cantidad ya recibida</strong> y el remanente pendiente queda <strong>liberado</strong>. <strong>No</strong> se recibe ni se descuenta stock adicional. <span style={{ color: '#cf1322' }}>No se puede deshacer.</span>
     </div>
   );
 
@@ -1062,26 +1063,22 @@ const ReceptionPage: React.FC = () => {
               >
                 Nueva Recepción Parcial
               </Button>
-              {selectedReception.sourceType === 'output' && (
-                <Popconfirm
-                  title={closeWithAvailableTitle}
-                  description={closeWithAvailableDescription}
-                  okText="Sí, cerrar y liberar"
-                  cancelText="Cancelar"
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => doCloseWithAvailable()}
-                >
-                  <Button danger size="large" loading={closeWithAvailableMutation.isPending}>
-                    Cerrar salida con lo disponible
-                  </Button>
-                </Popconfirm>
-              )}
+              <Popconfirm
+                title={finalizeTitle}
+                description={finalizeDescription}
+                okText="Sí, finalizar y liberar"
+                cancelText="Cancelar"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => doFinalize()}
+              >
+                <Button danger size="large" loading={finalizeMutation.isPending}>
+                  Finalizar recepción
+                </Button>
+              </Popconfirm>
             </Space>
-            {selectedReception.sourceType === 'output' && (
-              <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-                Usa "Cerrar con lo disponible" si la salida quedó atascada porque ya no hay stock suficiente para completarla.
-              </div>
-            )}
+            <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+              "Finalizar recepción" cierra con la cantidad ya recibida y libera el remanente pendiente, sin recibir ni descontar más stock.
+            </div>
           </div>
         )}
       </div>
@@ -2207,17 +2204,17 @@ const ReceptionPage: React.FC = () => {
                           >
                             {selectedSource.reception ? 'Nueva Recepción Parcial' : 'Crear Recepción'}
                           </Button>
-                          {selectedSource.source_type === 'output' && selectedSource.reception?.id && (
+                          {selectedSource.reception?.id && (
                             <Popconfirm
-                              title={closeWithAvailableTitle}
-                              description={closeWithAvailableDescription}
-                              okText="Sí, cerrar y liberar"
+                              title={finalizeTitle}
+                              description={finalizeDescription}
+                              okText="Sí, finalizar y liberar"
                               cancelText="Cancelar"
                               okButtonProps={{ danger: true }}
-                              onConfirm={() => doCloseWithAvailable(selectedSource.reception.id)}
+                              onConfirm={() => doFinalize(selectedSource.reception.id)}
                             >
-                              <Button danger size="large" loading={closeWithAvailableMutation.isPending}>
-                                Cerrar salida con lo disponible
+                              <Button danger size="large" loading={finalizeMutation.isPending}>
+                                Finalizar recepción
                               </Button>
                             </Popconfirm>
                           )}
@@ -2227,8 +2224,8 @@ const ReceptionPage: React.FC = () => {
                             ? 'Agregar un nuevo lote de recepción a esta orden'
                             : 'Se abrirá el formulario para recepcionar productos'
                           }
-                          {selectedSource.source_type === 'output' && selectedSource.reception?.id && (
-                            <span> · Si quedó atascada por falta de stock, usa "Cerrar salida con lo disponible".</span>
+                          {selectedSource.reception?.id && (
+                            <span> · "Finalizar recepción" cierra con lo recibido y libera el remanente pendiente.</span>
                           )}
                         </div>
                       </div>

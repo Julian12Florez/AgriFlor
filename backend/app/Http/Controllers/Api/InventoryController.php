@@ -178,13 +178,21 @@ class InventoryController extends Controller
             $query->where('location_id', $request->location_id);
         }
 
+        // Aislamiento por ubicación: los usuarios responsables de ubicación solo ven los
+        // movimientos de sus ubicaciones. Solo supervisor y farm se restringen; los
+        // demás roles (admin, bodega, compras, financiero, etc.) ven todo.
+        $user = $request->user();
+        if ($user && !$user->canViewAllLocations()) {
+            $query->whereIn('location_id', $user->managedLocationIds());
+        }
+
         // Filter by date range
         if ($request->has('start_date')) {
-            $query->whereDate('created_at', '>=', $request->start_date);
+            $query->whereDate('movement_date', '>=', $request->start_date);
         }
 
         if ($request->has('end_date')) {
-            $query->whereDate('created_at', '<=', $request->end_date);
+            $query->whereDate('movement_date', '<=', $request->end_date);
         }
 
         // Search
@@ -199,7 +207,7 @@ class InventoryController extends Controller
         }
 
         $perPage = $request->get('per_page', 15);
-        $movements = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $movements = $query->orderBy('movement_date', 'desc')->orderBy('created_at', 'desc')->paginate($perPage);
 
         return InventoryMovementResource::collection($movements);
     }
@@ -218,17 +226,25 @@ class InventoryController extends Controller
             $query->where('location_id', $request->location_id);
         }
 
+        // Aislamiento por ubicación: los usuarios responsables de ubicación solo ven los
+        // movimientos de sus ubicaciones. Solo supervisor y farm se restringen; los
+        // demás roles (admin, bodega, compras, financiero, etc.) ven todo.
+        $user = $request->user();
+        if ($user && !$user->canViewAllLocations()) {
+            $query->whereIn('location_id', $user->managedLocationIds());
+        }
+
         // Filter by date range
         if ($request->has('start_date')) {
-            $query->whereDate('created_at', '>=', $request->start_date);
+            $query->whereDate('movement_date', '>=', $request->start_date);
         }
 
         if ($request->has('end_date')) {
-            $query->whereDate('created_at', '<=', $request->end_date);
+            $query->whereDate('movement_date', '<=', $request->end_date);
         }
 
         $perPage = $request->get('per_page', 15);
-        $movements = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $movements = $query->orderBy('movement_date', 'desc')->orderBy('created_at', 'desc')->paginate($perPage);
 
         // Calculate running balance
         $entries = InventoryMovement::where('product_id', $productId)
@@ -267,9 +283,11 @@ class InventoryController extends Controller
             'unit' => ['required', 'in:kg,litros,unidades'],
             'expiration_date' => ['nullable', 'date', 'after:today'],
             'unit_price' => ['nullable', 'numeric', 'min:0'],
+            'movement_date' => ['nullable', 'date'],
             'observations' => ['nullable', 'string'],
         ], [
             'type.required' => 'El tipo de movimiento es requerido',
+            'movement_date.date' => 'La fecha del movimiento no es válida',
             'type.in' => 'El tipo de movimiento no es válido',
             'product_id.required' => 'El producto es requerido',
             'product_id.exists' => 'El producto seleccionado no existe',
@@ -300,6 +318,7 @@ class InventoryController extends Controller
             $data = $validator->validated();
             $data['responsible_user'] = auth()->id();
             $data['total_price'] = ($data['quantity'] ?? 0) * ($data['unit_price'] ?? 0);
+            $data['movement_date'] = $data['movement_date'] ?? now()->toDateString();
 
             // Use transaction with lock to prevent race conditions (ERR-004 fix)
             $movement = DB::transaction(function () use ($data) {
@@ -696,14 +715,15 @@ class InventoryController extends Controller
             }
 
             if ($startDate) {
-                $movementsQuery->whereDate('inventory_movements.created_at', '>=', $startDate);
+                $movementsQuery->whereDate('inventory_movements.movement_date', '>=', $startDate);
             }
 
             if ($endDate) {
-                $movementsQuery->whereDate('inventory_movements.created_at', '<=', $endDate);
+                $movementsQuery->whereDate('inventory_movements.movement_date', '<=', $endDate);
             }
 
             $movements = $movementsQuery
+                ->orderBy('inventory_movements.movement_date', 'asc')
                 ->orderBy('inventory_movements.created_at', 'asc')
                 ->get();
 
@@ -737,7 +757,7 @@ class InventoryController extends Controller
 
                 $kardexMovements[] = [
                     'id' => $movement->id,
-                    'date' => $movement->created_at,
+                    'date' => $movement->movement_date,
                     'type' => $movement->type,
                     'brand_name' => $movement->brand_name,
                     'location_name' => $movement->location_name,
@@ -871,11 +891,11 @@ class InventoryController extends Controller
 
             // Apply filters
             if ($startDate) {
-                $query->whereDate('inventory_movements.created_at', '>=', $startDate);
+                $query->whereDate('inventory_movements.movement_date', '>=', $startDate);
             }
 
             if ($endDate) {
-                $query->whereDate('inventory_movements.created_at', '<=', $endDate);
+                $query->whereDate('inventory_movements.movement_date', '<=', $endDate);
             }
 
             if ($locationId) {
@@ -891,7 +911,7 @@ class InventoryController extends Controller
             }
 
             // Get movements ordered by date
-            $movements = $query->orderBy('inventory_movements.created_at', 'asc')->get();
+            $movements = $query->orderBy('inventory_movements.movement_date', 'asc')->orderBy('inventory_movements.created_at', 'asc')->get();
 
             // Calculate statistics (INC-003 fix: include 'application' type as exits)
             $totalEntries = $movements->where('type', 'entry')->sum('quantity');
@@ -1006,7 +1026,7 @@ class InventoryController extends Controller
             // Group by day (quantities converted to base unit)
             $byDay = [];
             foreach ($movements as $movement) {
-                $date = date('Y-m-d', strtotime($movement->created_at));
+                $date = date('Y-m-d', strtotime($movement->movement_date));
                 if (!isset($byDay[$date])) {
                     $byDay[$date] = [
                         'date' => $date,
@@ -1043,7 +1063,7 @@ class InventoryController extends Controller
                 );
                 return [
                     'id' => $movement->id,
-                    'date' => $movement->created_at,
+                    'date' => $movement->movement_date,
                     'type' => $movement->type,
                     'product_id' => $movement->product_id,
                     'product_name' => $movement->product_name,
@@ -1418,7 +1438,7 @@ class InventoryController extends Controller
                 //    (antes sumaba TODAS las ubicaciones, inflando el valor de la bodega).
                 $initialStock = InventoryMovement::where('product_id', $product->id)
                     ->where('location_id', $warehouseId)
-                    ->where('created_at', '<=', $prevEndDate)
+                    ->where('movement_date', '<=', $prevEndDate)
                     ->selectRaw("
                         SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END) -
                         SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END) as stock
@@ -1434,7 +1454,7 @@ class InventoryController extends Controller
                 $purchases = InventoryMovement::where('product_id', $product->id)
                     ->where('type', 'entry')
                     ->where('location_id', $warehouseId)
-                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->whereBetween('movement_date', [$startDate, $endDate])
                     ->where(function ($q) {
                         $q->where('related_document_type', 'like', '%Reception')
                             ->orWhere('related_document_type', 'like', '%Purchase')
@@ -1456,7 +1476,7 @@ class InventoryController extends Controller
                         $shipped = InventoryMovement::where('product_id', $product->id)
                             ->where('location_id', $farm->id)
                             ->where('type', 'entry')
-                            ->whereBetween('created_at', [$startDate, $endDate])
+                            ->whereBetween('movement_date', [$startDate, $endDate])
                             ->whereIn('related_document_id', $originExitDocIds)
                             ->sum('quantity');
 
@@ -1474,7 +1494,7 @@ class InventoryController extends Controller
                 // 5. Final stock at end of month — SOLO la bodega del reporte (cierre histórico)
                 $finalStock = InventoryMovement::where('product_id', $product->id)
                     ->where('location_id', $warehouseId)
-                    ->where('created_at', '<=', $endDate)
+                    ->where('movement_date', '<=', $endDate)
                     ->selectRaw("
                         SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END) -
                         SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END) as stock
@@ -1492,7 +1512,7 @@ class InventoryController extends Controller
                 $increases = InventoryMovement::where('product_id', $product->id)
                     ->where('type', 'entry')
                     ->where('location_id', $warehouseId)
-                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->whereBetween('movement_date', [$startDate, $endDate])
                     ->where(function ($q) {
                         $q->where('observations', 'like', '%aumento%')
                             ->orWhere('observations', 'like', '%ajuste%positiv%');
@@ -1503,7 +1523,7 @@ class InventoryController extends Controller
                 $decreases = InventoryMovement::where('product_id', $product->id)
                     ->whereIn('type', ['exit', 'application'])
                     ->where('location_id', $warehouseId)
-                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->whereBetween('movement_date', [$startDate, $endDate])
                     ->where(function ($q) {
                         $q->where('observations', 'like', '%disminuc%')
                             ->orWhere('observations', 'like', '%ajuste%negativ%');
@@ -1609,14 +1629,14 @@ class InventoryController extends Controller
             foreach ($products as $product) {
                 $initial = (float) (InventoryMovement::where('product_id', $product->id)
                     ->where('location_id', $fincaId)
-                    ->where('created_at', '<=', $prevEnd)
+                    ->where('movement_date', '<=', $prevEnd)
                     ->selectRaw("SUM(CASE WHEN type='entry' THEN quantity ELSE 0 END) - SUM(CASE WHEN type IN ('exit','application') THEN quantity ELSE 0 END) as s")
                     ->value('s') ?? 0);
 
                 $entries = (float) InventoryMovement::where('product_id', $product->id)
                     ->where('location_id', $fincaId)
                     ->where('type', 'entry')
-                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->whereBetween('movement_date', [$startDate, $endDate])
                     ->sum('quantity');
 
                 $remanente = (float) ($remanenteByProduct[$product->id] ?? 0);
@@ -1717,10 +1737,10 @@ class InventoryController extends Controller
                 ->where('inventory_movements.location_id', $fincaId);
 
             if ($request->filled('date_from')) {
-                $query->where('inventory_movements.created_at', '>=', $request->date_from . ' 00:00:00');
+                $query->where('inventory_movements.movement_date', '>=', $request->date_from . ' 00:00:00');
             }
             if ($request->filled('date_to')) {
-                $query->where('inventory_movements.created_at', '<=', $request->date_to . ' 23:59:59');
+                $query->where('inventory_movements.movement_date', '<=', $request->date_to . ' 23:59:59');
             }
 
             $rows = $query->groupBy('inventory_movements.product_id', 'products.product_code', 'products.name', 'inventory_movements.unit', 'brands.name')
@@ -1787,7 +1807,7 @@ class InventoryController extends Controller
                     // Stock at the given date
                     $stockAtDate = InventoryMovement::where('product_id', $product->id)
                         ->where('location_id', $location->id)
-                        ->where('created_at', '<=', $targetDate)
+                        ->where('movement_date', '<=', $targetDate)
                         ->selectRaw("
                             COALESCE(SUM(CASE WHEN type = 'entry' THEN quantity ELSE 0 END), 0) -
                             COALESCE(SUM(CASE WHEN type IN ('exit', 'transfer', 'application') THEN quantity ELSE 0 END), 0) as stock

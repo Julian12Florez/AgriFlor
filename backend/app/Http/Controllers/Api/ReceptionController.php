@@ -46,8 +46,17 @@ class ReceptionController extends Controller
     {
         $sources = [];
 
+        // Aislamiento por ubicación: los usuarios responsables de ubicación solo ven las
+        // fuentes destinadas a alguna de sus ubicaciones (la recepción ocurre en el destino).
+        // solo supervisor y farm se restringen; los demás roles ven todo.
+        $user = $request->user();
+        $restrictToLocations = ($user && !$user->canViewAllLocations())
+            ? $user->managedLocationIds()
+            : null;
+
         // Get purchases that are not cancelled or fully received
         $purchases = Purchase::whereNotIn('status', ['received', 'cancelled'])
+            ->when($restrictToLocations !== null, fn ($q) => $q->whereIn('destination_location_id', $restrictToLocations))
             ->with(['supplier', 'destinationLocation.responsibleUser', 'originLocation', 'purchaseItems.product'])
             ->orderBy('updated_at', 'desc')
             ->get();
@@ -116,6 +125,7 @@ class ReceptionController extends Controller
 
         // Get outputs that are not fully completed
         $outputs = ProductOutput::whereNotIn('status', ['completed'])
+            ->when($restrictToLocations !== null, fn ($q) => $q->whereIn('destination_location_id', $restrictToLocations))
             ->with(['originLocation', 'destinationLocation.responsibleUser', 'outputProducts.product'])
             ->orderBy('updated_at', 'desc')
             ->get();
@@ -379,6 +389,18 @@ class ReceptionController extends Controller
 
         if ($request->has('date_to')) {
             $query->where('created_at', '<=', $request->date_to);
+        }
+
+        // Aislamiento por ubicación: los usuarios responsables de ubicación solo ven las
+        // recepciones que involucran alguna de sus ubicaciones (origen o destino).
+        // Solo supervisor y farm se restringen; los demás roles ven todo.
+        $user = $request->user();
+        if ($user && !$user->canViewAllLocations()) {
+            $managedIds = $user->managedLocationIds();
+            $query->where(function ($q) use ($managedIds) {
+                $q->whereIn('origin_location_id', $managedIds)
+                    ->orWhereIn('destination_location_id', $managedIds);
+            });
         }
 
         // Búsqueda por N° de recepción, producto, código de producto o ubicación (origen/destino)
@@ -734,13 +756,14 @@ class ReceptionController extends Controller
                     'quantity_pending' => max(0, $newQuantityPending),
                 ]);
 
-                // Process inventory movements
+                // Process inventory movements (movement_date = fecha real de recepción del batch)
                 $this->processInventoryMovements(
                     $reception,
                     $itemData,
                     $receptionItem,
                     $batchNumber,
-                    $request->user()->id
+                    $request->user()->id,
+                    $data['reception_date'] ?? null
                 );
             }
 
@@ -854,13 +877,14 @@ class ReceptionController extends Controller
                     'quantity_pending' => max(0, $newQuantityPending),
                 ]);
 
-                // Process inventory movements
+                // Process inventory movements (movement_date = fecha real de recepción del batch)
                 $this->processInventoryMovements(
                     $reception,
                     $itemData,
                     $receptionItem,
                     $batchNumber,
-                    $request->user()->id
+                    $request->user()->id,
+                    $data['reception_date'] ?? null
                 );
             }
 
@@ -1259,6 +1283,104 @@ class ReceptionController extends Controller
     }
 
     /**
+     * FINALIZAR RECEPCIÓN sin recibir stock adicional.
+     *
+     * A diferencia de "close-with-available" (que todavía recibe lo que físicamente haya
+     * en origen), esta acción cierra la recepción EN LA CANTIDAD YA RECIBIDA y libera el
+     * remanente comprometido, SIN mover inventario:
+     *   - Por línea: quantity_expected = quantity_received, quantity_pending = 0.
+     *   - Para salidas: OutputProduct.quantity_delivered = quantity_received (libera la
+     *     reserva del remanente, dejándolo disponible para otras salidas).
+     *   - Recepción => completed (100%); salida => completed / compra => received.
+     */
+    public function finalizeReception(string $receptionId): JsonResponse
+    {
+        try {
+            DB::beginTransaction();
+
+            $reception = Reception::with('receptionItems')->findOrFail($receptionId);
+
+            if (in_array($reception->status, ['completed', 'cancelled'])) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La recepción ya está completada o cancelada.'
+                ], 422);
+            }
+
+            $output = $reception->source_type === 'output'
+                ? ProductOutput::find($reception->source_id)
+                : null;
+            $purchase = $reception->source_type === 'purchase'
+                ? Purchase::find($reception->source_id)
+                : null;
+
+            foreach ($reception->receptionItems as $item) {
+                $recibido = floatval($item->quantity_received);
+
+                // Cerrar la línea en lo ya recibido; el remanente pendiente se libera.
+                $item->update([
+                    'quantity_expected' => $recibido,
+                    'quantity_pending' => 0,
+                ]);
+
+                // Para salidas: liberar el compromiso => la salida entregó exactamente lo recibido.
+                if ($output) {
+                    $op = $item->source_item_id
+                        ? OutputProduct::find($item->source_item_id)
+                        : OutputProduct::where('output_id', $output->id)
+                            ->where('product_id', $item->product_id)
+                            ->where('brand_id', $item->brand_id)
+                            ->first();
+                    if ($op) {
+                        $op->update(['quantity_delivered' => $recibido]);
+                    }
+                }
+            }
+
+            // Finalizar recepción con lo recibido
+            $reception->update([
+                'total_expected' => $reception->receptionItems()->sum('quantity_expected'),
+                'total_received' => $reception->receptionItems()->sum('quantity_received'),
+                'completion_percentage' => 100,
+                'status' => 'completed',
+            ]);
+
+            // Cerrar el documento origen
+            if ($output && $output->status !== 'completed') {
+                $output->update(['status' => 'completed']);
+            }
+            if ($purchase && $purchase->status !== 'received') {
+                $purchase->update(['status' => 'received']);
+            }
+
+            DB::commit();
+
+            $reception->load([
+                'originLocation', 'destinationLocation', 'responsibleUser',
+                'receptionItems.product', 'receptionItems.brand'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Recepción finalizada con la cantidad recibida. El remanente pendiente quedó liberado.',
+                'data' => new ReceptionResource($reception),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error al finalizar recepción', [
+                'reception_id' => $receptionId,
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al finalizar la recepción: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Format a reception item for API responses.
      * Uses source_item_id for exact OutputProduct lookup (handles duplicate product+brand).
      */
@@ -1589,7 +1711,8 @@ class ReceptionController extends Controller
         array $itemData,
         $receptionItem,
         int $batchNumber,
-        string $userId
+        string $userId,
+        ?string $movementDate = null
     ): void {
         // Only process items in good condition
         if ($itemData['condition'] !== 'good' || !$receptionItem) {
@@ -1622,7 +1745,8 @@ class ReceptionController extends Controller
                 $unitPrice,
                 $userId,
                 $batchNumber,
-                $itemData['condition']
+                $itemData['condition'],
+                $movementDate
             );
         } elseif ($sourceType === 'output') {
             // OUTPUT: Behavior depends on output type
@@ -1649,7 +1773,8 @@ class ReceptionController extends Controller
                 $unitPrice,
                 $userId,
                 $batchNumber,
-                $sourceBatchNumber
+                $sourceBatchNumber,
+                $movementDate
             );
 
             // 2. Create ENTRY movement in destination ONLY if NOT consumption
@@ -1776,7 +1901,8 @@ class ReceptionController extends Controller
         float $unitPrice,
         string $userId,
         int $batchNumber,
-        string $condition
+        string $condition,
+        ?string $movementDate = null
     ): void {
         $locationId = $reception->destination_location_id;
         $totalPrice = $quantity * $unitPrice;
@@ -1793,6 +1919,7 @@ class ReceptionController extends Controller
             'location_id' => $locationId,
             'quantity' => $quantity,
             'unit' => $unit,
+            'movement_date' => $movementDate ?: now()->toDateString(),
             'expiration_date' => $expirationDate,
             'unit_price' => $unitPrice,
             'total_price' => $totalPrice,
@@ -1838,7 +1965,8 @@ class ReceptionController extends Controller
         float $unitPrice,
         string $userId,
         int $batchNumber,
-        ?string $inventoryBatchNumber = null
+        ?string $inventoryBatchNumber = null,
+        ?string $movementDate = null
     ): void {
         $locationId = $reception->origin_location_id;
         $totalPrice = $quantity * $unitPrice;
@@ -1851,6 +1979,7 @@ class ReceptionController extends Controller
             'location_id' => $locationId,
             'quantity' => $quantity,
             'unit' => $unit,
+            'movement_date' => $movementDate ?: now()->toDateString(),
             'expiration_date' => null,
             'unit_price' => $unitPrice,
             'total_price' => $totalPrice,

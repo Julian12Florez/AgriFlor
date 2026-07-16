@@ -75,6 +75,18 @@ class ProductOutputController extends Controller
             $query->where('output_date', '<=', $request->end_date);
         }
 
+        // Aislamiento por ubicación: los usuarios responsables de ubicación solo ven las
+        // salidas que involucran alguna de sus ubicaciones (como origen o destino).
+        // Solo supervisor y farm se restringen; los demás roles ven todo.
+        $user = $request->user();
+        if ($user && !$user->canViewAllLocations()) {
+            $managedIds = $user->managedLocationIds();
+            $query->where(function ($q) use ($managedIds) {
+                $q->whereIn('origin_location_id', $managedIds)
+                    ->orWhereIn('destination_location_id', $managedIds);
+            });
+        }
+
         // Búsqueda por N° de salida, producto, código de producto o ubicación (origen/finca destino)
         if ($request->filled('search')) {
             $search = $request->search;
@@ -113,6 +125,20 @@ class ProductOutputController extends Controller
             // Solo se cuentan estados approved/in_transit/partial (alineado con approve()).
             // Las salidas 'pending' aún no están aprobadas y no deben bloquear stock.
             $originLocationId = $data['origin_location_id'];
+
+            // Aislamiento por ubicación: un usuario responsable solo puede registrar salidas
+            // cuyo ORIGEN sea una de sus ubicaciones. Solo supervisor y farm se restringen;
+            // los demás roles (admin, bodega, compras, financiero, etc.) no.
+            $user = $request->user();
+            if ($user && !$user->canViewAllLocations()
+                && !in_array($originLocationId, $user->managedLocationIds(), true)) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Solo puedes registrar salidas desde una ubicación de la que eres responsable.',
+                ], 403);
+            }
+
             $otherCommittedOutputs = ProductOutput::where('origin_location_id', $originLocationId)
                 ->whereIn('status', ['approved', 'in_transit', 'partial'])
                 ->get();

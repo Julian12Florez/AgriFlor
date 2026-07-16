@@ -385,6 +385,7 @@ class ApplicationController extends Controller
                     'location_id' => $application->origin_location_id,
                     'quantity' => $appProduct->quantity,
                     'unit' => $appProduct->unit,
+                    'movement_date' => $application->application_date ?: now()->toDateString(),
                     'responsible_user' => auth()->id(),
                     'related_document_type' => 'App\Models\Application',
                     'related_document_id' => $application->id,

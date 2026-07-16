@@ -20,6 +20,7 @@ class InventoryMovement extends Model
         'location_id',
         'quantity',
         'unit',
+        'movement_date',
         'expiration_date',
         'unit_price',
         'total_price',
@@ -34,9 +35,21 @@ class InventoryMovement extends Model
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:2',
         'total_price' => 'decimal:2',
+        'movement_date' => 'date',
         'expiration_date' => 'date',
         'created_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // Salvaguarda: la fecha real del movimiento nunca debe quedar nula.
+        // Si algún flujo no la provee, cae a la fecha de registro (created_at/hoy).
+        static::creating(function (InventoryMovement $movement) {
+            if (empty($movement->movement_date)) {
+                $movement->movement_date = ($movement->created_at ?? now())->toDateString();
+            }
+        });
+    }
 
     // Scopes
     public function scopeByType($query, $type)

@@ -190,7 +190,7 @@ class ReportExportController extends Controller
         ]);
 
         if ($filters['start_date'] && $filters['end_date']) {
-            $query->whereBetween('created_at', [$filters['start_date'], $filters['end_date']]);
+            $query->whereBetween('movement_date', [$filters['start_date'], $filters['end_date']]);
         }
 
         if ($filters['product_id']) {
@@ -205,7 +205,7 @@ class ReportExportController extends Controller
             $query->where('type', $filters['type']);
         }
 
-        $movements = $query->orderBy('created_at', 'desc')->get();
+        $movements = $query->orderBy('movement_date', 'desc')->orderBy('created_at', 'desc')->get();
 
         // Calculate statistics
         $stats = [
@@ -532,14 +532,14 @@ class ReportExportController extends Controller
         }
 
         if ($filters['start_date']) {
-            $movementsQuery->whereDate('inventory_movements.created_at', '>=', $filters['start_date']);
+            $movementsQuery->whereDate('inventory_movements.movement_date', '>=', $filters['start_date']);
         }
 
         if ($filters['end_date']) {
-            $movementsQuery->whereDate('inventory_movements.created_at', '<=', $filters['end_date']);
+            $movementsQuery->whereDate('inventory_movements.movement_date', '<=', $filters['end_date']);
         }
 
-        $rawMovements = $movementsQuery->orderBy('inventory_movements.created_at', 'asc')->get();
+        $rawMovements = $movementsQuery->orderBy('inventory_movements.movement_date', 'asc')->orderBy('inventory_movements.created_at', 'asc')->get();
 
         // Calculate running balance converting to base unit
         $balance = 0;
@@ -564,7 +564,7 @@ class ReportExportController extends Controller
             }
 
             $movements[] = [
-                'date' => $movement->created_at,
+                'date' => $movement->movement_date,
                 'type' => $movement->type,
                 'brand_name' => $movement->brand_name,
                 'location_name' => $movement->location_name,

@@ -56,14 +56,15 @@ class KardexReportExport implements FromCollection, WithHeadings, WithStyles, Wi
         }
 
         if ($this->filters['start_date'] ?? null) {
-            $movementsQuery->whereDate('inventory_movements.created_at', '>=', $this->filters['start_date']);
+            $movementsQuery->whereDate('inventory_movements.movement_date', '>=', $this->filters['start_date']);
         }
 
         if ($this->filters['end_date'] ?? null) {
-            $movementsQuery->whereDate('inventory_movements.created_at', '<=', $this->filters['end_date']);
+            $movementsQuery->whereDate('inventory_movements.movement_date', '<=', $this->filters['end_date']);
         }
 
         $rawMovements = $movementsQuery
+            ->orderBy('inventory_movements.movement_date', 'asc')
             ->orderBy('inventory_movements.created_at', 'asc')
             ->get();
 
@@ -86,7 +87,7 @@ class KardexReportExport implements FromCollection, WithHeadings, WithStyles, Wi
             }
 
             $this->movements[] = (object)[
-                'date' => $movement->created_at,
+                'date' => $movement->movement_date,
                 'type' => $movement->type,
                 'brand_name' => $movement->brand_name,
                 'location_name' => $movement->location_name,

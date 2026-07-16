@@ -300,6 +300,8 @@ Route::middleware('auth:api')->group(function () {
         Route::put('receptions/{id}/complete', [ReceptionController::class, 'complete']);
         Route::put('receptions/{id}/cancel', [ReceptionController::class, 'cancel']);
         Route::post('receptions/{id}/close-with-available', [ReceptionController::class, 'closeOutputReception']);
+        // Finaliza la recepción con lo ya recibido y libera el remanente (sin mover inventario)
+        Route::post('receptions/{id}/finalize', [ReceptionController::class, 'finalizeReception']);
     });
 
     // ----------------------------------------

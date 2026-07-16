@@ -106,6 +106,8 @@ class InventoryMovementResource extends JsonResource
             'destination_location_id' => $this->getDestinationLocationId(),
             'destination_location_name' => $this->getDestinationLocationName(),
 
+            // Fecha real del movimiento (registrada por el usuario). Los informes usan este campo.
+            'movement_date' => $this->movement_date?->toDateString(),
             'created_at' => $this->created_at?->toISOString(),
         ];
     }

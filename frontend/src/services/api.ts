@@ -356,6 +356,11 @@ export const receptionsApi = {
   // descarta el remanente no entregable, liberando el stock comprometido.
   closeWithAvailable: (id: string) =>
     api.post<ApiResponse<any>>(`/receptions/${id}/close-with-available`, {}),
+
+  // Finaliza la recepción con la cantidad YA recibida (sin recibir más) y libera el
+  // remanente comprometido. No mueve inventario adicional.
+  finalize: (id: string) =>
+    api.post<ApiResponse<any>>(`/receptions/${id}/finalize`, {}),
 };
 
 // Product Outputs API

@@ -153,6 +153,45 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(Location::class, 'responsible_user_id');
     }
 
+    /**
+     * Roles que SÍ se restringen a la(s) ubicación(es) de las que son responsables:
+     * `supervisor` (encargado de finca) y `farm` (operario de finca). CUALQUIER otro rol
+     * (admin, warehouse/bodega, purchasing/compras, financiero, agronomist, etc.) ve TODAS
+     * las ubicaciones. Se usa lista de restringidos (no de globales) para ser fail-safe:
+     * un rol nuevo o no contemplado ve todo por defecto en vez de quedar con listas vacías.
+     */
+    public const LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
+
+    /**
+     * Nombre canónico del rol (relación nueva `role_id`, con fallback al campo legacy).
+     */
+    public function roleName(): ?string
+    {
+        return $this->roleRelation?->name ?? $this->role;
+    }
+
+    /**
+     * ¿El usuario puede ver los movimientos/entradas/salidas de TODAS las ubicaciones?
+     * True para roles con acceso total o cualquier rol NO restringido por ubicación;
+     * false solo para supervisor/farm, que quedan limitados a sus ubicaciones.
+     */
+    public function canViewAllLocations(): bool
+    {
+        if ($this->roleRelation?->has_full_access) {
+            return true;
+        }
+
+        return !in_array($this->roleName(), self::LOCATION_SCOPED_ROLES, true);
+    }
+
+    /**
+     * IDs de las ubicaciones de las que el usuario es responsable (encargado).
+     */
+    public function managedLocationIds(): array
+    {
+        return $this->managedLocations()->pluck('id')->all();
+    }
+
     // Products created by this user
     public function products()
     {

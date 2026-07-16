@@ -33,6 +33,7 @@ interface Movement {
   total_price: number;
   responsible_user_name: string;
   observations: string;
+  movement_date: string;
   created_at: string;
 }
 
@@ -177,7 +178,7 @@ const InventoryMovementsReport: React.FC = () => {
             {getTypeTag(record.type)}
           </div>
           <div style={{ fontSize: '12px', color: '#999' }}>
-            {dayjs(record.created_at).format('DD/MM/YYYY HH:mm')}
+            {dayjs(record.movement_date || record.created_at).format('DD/MM/YYYY')}
           </div>
         </div>
       ),
@@ -217,11 +218,11 @@ const InventoryMovementsReport: React.FC = () => {
   const desktopColumns: ColumnsType<Movement> = [
     {
       title: 'Fecha',
-      dataIndex: 'created_at',
-      key: 'created_at',
+      dataIndex: 'movement_date',
+      key: 'movement_date',
       width: 150,
-      render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm'),
-      sorter: (a, b) => dayjs(a.created_at).unix() - dayjs(b.created_at).unix(),
+      render: (_: string, record) => dayjs(record.movement_date || record.created_at).format('DD/MM/YYYY'),
+      sorter: (a, b) => dayjs(a.movement_date || a.created_at).unix() - dayjs(b.movement_date || b.created_at).unix(),
     },
     {
       title: 'Tipo',

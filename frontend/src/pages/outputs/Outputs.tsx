@@ -6,6 +6,12 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi, handleApiError } from '../../services/api';
+import { usePermissions } from '../../hooks/usePermissions';
+
+// Roles restringidos a su(s) ubicación(es): supervisor (encargado de finca) y farm
+// (operario de finca). Cualquier otro rol elige/ve todas las ubicaciones. Se usa lista de
+// restringidos (no de globales) para ser fail-safe: un rol no contemplado ve todo.
+const LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
 
 const { Text, Title } = Typography;
 import type { ProductOutput, OutputProduct, Product, PackagingUnit } from '../../data/types';
@@ -80,6 +86,11 @@ const Outputs: React.FC = () => {
 
   const outputs = outputsData?.data || [];
   const availableLocations = locationsData?.data || [];
+
+  // Aislamiento por ubicación: el responsable solo puede elegir como ORIGEN de la salida
+  // una de las ubicaciones que tiene asignadas. Los roles globales pueden elegir cualquiera.
+  const { user, getRoleName, isAdmin } = usePermissions();
+  const canViewAllLocations = isAdmin() || !LOCATION_SCOPED_ROLES.includes(getRoleName());
   const availableProducts = productsData?.data || [];
   const availableOrders = ordersData?.data || [];
   const availableUsers = usersData?.data || [];
@@ -771,6 +782,8 @@ const Outputs: React.FC = () => {
               {availableLocations
                 .filter(loc => {
                   if (loc.status !== 'active') return false;
+                  // Un responsable solo puede elegir como origen una de sus ubicaciones.
+                  if (!canViewAllLocations && loc.responsible_user_id !== user?.id) return false;
                   const selectedType = availableOutputTypes.find((t: any) => t.id === selectedOutputTypeId);
                   if (selectedType && selectedType.code === 'remanente') return loc.type === 'farm';
                   return true;

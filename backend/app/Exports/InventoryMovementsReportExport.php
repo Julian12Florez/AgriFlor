@@ -34,7 +34,7 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
         ]);
 
         if (($this->filters['start_date'] ?? null) && ($this->filters['end_date'] ?? null)) {
-            $query->whereBetween('created_at', [$this->filters['start_date'], $this->filters['end_date']]);
+            $query->whereBetween('movement_date', [$this->filters['start_date'], $this->filters['end_date']]);
         }
 
         if ($this->filters['product_id'] ?? null) {
@@ -49,7 +49,7 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             $query->where('type', $this->filters['type']);
         }
 
-        return $query->orderBy('created_at', 'desc')->get();
+        return $query->orderBy('movement_date', 'desc')->orderBy('created_at', 'desc')->get();
     }
 
     public function headings(): array
@@ -101,7 +101,7 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
         $totalQuantityText = $sign . number_format($totalBaseQuantity, 0, ',', '.') . ' ' . $baseUnit;
 
         return [
-            Carbon::parse($row->created_at)->format('d/m/Y H:i'),
+            Carbon::parse($row->movement_date)->format('d/m/Y'),
             $this->getTypeLabel($row->type),
             $row->product->name ?? 'Sin nombre',
             $row->product->product_code ?? 'N/A',
