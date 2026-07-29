@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Exceptions\AdjustmentException;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\RejectAdjustmentRequest;
 use App\Http\Requests\StoreAdjustmentRequest;
 use App\Http\Resources\AdjustmentResource;
 use App\Models\Adjustment;
@@ -191,7 +192,7 @@ class AdjustmentController extends Controller
             // Re-lectura del estado CON la fila bloqueada: sin esto, dos
             // aprobaciones simultáneas del mismo ajuste pasarían ambas el
             // chequeo de arriba y aplicarían el stock dos veces.
-            if (Adjustment::whereKey($adjustment->id)->lockForUpdate()->value('status') !== 'pending') {
+            if (!$this->isPendingLocked($adjustment->id)) {
                 DB::rollBack();
 
                 return $this->alreadyProcessedResponse();
@@ -239,6 +240,114 @@ class AdjustmentController extends Controller
     }
 
     /**
+     * Rechaza una solicitud pendiente. SOLO admin (middleware `role:admin` en
+     * la ruta, igual que approve) — deliberadamente NO se reutiliza
+     * authorizeLocationAccess()/canAccessAdjustment() aquí: ese guard también
+     * concede acceso al solicitante y a responsables de las ubicaciones
+     * implicadas, y usarlo para autorizar el rechazo dejaría la puerta
+     * abierta a que, si la ruta alguna vez se amplía a más roles, un
+     * responsable de ubicación sin el rol admin pueda rechazar. La única
+     * autorización de esta acción es la del middleware de la ruta.
+     *
+     * NO toca inventory ni inventory_movements bajo ninguna circunstancia:
+     * rechazar es una decisión administrativa sobre la SOLICITUD, no sobre el
+     * stock (que solo se afecta al aprobar).
+     */
+    public function reject(RejectAdjustmentRequest $request, string $id): JsonResponse
+    {
+        $adjustment = Adjustment::with(self::RELATIONS)->findOrFail($id);
+
+        if ($adjustment->status !== 'pending') {
+            return $this->alreadyProcessedResponse();
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Mismo patrón que approve(): re-lee el status con la fila
+            // bloqueada para que un rechazo y una aprobación concurrentes del
+            // mismo ajuste no pasen ambos el chequeo de arriba.
+            if (!$this->isPendingLocked($adjustment->id)) {
+                DB::rollBack();
+
+                return $this->alreadyProcessedResponse();
+            }
+
+            $adjustment->update([
+                'status' => 'rejected',
+                'rejection_reason' => $request->validated('rejection_reason'),
+                'approved_by' => $request->user()->id,
+                'approved_at' => now(),
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Adjustment rejection failed', [
+                'adjustment_id' => $adjustment->id,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo rechazar la solicitud por un error interno. El detalle quedó registrado; contacte al administrador.',
+            ], 500);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Solicitud de ajuste rechazada.',
+            'data' => new AdjustmentResource($adjustment->fresh(self::RELATIONS)),
+        ]);
+    }
+
+    /**
+     * Cancela una solicitud pendiente. SOLO el solicitante original
+     * (responsible_user), sin excepción: ni un admin distinto de quien la
+     * creó puede cancelarla (para eso existe reject). La comparación es
+     * explícita a propósito — canAccessAdjustment() NO sirve aquí porque
+     * también concede acceso a responsables de las ubicaciones implicadas,
+     * que no deben poder cancelar una solicitud ajena.
+     *
+     * NO toca inventory ni inventory_movements: una solicitud pendiente nunca
+     * llegó a afectar el stock.
+     */
+    public function cancel(Request $request, string $id): JsonResponse
+    {
+        $adjustment = Adjustment::with(self::RELATIONS)->findOrFail($id);
+
+        if ($adjustment->responsible_user !== $request->user()->id) {
+            abort(403, 'Solo quien solicitó el ajuste puede cancelarlo.');
+        }
+
+        if ($adjustment->status !== 'pending') {
+            return $this->alreadyProcessedResponse();
+        }
+
+        DB::beginTransaction();
+
+        // Mismo patrón de re-lectura bloqueada que approve()/reject(): evita
+        // cancelar una solicitud que se está aprobando o rechazando en paralelo.
+        if (!$this->isPendingLocked($adjustment->id)) {
+            DB::rollBack();
+
+            return $this->alreadyProcessedResponse();
+        }
+
+        $adjustment->update(['status' => 'cancelled']);
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Solicitud de ajuste cancelada.',
+            'data' => new AdjustmentResource($adjustment->fresh(self::RELATIONS)),
+        ]);
+    }
+
+    /**
      * ¿El fallo es una regla de negocio, con un mensaje pensado para el usuario?
      *
      * Lo son las de AdjustmentException (las que lanza esta clase) y las de
@@ -261,6 +370,19 @@ class AdjustmentController extends Controller
             'success' => false,
             'message' => 'La solicitud ya fue procesada.',
         ], 422);
+    }
+
+    /**
+     * Re-lee el status de un ajuste con la fila bloqueada (lockForUpdate),
+     * DENTRO de una transacción abierta por el llamador. Compartido por
+     * approve/reject/cancel: los tres resuelven una solicitud 'pending' y
+     * deben evitar que dos resoluciones concurrentes (p. ej. aprobar y
+     * rechazar el mismo ajuste al mismo tiempo) pasen ambas el chequeo hecho
+     * antes de abrir la transacción.
+     */
+    private function isPendingLocked(string $adjustmentId): bool
+    {
+        return Adjustment::whereKey($adjustmentId)->lockForUpdate()->value('status') === 'pending';
     }
 
     /**

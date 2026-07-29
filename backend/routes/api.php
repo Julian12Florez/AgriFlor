@@ -341,9 +341,13 @@ Route::middleware('auth:api')->group(function () {
     Route::get('adjustments', [AdjustmentController::class, 'index']);
     Route::get('adjustments/{id}', [AdjustmentController::class, 'show']);
     Route::post('adjustments', [AdjustmentController::class, 'store']);
+    // Cancelar: cualquier autenticado puede intentarlo, la autorización real
+    // (solo el solicitante, solo si está pending) vive en el controlador.
+    Route::put('adjustments/{id}/cancel', [AdjustmentController::class, 'cancel']);
 
     Route::middleware('role:admin')->group(function () {
         Route::put('adjustments/{id}/approve', [AdjustmentController::class, 'approve']);
+        Route::put('adjustments/{id}/reject', [AdjustmentController::class, 'reject']);
     });
 
     // ----------------------------------------

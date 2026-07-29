@@ -904,6 +904,20 @@ class AdjustmentTest extends TestCase
             ->putJson("/api/adjustments/{$adjustment->id}/approve");
     }
 
+    private function reject(User $user, Adjustment $adjustment, ?string $rejectionReason = 'Motivo de rechazo de prueba')
+    {
+        return $this->actingAs($user, 'api')
+            ->putJson("/api/adjustments/{$adjustment->id}/reject", [
+                'rejection_reason' => $rejectionReason,
+            ]);
+    }
+
+    private function cancel(User $user, Adjustment $adjustment)
+    {
+        return $this->actingAs($user, 'api')
+            ->putJson("/api/adjustments/{$adjustment->id}/cancel");
+    }
+
     /**
      * Existencia total (kg) del producto/marca del ajuste en una ubicación.
      */
@@ -1529,5 +1543,179 @@ class AdjustmentTest extends TestCase
             ]))
             ->assertStatus(422)
             ->assertJsonValidationErrors('quantity');
+    }
+
+    // ------------------------------------------------------------------
+    // Task 7: reject() (solo admin) y cancel() (solo el solicitante)
+    // ------------------------------------------------------------------
+
+    public function test_reject_by_admin_sets_rejected_and_keeps_stock_intact(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-A', 5, 8);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity' => 3,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $inventoryCountBefore = Inventory::count();
+        $movementCountBefore = InventoryMovement::count();
+        $batchQuantityBefore = (float) Inventory::where('batch_number', 'LOTE-A')->value('quantity');
+
+        $this->reject($admin, $adjustment, 'No corresponde a un ajuste real')
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'rejected')
+            ->assertJsonPath('data.rejection_reason', 'No corresponde a un ajuste real');
+
+        $adjustment->refresh();
+        $this->assertSame('rejected', $adjustment->status);
+        $this->assertSame('No corresponde a un ajuste real', $adjustment->rejection_reason);
+
+        // El rechazo NO debe tocar el inventario en absoluto.
+        $this->assertSame($inventoryCountBefore, Inventory::count());
+        $this->assertSame($movementCountBefore, InventoryMovement::count());
+        $this->assertSame(0, $movementCountBefore);
+        $this->assertEqualsWithDelta(
+            $batchQuantityBefore,
+            (float) Inventory::where('batch_number', 'LOTE-A')->value('quantity'),
+            0.01
+        );
+    }
+
+    public function test_reject_requires_rejection_reason(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        $this->actingAs($admin, 'api')
+            ->putJson("/api/adjustments/{$adjustment->id}/reject", [])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('rejection_reason');
+
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    public function test_reject_denied_for_non_admin_roles(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        $this->reject($this->createUserWithRole('warehouse'), $adjustment)->assertStatus(403);
+        $this->reject($this->createUserWithRole('supervisor'), $adjustment)->assertStatus(403);
+
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    public function test_reject_of_already_processed_adjustment_fails(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $approved = $this->makePendingAdjustment($fixtures);
+        $this->approve($admin, $approved)->assertStatus(200);
+
+        $this->reject($admin, $approved, 'Motivo tardío')
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+
+        $alreadyRejected = $this->makePendingAdjustment($fixtures);
+        $this->reject($admin, $alreadyRejected, 'Primer rechazo')->assertStatus(200);
+        $this->reject($admin, $alreadyRejected, 'Segundo rechazo')
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+    }
+
+    public function test_reject_then_approve_fails_and_keeps_stock_intact(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        $this->reject($admin, $adjustment, 'No corresponde')->assertStatus(200);
+
+        $this->approve($admin, $adjustment)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+
+        $this->assertSame(0, Inventory::count());
+        $this->assertSame(0, InventoryMovement::count());
+        $this->assertSame('rejected', $adjustment->refresh()->status);
+    }
+
+    public function test_cancel_by_requester_sets_cancelled_and_keeps_stock_intact(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-A', 5, 8);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity' => 3,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $inventoryCountBefore = Inventory::count();
+        $movementCountBefore = InventoryMovement::count();
+        $batchQuantityBefore = (float) Inventory::where('batch_number', 'LOTE-A')->value('quantity');
+
+        $this->cancel($fixtures['requester'], $adjustment)
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'cancelled');
+
+        $adjustment->refresh();
+        $this->assertSame('cancelled', $adjustment->status);
+
+        $this->assertSame($inventoryCountBefore, Inventory::count());
+        $this->assertSame($movementCountBefore, InventoryMovement::count());
+        $this->assertEqualsWithDelta(
+            $batchQuantityBefore,
+            (float) Inventory::where('batch_number', 'LOTE-A')->value('quantity'),
+            0.01
+        );
+    }
+
+    public function test_cancel_denied_for_other_users_including_admin(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        // Otro admin (no el solicitante) no puede cancelar la solicitud ajena.
+        $this->cancel($this->createUserWithRole('admin'), $adjustment)->assertStatus(403);
+        $this->cancel($this->createUserWithRole('warehouse'), $adjustment)->assertStatus(403);
+
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    public function test_cancel_of_non_pending_adjustment_fails(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $approved = $this->makePendingAdjustment($fixtures);
+        $this->approve($admin, $approved)->assertStatus(200);
+        $this->cancel($fixtures['requester'], $approved)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+
+        $rejected = $this->makePendingAdjustment($fixtures);
+        $this->reject($admin, $rejected, 'Motivo')->assertStatus(200);
+        $this->cancel($fixtures['requester'], $rejected)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+
+        $cancelled = $this->makePendingAdjustment($fixtures);
+        $this->cancel($fixtures['requester'], $cancelled)->assertStatus(200);
+        $this->cancel($fixtures['requester'], $cancelled)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
     }
 }
