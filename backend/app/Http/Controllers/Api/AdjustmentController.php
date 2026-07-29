@@ -188,13 +188,22 @@ class AdjustmentController extends Controller
     }
 
     /**
-     * Para roles restringidos por ubicación (supervisor, farm), exige que TODAS
-     * las ubicaciones enviadas en el payload (origen y/o destino, según el tipo)
-     * estén entre las administradas por el usuario. Sin esta validación, un
-     * usuario restringido podía crear un ajuste sobre una ubicación ajena y la
-     * solicitud quedaba "huérfana": ni él (fuera de su alcance normal) ni el
-     * responsable real de esa ubicación la verían fácilmente en su flujo.
+     * Para roles restringidos por ubicación (supervisor, farm), valida que el
+     * usuario sea responsable de la(s) ubicación(es) relevante(s) del ajuste.
      * Devuelve el mensaje de error si debe denegarse, o null si puede continuar.
+     *
+     * La regla NO es uniforme por diseño:
+     * - `entry`/`exit` tienen una sola ubicación relevante (destino u origen,
+     *   respectivamente) — esa debe ser suya, sin excepción.
+     * - `transfer` tiene DOS ubicaciones, y exigir que ambas sean suyas bloquea
+     *   un caso de negocio legítimo y central del módulo: "devolver producto de
+     *   mi finca a la bodega central" (origen mío, destino ajeno) o el
+     *   simétrico "traer producto de la bodega central a mi finca" (destino
+     *   mío, origen ajeno). Para `transfer` basta con ser responsable de UNA de
+     *   las dos; la solicitud no queda huérfana aunque la otra sea ajena,
+     *   porque el solicitante siempre la ve en su index vía
+     *   origin/destination (la que sí administra) o vía
+     *   `responsible_user` (orWhere en applyLocationScope).
      */
     private function deniedLocationMessage(array $data, ?User $user): ?string
     {
@@ -203,6 +212,10 @@ class AdjustmentController extends Controller
         }
 
         $managedIds = $user->managedLocationIds();
+
+        if (($data['type'] ?? null) === 'transfer') {
+            return $this->deniedTransferLocationMessage($data, $managedIds);
+        }
 
         foreach (['origin_location_id', 'destination_location_id'] as $field) {
             $locationId = $data[$field] ?? null;
@@ -213,6 +226,21 @@ class AdjustmentController extends Controller
         }
 
         return null;
+    }
+
+    private function deniedTransferLocationMessage(array $data, array $managedIds): ?string
+    {
+        $originId = $data['origin_location_id'] ?? null;
+        $destinationId = $data['destination_location_id'] ?? null;
+
+        $isOriginManaged = $originId !== null && in_array($originId, $managedIds, true);
+        $isDestinationManaged = $destinationId !== null && in_array($destinationId, $managedIds, true);
+
+        if ($isOriginManaged || $isDestinationManaged) {
+            return null;
+        }
+
+        return 'Para registrar un traslado debes ser responsable del origen o del destino.';
     }
 
     /**

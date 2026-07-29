@@ -455,12 +455,24 @@ class AdjustmentTest extends TestCase
     public function test_store_rejects_unit_over_max_length(): void
     {
         $fixtures = $this->createCatalogFixtures();
+        // 300 'a' NO es una unidad válida para el producto (base_unit='kg', sin
+        // packaging unit llamada así), así que el error de
+        // validateUnitBelongsToProduct() dispararía igual sin la regla max:255,
+        // dejando el test verde aunque se quitara max:255. Se asevera
+        // explícitamente que el mensaje de max:255 está presente entre los
+        // errores de `unit` (puede haber más de uno), para que el test SÍ
+        // falle si esa regla se elimina.
         $payload = $this->validEntryPayload($fixtures, ['unit' => str_repeat('a', 300)]);
 
         $response = $this->actingAs($fixtures['requester'], 'api')
             ->postJson('/api/adjustments', $payload);
 
         $response->assertStatus(422)->assertJsonValidationErrors('unit');
+        $this->assertContains(
+            'La unidad no puede exceder 255 caracteres.',
+            $response->json('errors.unit'),
+            'El error de max:255 debe estar presente explícitamente, no solo el de "unidad no corresponde al producto".'
+        );
     }
 
     public function test_store_rejects_batch_number_over_max_length(): void
@@ -554,6 +566,107 @@ class AdjustmentTest extends TestCase
             ->postJson('/api/adjustments', $payload);
 
         $response->assertStatus(201)->assertJsonPath('data.responsible_user', $farmUser->id);
+    }
+
+    public function test_store_exit_denies_restricted_role_with_foreign_origin(): void
+    {
+        // Fix round 2/5: confirma que exit NO se aflojó (a diferencia de
+        // transfer) al corregir la regresión de deniedLocationMessage.
+        $fixtures = $this->createCatalogFixtures();
+        $farmUser = $this->createRestrictedUser('farm');
+
+        $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'type' => 'exit',
+            'origin_location_id' => $fixtures['origin']->id, // ajena
+        ]);
+
+        $response = $this->actingAs($farmUser, 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_store_transfer_allows_when_only_origin_is_managed(): void
+    {
+        // Fix round 2/5: caso de negocio central que la regla estricta original
+        // bloqueaba — "devolver producto de mi finca a la bodega central"
+        // (origen propio, destino ajeno).
+        $fixtures = $this->createCatalogFixtures();
+        $farmUser = $this->createRestrictedUser('farm');
+
+        $ownFarm = Location::create([
+            'name' => 'Finca Propia',
+            'type' => 'farm',
+            'status' => 'active',
+            'responsible_user_id' => $farmUser->id,
+        ]);
+
+        $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'type' => 'transfer',
+            'origin_location_id' => $ownFarm->id,
+            'destination_location_id' => $fixtures['destination']->id, // ajena
+        ]);
+
+        $response = $this->actingAs($farmUser, 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(201);
+
+        // El solicitante debe verla en su index (por origin, además de por
+        // responsible_user).
+        $ids = collect(
+            $this->actingAs($farmUser, 'api')
+                ->getJson('/api/adjustments')
+                ->assertStatus(200)
+                ->json('data')
+        )->pluck('id');
+
+        $this->assertTrue($ids->contains($response->json('data.id')));
+    }
+
+    public function test_store_transfer_allows_when_only_destination_is_managed(): void
+    {
+        // Fix round 2/5: simétrico — "traer producto de la bodega central a mi
+        // finca" (destino propio, origen ajeno).
+        $fixtures = $this->createCatalogFixtures();
+        $farmUser = $this->createRestrictedUser('farm');
+
+        $ownWarehouse = Location::create([
+            'name' => 'Bodega Propia',
+            'type' => 'warehouse',
+            'status' => 'active',
+            'responsible_user_id' => $farmUser->id,
+        ]);
+
+        $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'type' => 'transfer',
+            'origin_location_id' => $fixtures['origin']->id, // ajena
+            'destination_location_id' => $ownWarehouse->id,
+        ]);
+
+        $response = $this->actingAs($farmUser, 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(201);
+    }
+
+    public function test_store_transfer_denies_when_both_locations_are_foreign(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        // 'farm' sin ninguna ubicación administrada: origen y destino son ajenos.
+        $farmUser = $this->createRestrictedUser('farm');
+
+        $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'type' => 'transfer',
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+        ]);
+
+        $response = $this->actingAs($farmUser, 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(403);
+        $this->assertDatabaseMissing('adjustments', ['responsible_user' => $farmUser->id]);
     }
 
     public function test_index_isolates_by_location_for_restricted_roles(): void
