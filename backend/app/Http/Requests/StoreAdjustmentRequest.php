@@ -33,7 +33,9 @@ class StoreAdjustmentRequest extends FormRequest
             'brand_id' => ['required', 'uuid', 'exists:brands,id'],
             'unit' => ['required', 'string', 'max:255'],
             'quantity_mode' => ['required', 'in:delta,absolute'],
-            'quantity' => ['required', 'numeric', 'min:0.01'],
+            // El mínimo efectivo depende del modo (ver validateQuantityForMode):
+            // en modo absoluto 0 es un valor legítimo ("el conteo físico dio cero").
+            'quantity' => ['required', 'numeric', 'min:0'],
             'origin_location_id' => ['nullable', 'uuid', 'exists:locations,id'],
             'destination_location_id' => ['nullable', 'uuid', 'exists:locations,id'],
             'batch_number' => ['nullable', 'string', 'max:255'],
@@ -64,7 +66,7 @@ class StoreAdjustmentRequest extends FormRequest
             'quantity_mode.in' => 'El modo de cantidad debe ser delta o absoluto.',
             'quantity.required' => 'La cantidad es requerida.',
             'quantity.numeric' => 'La cantidad debe ser un número.',
-            'quantity.min' => 'La cantidad debe ser mayor a 0.',
+            'quantity.min' => 'La cantidad no puede ser negativa.',
             'origin_location_id.uuid' => 'El formato de la ubicación de origen no es válido.',
             'origin_location_id.exists' => 'La ubicación de origen seleccionada no existe.',
             'destination_location_id.uuid' => 'El formato de la ubicación de destino no es válido.',
@@ -83,6 +85,7 @@ class StoreAdjustmentRequest extends FormRequest
         $validator->after(function (Validator $validator) {
             $this->validateLocationsForType($validator);
             $this->validateQuantityMode($validator);
+            $this->validateQuantityForMode($validator);
             $this->validateUnitBelongsToProduct($validator);
             $this->validateReasonDirection($validator);
         });
@@ -145,6 +148,27 @@ class StoreAdjustmentRequest extends FormRequest
 
         if (!in_array($this->input('type'), ['entry', 'exit'], true)) {
             $validator->errors()->add('quantity_mode', 'El modo de cantidad absoluto solo aplica a entradas o salidas.');
+        }
+    }
+
+    /**
+     * En modo `delta` la cantidad es lo que se mueve, así que un 0 no ajustaría
+     * nada. En modo `absoluto` la cantidad es el saldo QUE DEBE QUEDAR en el
+     * lote, y 0 es un caso legítimo y frecuente: el conteo físico encontró el
+     * lote vacío y hay que darlo de baja completo (approve() lo resuelve como
+     * un delta igual a todo lo que había).
+     */
+    protected function validateQuantityForMode(Validator $validator): void
+    {
+        $quantity = $this->input('quantity');
+
+        if (!is_numeric($quantity)) {
+            // Ya reportado por quantity.required/numeric.
+            return;
+        }
+
+        if ($this->input('quantity_mode') !== 'absolute' && (float) $quantity < 0.01) {
+            $validator->errors()->add('quantity', 'La cantidad debe ser mayor a 0.');
         }
     }
 

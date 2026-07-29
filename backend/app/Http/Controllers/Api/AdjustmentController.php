@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Exceptions\AdjustmentException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreAdjustmentRequest;
 use App\Http\Resources\AdjustmentResource;
@@ -216,13 +217,18 @@ class AdjustmentController extends Controller
                 'adjustment_id' => $adjustment->id,
                 'type' => $adjustment->type,
                 'quantity_mode' => $adjustment->quantity_mode,
+                'exception' => $e::class,
                 'error' => $e->getMessage(),
             ]);
 
+            $isBusinessFailure = $this->isBusinessFailure($e);
+
             return response()->json([
                 'success' => false,
-                'message' => 'No se pudo aplicar el ajuste: ' . $e->getMessage(),
-            ], 422);
+                'message' => $isBusinessFailure
+                    ? 'No se pudo aplicar el ajuste: ' . $e->getMessage()
+                    : 'No se pudo aplicar el ajuste por un error interno. El detalle quedó registrado; contacte al administrador.',
+            ], $isBusinessFailure ? 422 : 500);
         }
 
         return response()->json([
@@ -230,6 +236,23 @@ class AdjustmentController extends Controller
             'message' => 'Ajuste aprobado y aplicado al inventario.',
             'data' => new AdjustmentResource($adjustment->fresh(self::RELATIONS)),
         ]);
+    }
+
+    /**
+     * ¿El fallo es una regla de negocio, con un mensaje pensado para el usuario?
+     *
+     * Lo son las de AdjustmentException (las que lanza esta clase) y las de
+     * InventoryService, que usa `new \Exception(...)` EXACTAMENTE —no una
+     * subclase— para stock insuficiente, cantidad no positiva o producto
+     * inexistente, siempre con texto en español.
+     *
+     * Todo lo demás es un fallo técnico cuyo mensaje NUNCA debe salir al
+     * cliente: una QueryException, por ejemplo, incluye el SQL completo con sus
+     * bindings. Esos casos van solo al log y responden 500 genérico.
+     */
+    private function isBusinessFailure(\Throwable $e): bool
+    {
+        return $e instanceof AdjustmentException || $e::class === \Exception::class;
     }
 
     private function alreadyProcessedResponse(): JsonResponse
@@ -430,10 +453,10 @@ class AdjustmentController extends Controller
     private function resolveAbsoluteDeltaBase(Adjustment $adjustment): float
     {
         if (!in_array($adjustment->type, ['entry', 'exit'], true)) {
-            throw new \RuntimeException('El modo de cantidad absoluto solo aplica a entradas o salidas.');
+            throw new AdjustmentException('El modo de cantidad absoluto solo aplica a entradas o salidas.');
         }
 
-        [$currentBase] = $this->stockSnapshot($adjustment, $this->stockLocationId($adjustment), true);
+        $currentBase = $this->availableStockInBase($adjustment, $this->stockLocationId($adjustment), true);
         $targetBase = $this->toBase($adjustment, (float) $adjustment->quantity);
 
         return $this->absoluteDeltaForType($adjustment, $currentBase, $targetBase);
@@ -452,20 +475,20 @@ class AdjustmentController extends Controller
         $target = round($targetBase, 2) . ' ' . $baseUnit;
 
         if (abs($delta) <= self::QUANTITY_EPSILON) {
-            throw new \RuntimeException(
+            throw new AdjustmentException(
                 "El lote '{$adjustment->batch_number}' ya tiene la cantidad indicada ({$current}): no hay nada que ajustar."
             );
         }
 
         if ($adjustment->type === 'entry' && $delta < 0) {
-            throw new \RuntimeException(
+            throw new AdjustmentException(
                 "El valor absoluto indicado ({$target}) es menor al stock actual del lote " .
                 "'{$adjustment->batch_number}' ({$current}); use un ajuste de salida."
             );
         }
 
         if ($adjustment->type === 'exit' && $delta > 0) {
-            throw new \RuntimeException(
+            throw new AdjustmentException(
                 "El valor absoluto indicado ({$target}) es mayor al stock actual del lote " .
                 "'{$adjustment->batch_number}' ({$current}); use un ajuste de entrada."
             );
@@ -516,15 +539,14 @@ class AdjustmentController extends Controller
     /**
      * Traslado = salida en origen + entrada en destino por la MISMA cantidad.
      *
-     * La entrada se valora al costo del stock que salió del origen (promedio
-     * ponderado calculado ANTES de reducir, que es lo que devuelve applyExit):
-     * un traslado reubica mercancía, no la revalúa. Si el origen no tuviera
-     * costo registrado se cae al unit_price del ajuste, y en última instancia a
-     * 0 (addStock rechaza precios negativos, no un costo desconocido).
+     * La entrada hereda EXACTAMENTE el costo de los lotes que FIFO consumió en
+     * el origen (no un promedio de toda la ubicación) y el vencimiento más
+     * próximo entre ellos: un traslado reubica mercancía, no la revalúa ni la
+     * rejuvenece. Cualquier otro costo crearía o destruiría valor de inventario.
      */
     private function applyTransfer(Adjustment $adjustment, float $deltaBase, string $userId): void
     {
-        $costInBase = $this->applyExit(
+        $consumed = $this->applyExit(
             $adjustment,
             $deltaBase,
             $userId,
@@ -535,9 +557,10 @@ class AdjustmentController extends Controller
             $adjustment,
             $adjustment->destination_location_id,
             $deltaBase,
-            $costInBase,
+            $consumed['unit_price_base'],
             $userId,
-            $this->transferEntryObservations($adjustment)
+            $this->transferEntryObservations($adjustment),
+            $consumed['expiration_date']
         );
     }
 
@@ -547,7 +570,8 @@ class AdjustmentController extends Controller
         float $deltaBase,
         float $unitPriceInBase,
         string $userId,
-        string $observations
+        string $observations,
+        ?string $expirationDate = null
     ): void {
         $this->inventoryService->addStock(
             $adjustment->product_id,
@@ -556,7 +580,7 @@ class AdjustmentController extends Controller
             $deltaBase,
             $unitPriceInBase,
             $adjustment->batch_number ?: 'AJU-' . substr($adjustment->id, 0, 8),
-            null
+            $expirationDate
         );
 
         $this->recordMovement($adjustment, 'entry', $locationId, $deltaBase, $unitPriceInBase, $userId, $observations);
@@ -565,19 +589,24 @@ class AdjustmentController extends Controller
     /**
      * Salida en la ubicación de origen, consumiendo por FIFO.
      *
-     * @return float Costo por unidad base del stock consumido (lo usa el traslado
-     *               para valorar la entrada en destino).
+     * El movimiento se valora al costo REAL de los lotes consumidos, que es lo
+     * que devuelve reduceInventoryFIFO: valorar la salida a un promedio de toda
+     * la ubicación descuadraría el valor del inventario (una salida de 4 kg que
+     * consume 3@8 + 1@10 vale 34, no 4 × el promedio 9.4 = 37.6).
+     *
+     * @return array{unit_price_base: float, expiration_date: string|null} Costo por
+     *         unidad base y vencimiento más próximo de lo consumido (los usa el traslado).
      */
-    private function applyExit(Adjustment $adjustment, float $deltaBase, string $userId, string $observations): float
+    private function applyExit(Adjustment $adjustment, float $deltaBase, string $userId, string $observations): array
     {
         $locationId = $adjustment->origin_location_id;
 
         // Re-validación del stock EN EL MOMENTO DE APROBAR, con las filas
         // bloqueadas: entre la solicitud y la aprobación pudo consumirse.
-        [$availableBase, $unitPriceInBase] = $this->stockSnapshot($adjustment, $locationId, true);
+        $availableBase = $this->availableStockInBase($adjustment, $locationId, true);
         $this->assertSufficientStock($adjustment, $availableBase, $deltaBase);
 
-        $this->inventoryService->reduceInventoryFIFO(
+        $consumption = $this->inventoryService->reduceInventoryFIFO(
             $adjustment->product_id,
             $adjustment->brand_id,
             $locationId,
@@ -590,9 +619,19 @@ class AdjustmentController extends Controller
             $adjustment->batch_number
         );
 
+        // Solo si los lotes consumidos no tenían costo registrado se recurre al
+        // del ajuste (y en última instancia a 0: addStock rechaza negativos,
+        // no un costo desconocido).
+        $unitPriceInBase = $consumption['consumed_value'] > 0
+            ? $consumption['unit_price_base']
+            : (float) ($adjustment->unit_price ?? 0);
+
         $this->recordMovement($adjustment, 'exit', $locationId, $deltaBase, $unitPriceInBase, $userId, $observations);
 
-        return $unitPriceInBase;
+        return [
+            'unit_price_base' => $unitPriceInBase,
+            'expiration_date' => $consumption['earliest_expiration_date'],
+        ];
     }
 
     private function assertSufficientStock(Adjustment $adjustment, float $availableBase, float $requiredBase): void
@@ -606,7 +645,7 @@ class AdjustmentController extends Controller
         $baseUnit = $this->inventoryService->baseUnitOf($adjustment->product_id);
         $batch = $adjustment->batch_number ? " (lote '{$adjustment->batch_number}')" : '';
 
-        throw new \RuntimeException(
+        throw new AdjustmentException(
             "Stock insuficiente de '{$productName}' en {$locationName}{$batch}: se requieren " .
             round($requiredBase, 2) . " {$baseUnit} y solo hay " . round($availableBase, 2) .
             ' (faltan ' . round($requiredBase - $availableBase, 2) . ').'
@@ -614,17 +653,13 @@ class AdjustmentController extends Controller
     }
 
     /**
-     * Existencia disponible y costo promedio ponderado del producto/marca del
-     * ajuste en una ubicación, ambos en unidad base (inventory.unit_price se
-     * almacena por unidad base desde la migración que corrigió los precios de
-     * presentación). Si el ajuste apunta a un lote concreto, solo mira ese lote.
+     * Existencia disponible (en unidad base) del producto/marca del ajuste en
+     * una ubicación. Si el ajuste apunta a un lote concreto, solo mira ese lote.
      *
      * Con $lock, bloquea las filas para que la re-validación, el cálculo del
      * delta absoluto y la reducción posterior vean exactamente el mismo estado.
-     *
-     * @return array{0: float, 1: float} [disponible en base, costo por unidad base]
      */
-    private function stockSnapshot(Adjustment $adjustment, string $locationId, bool $lock = false): array
+    private function availableStockInBase(Adjustment $adjustment, string $locationId, bool $lock = false): float
     {
         $query = Inventory::where('product_id', $adjustment->product_id)
             ->where('brand_id', $adjustment->brand_id)
@@ -640,24 +675,16 @@ class AdjustmentController extends Controller
         }
 
         $totalBase = 0.0;
-        $totalValue = 0.0;
 
         foreach ($query->get() as $batch) {
-            $quantityInBase = $this->inventoryService->toBaseUnit(
+            $totalBase += $this->inventoryService->toBaseUnit(
                 (float) $batch->quantity,
                 $batch->unit,
                 $adjustment->product_id
             );
-
-            $totalBase += $quantityInBase;
-            $totalValue += $quantityInBase * (float) $batch->unit_price;
         }
 
-        $averagePrice = $totalBase > 0
-            ? $totalValue / $totalBase
-            : (float) ($adjustment->unit_price ?? 0);
-
-        return [$totalBase, $averagePrice];
+        return $totalBase;
     }
 
     /**

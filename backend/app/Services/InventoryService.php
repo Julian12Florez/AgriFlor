@@ -69,12 +69,19 @@ class InventoryService
      *
      * Uses pessimistic locking to prevent race conditions.
      *
+     * Returns what was ACTUALLY consumed, so the caller can value the movement
+     * (and, for a transfer, the incoming batch) at the real FIFO cost instead of
+     * an average of the whole location: valuing an exit at anything other than
+     * the cost of the batches it consumed creates or destroys inventory value.
+     * Callers that do not need it can ignore the return value.
+     *
      * @param string $productId     Product UUID
      * @param string $brandId       Brand UUID
      * @param string $locationId    Location UUID
      * @param float  $quantity      Amount to reduce
      * @param string $requestedUnit Unit of the requested quantity
      * @param string|null $batchNumber Optional batch number to filter specific batches
+     * @return array{consumed_base_qty: float, consumed_value: float, unit_price_base: float, earliest_expiration_date: string|null}
      * @throws \Exception When insufficient inventory
      */
     public function reduceInventoryFIFO(
@@ -84,7 +91,7 @@ class InventoryService
         float $quantity,
         string $requestedUnit,
         ?string $batchNumber = null
-    ): void {
+    ): array {
         if ($quantity <= 0) {
             throw new \Exception("La cantidad a reducir debe ser mayor a 0.");
         }
@@ -111,6 +118,12 @@ class InventoryService
         $requestedInBase = $this->toBaseUnit($quantity, $requestedUnit, $productId);
         $remainingInBase = $requestedInBase;
 
+        // Costo REAL de lo que se va consumiendo (inventory.unit_price está por
+        // unidad base) y vencimiento más próximo entre los lotes consumidos.
+        $consumedInBase = 0.0;
+        $consumedValue = 0.0;
+        $earliestExpiration = null;
+
         Log::info('FIFO reduction started', [
             'product_id' => $productId,
             'brand_id' => $brandId,
@@ -133,10 +146,18 @@ class InventoryService
                 $productId
             );
 
+            $earliestExpiration = $this->earlierDate($earliestExpiration, $batch->expiration_date?->toDateString());
+
             if ($batchQuantityInBase >= $remainingInBase) {
                 // This batch has enough — reduce partially
                 $reduceInBatchUnit = $this->fromBaseUnit($remainingInBase, $batch->unit, $productId);
                 $newQuantity = floatval($batch->quantity) - $reduceInBatchUnit;
+
+                // Si el residuo es despreciable el lote se elimina, así que lo
+                // consumido es el lote COMPLETO, no solo lo pedido.
+                $takenInBase = $newQuantity > 0.01 ? $remainingInBase : $batchQuantityInBase;
+                $consumedInBase += $takenInBase;
+                $consumedValue += $takenInBase * floatval($batch->unit_price);
 
                 if ($newQuantity > 0.01) {
                     $batch->quantity = $newQuantity;
@@ -163,6 +184,8 @@ class InventoryService
             } else {
                 // Consume entire batch and continue
                 $remainingInBase -= $batchQuantityInBase;
+                $consumedInBase += $batchQuantityInBase;
+                $consumedValue += $batchQuantityInBase * floatval($batch->unit_price);
 
                 Log::info('FIFO: batch fully consumed', [
                     'inventory_id' => $batch->id,
@@ -199,7 +222,27 @@ class InventoryService
         Log::info('FIFO reduction completed successfully', [
             'product_id' => $productId,
             'total_reduced_base' => round($requestedInBase, 4),
+            'consumed_value' => round($consumedValue, 4),
         ]);
+
+        return [
+            'consumed_base_qty' => $consumedInBase,
+            'consumed_value' => $consumedValue,
+            'unit_price_base' => $consumedInBase > 0 ? $consumedValue / $consumedInBase : 0.0,
+            'earliest_expiration_date' => $earliestExpiration,
+        ];
+    }
+
+    /**
+     * La más próxima de dos fechas (Y-m-d), ignorando las nulas.
+     */
+    private function earlierDate(?string $current, ?string $candidate): ?string
+    {
+        if ($candidate === null) {
+            return $current;
+        }
+
+        return ($current === null || $candidate < $current) ? $candidate : $current;
     }
 
     /**

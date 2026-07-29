@@ -12,7 +12,9 @@ use App\Models\Location;
 use App\Models\PackagingUnit;
 use App\Models\Product;
 use App\Models\User;
+use App\Services\InventoryService;
 use Database\Seeders\AdjustmentReasonSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -847,6 +849,10 @@ class AdjustmentTest extends TestCase
             'unit_price' => 5,
             'status' => 'pending',
             'responsible_user' => $fixtures['requester']->id,
+            // Fecha distinta de hoy a propósito: el movimiento debe heredar la
+            // fecha REAL del ajuste, no la de la aprobación. Con la fecha de hoy
+            // (la que trae baseAdjustmentAttributes) esa aserción no discriminaría.
+            'movement_date' => now()->subMonth()->toDateString(),
         ], $overrides));
     }
 
@@ -1013,10 +1019,11 @@ class AdjustmentTest extends TestCase
         $this->assertSame($fixtures['origin']->id, $movement->location_id);
         $this->assertEqualsWithDelta(4, (float) $movement->quantity, 0.01);
         $this->assertSame('App\Models\Adjustment', $movement->related_document_type);
-        // Valorado al costo promedio ponderado del origen ANTES de reducir:
-        // (3*8 + 7*10) / 10 = 9.4
-        $this->assertEqualsWithDelta(9.4, (float) $movement->unit_price, 0.01);
-        $this->assertEqualsWithDelta(37.6, (float) $movement->total_price, 0.01);
+        // Valorado al costo REAL que consumió FIFO: 3 kg @8 + 1 kg @10 = 34
+        // (34/4 = 8.5). NO al promedio de toda la ubicación (9.4 → 37.6), que
+        // daría de baja 3.6 de valor que el inventario nunca tuvo aquí.
+        $this->assertEqualsWithDelta(8.5, (float) $movement->unit_price, 0.01);
+        $this->assertEqualsWithDelta(34, (float) $movement->total_price, 0.01);
         $this->assertStringContainsStringIgnoringCase('disminuc', $movement->observations);
     }
 
@@ -1098,6 +1105,69 @@ class AdjustmentTest extends TestCase
         // La pata de ENTRADA sí es un aumento para la ubicación destino, y
         // ningún otro concepto del informe la explica.
         $this->assertStringContainsStringIgnoringCase('aumento', $entry->observations);
+    }
+
+    public function test_approve_transfer_preserves_total_inventory_value(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        // Valor total antes: 3*8 + 7*10 = 94.
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-A', 3, 8, '2030-01-01');
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-B', 7, 10, '2031-01-01');
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'transfer',
+            'quantity' => 4,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        // Un traslado NO crea ni destruye valor: mueve 3@8 + 1@10 = 34 de costo
+        // real. Con el promedio de la ubicación (9.4) el destino se acreditaría
+        // a 37.6 y el inventario total pasaría a 97.6: 3.6 de la nada.
+        $this->assertEqualsWithDelta(94, (float) Inventory::sum('total_value'), 0.01);
+        $this->assertEqualsWithDelta(60, (float) Inventory::where('location_id', $fixtures['origin']->id)->sum('total_value'), 0.01);
+
+        $destinationBatch = Inventory::where('location_id', $fixtures['destination']->id)->sole();
+        $this->assertEqualsWithDelta(4, (float) $destinationBatch->quantity, 0.01);
+        $this->assertEqualsWithDelta(8.5, (float) $destinationBatch->unit_price, 0.01);
+        $this->assertEqualsWithDelta(34, (float) $destinationBatch->total_value, 0.01);
+
+        $exit = $this->movementsOf($adjustment)->firstWhere('type', 'exit');
+        $entry = $this->movementsOf($adjustment)->firstWhere('type', 'entry');
+        $this->assertEqualsWithDelta(34, (float) $exit->total_price, 0.01);
+        $this->assertEqualsWithDelta(34, (float) $entry->total_price, 0.01);
+    }
+
+    public function test_approve_transfer_inherits_expiration_date_from_consumed_batches(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $nearExpiry = now()->addDays(10)->toDateString();
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-PROXIMO', 5, 8, $nearExpiry);
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-LEJANO', 5, 8, '2031-01-01');
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'transfer',
+            'quantity' => 3,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        // El producto no rejuvenece al cambiar de bodega: el lote destino hereda
+        // el vencimiento del lote consumido (el más próximo si fueran varios),
+        // con lo que además conserva su prioridad en el FIFO del destino.
+        $destinationBatch = Inventory::where('location_id', $fixtures['destination']->id)->sole();
+        $this->assertSame($nearExpiry, $destinationBatch->expiration_date->toDateString());
+        $this->assertSame('near_expiry', $destinationBatch->status);
     }
 
     public function test_approve_absolute_entry_sets_batch_to_target_quantity(): void
@@ -1273,5 +1343,104 @@ class AdjustmentTest extends TestCase
 
         $this->assertEqualsWithDelta(10, $this->stockAt($fixtures, $fixtures['destination']->id), 0.01);
         $this->assertCount(1, $this->movementsOf($adjustment));
+    }
+
+    public function test_approve_absolute_exit_to_zero_empties_the_batch(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-CONTEO', 7, 5);
+
+        // Conteo físico que da cero: el lote debe quedar en 0 (dado de baja).
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity_mode' => 'absolute',
+            'quantity' => 0,
+            'batch_number' => 'LOTE-CONTEO',
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $this->assertEqualsWithDelta(0, $this->stockAt($fixtures, $fixtures['origin']->id), 0.01);
+
+        $movement = $this->movementsOf($adjustment)->sole();
+        $this->assertSame('exit', $movement->type);
+        $this->assertEqualsWithDelta(7, (float) $movement->quantity, 0.01);
+    }
+
+    public function test_approve_does_not_leak_technical_error_details(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        // Un fallo técnico (no una regla de negocio) no puede devolverle al
+        // cliente el mensaje crudo: una QueryException lleva dentro el SQL y sus
+        // bindings.
+        $this->app->bind(InventoryService::class, fn () => new class extends InventoryService {
+            public function addStock(
+                string $productId,
+                string $brandId,
+                string $locationId,
+                float $quantityInBase,
+                float $unitPrice,
+                string $batchNumber,
+                ?string $expirationDate = null
+            ): void {
+                throw new QueryException(
+                    'mysql',
+                    'insert into `inventory` (`columna_secreta`) values (?)',
+                    ['dato-sensible'],
+                    new \PDOException('SQLSTATE[42S22]: Column not found')
+                );
+            }
+        });
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(500);
+
+        $message = $response->json('message');
+        $this->assertStringNotContainsString('insert into', $message);
+        $this->assertStringNotContainsString('dato-sensible', $message);
+        $this->assertStringNotContainsString('SQLSTATE', $message);
+
+        $this->assertSame('pending', $adjustment->refresh()->status);
+        $this->assertCount(0, $this->movementsOf($adjustment));
+    }
+
+    public function test_store_accepts_zero_quantity_only_in_absolute_mode(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        // Absoluto: 0 es legítimo ("el conteo físico dio cero").
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $this->validEntryPayload($fixtures, [
+                'quantity_mode' => 'absolute',
+                'batch_number' => 'LOTE-CONTEO',
+                'quantity' => 0,
+            ]))
+            ->assertStatus(201)
+            ->assertJsonPath('data.quantity', 0);
+
+        // Delta: mover 0 no ajusta nada.
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $this->validEntryPayload($fixtures, ['quantity' => 0]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('quantity');
+
+        $this->assertContains('La cantidad debe ser mayor a 0.', $response->json('errors.quantity'));
+
+        // Negativo: nunca, en ningún modo.
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $this->validEntryPayload($fixtures, [
+                'quantity_mode' => 'absolute',
+                'batch_number' => 'LOTE-CONTEO',
+                'quantity' => -1,
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('quantity');
     }
 }
