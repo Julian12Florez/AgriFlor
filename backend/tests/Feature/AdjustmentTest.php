@@ -831,6 +831,51 @@ class AdjustmentTest extends TestCase
         $this->assertFalse($codes->contains($inactiveReason->code));
     }
 
+    /**
+     * ?direction=X debe devolver los motivos con direction=X Y los direction='any'
+     * (válidos para cualquier tipo, según StoreAdjustmentRequest::validateReasonDirection),
+     * pero NO los motivos atados a otra dirección distinta. Un match exacto
+     * (where('direction', X)) ocultaría los 'any' y dejaría al endpoint mintiendo sobre
+     * qué motivos son realmente utilizables para ese tipo — fix round 1 de Task F.
+     */
+    public function test_reasons_endpoint_filters_by_direction_includes_any(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        // $fixtures['reason'] ya tiene direction='any' (ver createCatalogFixtures).
+
+        $exitReason = AdjustmentReason::create([
+            'code' => 'motivo_exit_' . uniqid(),
+            'name' => 'Motivo solo salida',
+            'direction' => 'exit',
+            'active' => true,
+        ]);
+
+        $entryReason = AdjustmentReason::create([
+            'code' => 'motivo_entry_' . uniqid(),
+            'name' => 'Motivo solo entrada',
+            'direction' => 'entry',
+            'active' => true,
+        ]);
+
+        $transferReason = AdjustmentReason::create([
+            'code' => 'motivo_transfer_' . uniqid(),
+            'name' => 'Motivo solo traslado',
+            'direction' => 'transfer',
+            'active' => true,
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->getJson('/api/adjustment-reasons?direction=exit');
+
+        $response->assertStatus(200);
+
+        $codes = collect($response->json('data'))->pluck('code');
+        $this->assertTrue($codes->contains($exitReason->code), 'Debe incluir el motivo direction=exit.');
+        $this->assertTrue($codes->contains($fixtures['reason']->code), 'Debe incluir los motivos direction=any.');
+        $this->assertFalse($codes->contains($entryReason->code), 'No debe incluir motivos de otra dirección (entry).');
+        $this->assertFalse($codes->contains($transferReason->code), 'No debe incluir motivos de otra dirección (transfer).');
+    }
+
     // ------------------------------------------------------------------
     // Task 6: approve() — la aprobación aplica el stock (solo admin)
     // ------------------------------------------------------------------

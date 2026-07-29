@@ -148,13 +148,22 @@ class AdjustmentController extends Controller
 
     /**
      * Catálogo de motivos activos para poblar el selector del frontend.
+     *
+     * Filtrar por `direction` NO puede ser un match exacto: un motivo con
+     * direction='any' es válido para CUALQUIER tipo de ajuste (así lo exige
+     * StoreAdjustmentRequest::validateReasonDirection al crear la solicitud), así que
+     * pedir ?direction=exit debe devolver los motivos 'exit' Y los 'any' —de lo
+     * contrario el endpoint miente sobre qué motivos son realmente utilizables para
+     * ese tipo, y cualquier consumidor que confíe en el filtro del servidor (en vez
+     * de replicar la regla en cliente) ocultaría opciones legítimas.
      */
     public function reasons(Request $request): JsonResponse
     {
         $query = AdjustmentReason::query()->active();
 
         if ($request->filled('direction')) {
-            $query->where('direction', $request->input('direction'));
+            $direction = $request->input('direction');
+            $query->whereIn('direction', array_unique([$direction, 'any']));
         }
 
         return response()->json([

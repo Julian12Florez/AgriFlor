@@ -19,6 +19,7 @@ import usePermissions from '../../hooks/usePermissions';
 import { formatQuantity, formatCurrency } from '../../utils/formatters';
 import type { Adjustment } from '../../types/index';
 import AdjustmentRequestModal from './AdjustmentRequestModal';
+import { invalidateAdjustmentRelated } from './adjustmentQueries';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -100,16 +101,10 @@ const Adjustments: React.FC = () => {
   const adjustments = adjustmentsData?.data || [];
   const pendingCount = pendingCountData?.meta?.total ?? 0;
 
-  const invalidateAdjustmentRelated = () => {
-    queryClient.invalidateQueries({ queryKey: ['adjustments'] });
-    queryClient.invalidateQueries({ queryKey: ['inventory'] });
-    queryClient.invalidateQueries({ queryKey: ['movements'] });
-  };
-
   const approveMutation = useMutation({
     mutationFn: (id: string) => adjustmentsApi.approve(id),
     onSuccess: (response: any) => {
-      invalidateAdjustmentRelated();
+      invalidateAdjustmentRelated(queryClient);
       message.success(response?.message || 'Ajuste aprobado y aplicado al inventario.');
     },
     onError: (error: any) => {
@@ -120,7 +115,7 @@ const Adjustments: React.FC = () => {
   const rejectMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => adjustmentsApi.reject(id, reason),
     onSuccess: (response: any) => {
-      invalidateAdjustmentRelated();
+      invalidateAdjustmentRelated(queryClient);
       message.success(response?.message || 'Solicitud de ajuste rechazada.');
       setRejectingAdjustment(null);
       rejectForm.resetFields();
@@ -133,7 +128,7 @@ const Adjustments: React.FC = () => {
   const cancelMutation = useMutation({
     mutationFn: (id: string) => adjustmentsApi.cancel(id),
     onSuccess: (response: any) => {
-      invalidateAdjustmentRelated();
+      invalidateAdjustmentRelated(queryClient);
       message.success(response?.message || 'Solicitud de ajuste cancelada.');
     },
     onError: (error: any) => {
@@ -229,6 +224,14 @@ const Adjustments: React.FC = () => {
           </div>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
             {record.product_name} — {getSignedQuantityText(record)}
+          </div>
+          {/* Ubicación(es) y motivo: imprescindibles para aprobar/rechazar con criterio
+              (los botones de acción están disponibles en esta misma vista mobile). */}
+          <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
+            📍 {getLocationsText(record)}
+          </div>
+          <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
+            Motivo: {record.reason_name || 'Sin especificar'}
           </div>
           <Tag color={STATUS_COLORS[record.status]} icon={STATUS_ICONS[record.status]}>
             {STATUS_LABELS[record.status]}

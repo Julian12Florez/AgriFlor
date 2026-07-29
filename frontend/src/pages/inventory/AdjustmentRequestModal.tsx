@@ -28,6 +28,7 @@ import {
 } from '../../services/api';
 import usePermissions from '../../hooks/usePermissions';
 import { formatQuantity } from '../../utils/formatters';
+import { invalidateAdjustmentRelated } from './adjustmentQueries';
 
 // Roles restringidos a su(s) ubicación(es): supervisor (encargado de finca) y farm
 // (operario de finca). Mismo criterio que Outputs.tsx — fail-safe: un rol no
@@ -154,9 +155,7 @@ const AdjustmentRequestModal: React.FC<AdjustmentRequestModalProps> = ({ open, o
   const createMutation = useMutation({
     mutationFn: (data: any) => adjustmentsApi.create(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['adjustments'] });
-      queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      queryClient.invalidateQueries({ queryKey: ['movements'] });
+      invalidateAdjustmentRelated(queryClient);
       message.success('Solicitud de ajuste creada. Quedará pendiente de aprobación.');
       handleClose();
     },
