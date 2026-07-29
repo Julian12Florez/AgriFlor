@@ -1602,6 +1602,23 @@ class AdjustmentTest extends TestCase
         $this->assertSame('pending', $adjustment->refresh()->status);
     }
 
+    public function test_reject_rejects_rejection_reason_over_max_length(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        $response = $this->reject($admin, $adjustment, str_repeat('a', 1001));
+
+        $response->assertStatus(422)->assertJsonValidationErrors('rejection_reason');
+        $this->assertContains(
+            'El motivo de rechazo no puede exceder 1000 caracteres.',
+            $response->json('errors.rejection_reason')
+        );
+
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
     public function test_reject_denied_for_non_admin_roles(): void
     {
         $fixtures = $this->createCatalogFixtures();
@@ -1717,5 +1734,38 @@ class AdjustmentTest extends TestCase
         $this->cancel($fixtures['requester'], $cancelled)
             ->assertStatus(422)
             ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+    }
+
+    /**
+     * cancel() adquiere un lockForUpdate vía isPendingLocked() (misma carrera
+     * de la que se defiende approve/reject): un deadlock o lock wait timeout
+     * de MySQL ahí es plausible, y el catch debe evitar que ese detalle
+     * técnico (SQL, bindings, SQLSTATE) llegue crudo al cliente. Se simula el
+     * fallo con un listener del evento 'updating' del propio modelo (cancel()
+     * no recibe ningún servicio inyectable que interceptar, a diferencia de
+     * InventoryService en el test equivalente de approve()).
+     */
+    public function test_cancel_does_not_leak_technical_error_details(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        Adjustment::updating(function () {
+            throw new QueryException(
+                'mysql',
+                'update `adjustments` set `columna_secreta` = ? where `id` = ?',
+                ['dato-sensible'],
+                new \PDOException('SQLSTATE[HY000]: General error: 1205 Lock wait timeout exceeded')
+            );
+        });
+
+        $response = $this->cancel($fixtures['requester'], $adjustment)->assertStatus(500);
+
+        $message = $response->json('message');
+        $this->assertStringNotContainsString('update `adjustments`', $message);
+        $this->assertStringNotContainsString('dato-sensible', $message);
+        $this->assertStringNotContainsString('SQLSTATE', $message);
+
+        $this->assertSame('pending', $adjustment->refresh()->status);
     }
 }

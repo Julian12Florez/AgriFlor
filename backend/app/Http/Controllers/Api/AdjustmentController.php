@@ -313,6 +313,14 @@ class AdjustmentController extends Controller
      *
      * NO toca inventory ni inventory_movements: una solicitud pendiente nunca
      * llegó a afectar el stock.
+     *
+     * Envuelto en el mismo try/catch que reject()/approve(): isPendingLocked()
+     * adquiere un lockForUpdate sobre la fila, que es justo el escenario donde
+     * un deadlock o lock wait timeout de MySQL (error 1205) es plausible —la
+     * misma carrera de la que este método se defiende con el lock—, y sin el
+     * catch esa excepción llegaría cruda al cliente en vez de pasar por el
+     * mismo manejo controlado (rollback + distinción negocio/técnico) que ya
+     * tienen sus hermanos.
      */
     public function cancel(Request $request, string $id): JsonResponse
     {
@@ -326,19 +334,35 @@ class AdjustmentController extends Controller
             return $this->alreadyProcessedResponse();
         }
 
-        DB::beginTransaction();
+        try {
+            DB::beginTransaction();
 
-        // Mismo patrón de re-lectura bloqueada que approve()/reject(): evita
-        // cancelar una solicitud que se está aprobando o rechazando en paralelo.
-        if (!$this->isPendingLocked($adjustment->id)) {
+            // Mismo patrón de re-lectura bloqueada que approve()/reject():
+            // evita cancelar una solicitud que se está aprobando o
+            // rechazando en paralelo.
+            if (!$this->isPendingLocked($adjustment->id)) {
+                DB::rollBack();
+
+                return $this->alreadyProcessedResponse();
+            }
+
+            $adjustment->update(['status' => 'cancelled']);
+
+            DB::commit();
+        } catch (\Throwable $e) {
             DB::rollBack();
 
-            return $this->alreadyProcessedResponse();
+            Log::error('Adjustment cancellation failed', [
+                'adjustment_id' => $adjustment->id,
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo cancelar la solicitud por un error interno. El detalle quedó registrado; contacte al administrador.',
+            ], 500);
         }
-
-        $adjustment->update(['status' => 'cancelled']);
-
-        DB::commit();
 
         return response()->json([
             'success' => true,
