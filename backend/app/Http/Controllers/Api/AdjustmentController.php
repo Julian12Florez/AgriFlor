@@ -39,6 +39,13 @@ class AdjustmentController extends Controller
     private const MAX_NUMBER_RETRIES = 3;
 
     /**
+     * Nombre del índice UNIQUE de adjustment_number (convención de Laravel:
+     * {tabla}_{columna}_unique). Se usa para distinguir ESTA colisión de
+     * cualquier otro 1062 sobre la tabla adjustments (ver isDuplicateAdjustmentNumber).
+     */
+    private const ADJUSTMENT_NUMBER_UNIQUE_INDEX = 'adjustments_adjustment_number_unique';
+
+    /**
      * Lista paginada de ajustes, con aislamiento por ubicación para los roles
      * restringidos (supervisor, farm) y filtro opcional por estado.
      */
@@ -59,9 +66,11 @@ class AdjustmentController extends Controller
         return AdjustmentResource::collection($adjustments);
     }
 
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
         $adjustment = Adjustment::with(self::RELATIONS)->findOrFail($id);
+
+        $this->authorizeLocationAccess($adjustment, $request->user());
 
         return response()->json([
             'success' => true,
@@ -76,7 +85,18 @@ class AdjustmentController extends Controller
      */
     public function store(StoreAdjustmentRequest $request): JsonResponse
     {
-        $adjustment = $this->createAdjustment($request->validated(), $request->user()->id);
+        $user = $request->user();
+        $data = $request->validated();
+
+        $deniedMessage = $this->deniedLocationMessage($data, $user);
+        if ($deniedMessage !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => $deniedMessage,
+            ], 403);
+        }
+
+        $adjustment = $this->createAdjustment($data, $user->id);
         $adjustment->load(self::RELATIONS);
 
         return response()->json([
@@ -104,9 +124,12 @@ class AdjustmentController extends Controller
     }
 
     /**
-     * Aplica el aislamiento por ubicación: los roles restringidos (supervisor, farm)
-     * solo ven ajustes donde alguna de sus ubicaciones administradas participa como
-     * origen o destino. Los demás roles (canViewAllLocations() === true) ven todo.
+     * Aplica el aislamiento por ubicación al listado: los roles restringidos
+     * (supervisor, farm) solo ven ajustes donde alguna de sus ubicaciones
+     * administradas participa como origen o destino, O de los que ellos mismos
+     * son el solicitante (responsible_user) — un solicitante siempre debe poder
+     * ver su propia solicitud aunque, por ejemplo, ya no administre esa
+     * ubicación al momento de consultar. Los demás roles ven todo.
      */
     private function applyLocationScope(Builder $query, ?User $user): void
     {
@@ -115,11 +138,81 @@ class AdjustmentController extends Controller
         }
 
         $managedIds = $user->managedLocationIds();
+        $userId = $user->id;
 
-        $query->where(function (Builder $q) use ($managedIds) {
+        $query->where(function (Builder $q) use ($managedIds, $userId) {
             $q->whereIn('origin_location_id', $managedIds)
-                ->orWhereIn('destination_location_id', $managedIds);
+                ->orWhereIn('destination_location_id', $managedIds)
+                ->orWhere('responsible_user', $userId);
         });
+    }
+
+    /**
+     * Guard centralizado de acceso por ID: usado hoy por show() y pensado para
+     * ser reutilizado tal cual por approve/reject/cancel (tareas siguientes),
+     * que también resuelven un Adjustment por ID y heredarían el mismo hueco
+     * de IDOR si cada una reimplementara su propia verificación.
+     *
+     * Responde 403 (con abort, formateado como JSON por el handler por defecto
+     * ante peticiones que esperan JSON) si el usuario está restringido por
+     * ubicación y el ajuste no lo involucra ni como responsable de una
+     * ubicación relacionada ni como solicitante.
+     */
+    private function authorizeLocationAccess(Adjustment $adjustment, ?User $user): void
+    {
+        if ($this->canAccessAdjustment($adjustment, $user)) {
+            return;
+        }
+
+        abort(403, 'No tienes acceso a este ajuste: no involucra ninguna ubicación de la que eres responsable ni fue creado por ti.');
+    }
+
+    private function canAccessAdjustment(Adjustment $adjustment, ?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+
+        if ($user->canViewAllLocations()) {
+            return true;
+        }
+
+        if ($adjustment->responsible_user === $user->id) {
+            return true;
+        }
+
+        $managedIds = $user->managedLocationIds();
+
+        return in_array($adjustment->origin_location_id, $managedIds, true)
+            || in_array($adjustment->destination_location_id, $managedIds, true);
+    }
+
+    /**
+     * Para roles restringidos por ubicación (supervisor, farm), exige que TODAS
+     * las ubicaciones enviadas en el payload (origen y/o destino, según el tipo)
+     * estén entre las administradas por el usuario. Sin esta validación, un
+     * usuario restringido podía crear un ajuste sobre una ubicación ajena y la
+     * solicitud quedaba "huérfana": ni él (fuera de su alcance normal) ni el
+     * responsable real de esa ubicación la verían fácilmente en su flujo.
+     * Devuelve el mensaje de error si debe denegarse, o null si puede continuar.
+     */
+    private function deniedLocationMessage(array $data, ?User $user): ?string
+    {
+        if (!$user || $user->canViewAllLocations()) {
+            return null;
+        }
+
+        $managedIds = $user->managedLocationIds();
+
+        foreach (['origin_location_id', 'destination_location_id'] as $field) {
+            $locationId = $data[$field] ?? null;
+
+            if ($locationId !== null && !in_array($locationId, $managedIds, true)) {
+                return 'Solo puedes registrar ajustes en ubicaciones de las que eres responsable.';
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -148,9 +241,20 @@ class AdjustmentController extends Controller
         throw new \RuntimeException('No se pudo generar un número de ajuste único.');
     }
 
+    /**
+     * Distingue específicamente la colisión del índice UNIQUE de
+     * adjustment_number de cualquier otro error 1062 sobre la tabla adjustments
+     * (por ejemplo, si en el futuro se agregara otro UNIQUE). Buscar la
+     * subcadena "adjustment_number" en el mensaje NO sirve: el mensaje de
+     * MySQL para un 1062 incluye el SQL completo del INSERT fallido, que
+     * siempre contiene esa columna sin importar cuál índice haya chocado.
+     * Se compara contra el nombre real del índice (convención de Laravel:
+     * {tabla}_{columna}_unique), que sí aparece en el mensaje de error de MySQL
+     * ("Duplicate entry '...' for key 'adjustments_adjustment_number_unique'").
+     */
     private function isDuplicateAdjustmentNumber(QueryException $e): bool
     {
         return ($e->errorInfo[1] ?? null) === 1062
-            && str_contains($e->getMessage(), 'adjustment_number');
+            && str_contains($e->getMessage(), self::ADJUSTMENT_NUMBER_UNIQUE_INDEX);
     }
 }

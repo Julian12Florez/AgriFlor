@@ -4,10 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\Adjustment;
 use App\Models\AdjustmentReason;
+use App\Models\BaseUnit;
 use App\Models\Brand;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
 use App\Models\Location;
+use App\Models\PackagingUnit;
 use App\Models\Product;
 use App\Models\User;
 use Database\Seeders\AdjustmentReasonSeeder;
@@ -132,6 +134,12 @@ class AdjustmentTest extends TestCase
      * Catálogo compartido (reason, product, brand, origin/destination locations,
      * un usuario 'admin' como solicitante) para armar payloads de /api/adjustments
      * sin acoplar cada test a la creación completa de un Adjustment.
+     *
+     * El producto se crea con `base_unit = 'kg'` (vía un `BaseUnit` real, porque
+     * `products.base_unit` tiene FK a `base_units.symbol`) para que 'kg' sea una
+     * unidad válida en los payloads de los tests: desde el fix round 1,
+     * StoreAdjustmentRequest valida `unit` contra la unidad base efectiva del
+     * producto (o sus PackagingUnit asociadas).
      */
     private function createCatalogFixtures(): array
     {
@@ -148,12 +156,18 @@ class AdjustmentTest extends TestCase
             'status' => 'active',
         ]);
 
+        BaseUnit::firstOrCreate(
+            ['symbol' => 'kg'],
+            ['name' => 'Kilogramos', 'description' => 'Unidad de masa', 'status' => 'active']
+        );
+
         $product = Product::create([
             'name' => 'Producto Test',
             'brand_id' => $brand->id,
             'active_ingredient' => 'Glifosato',
             'min_stock' => 0,
             'status' => 'active',
+            'base_unit' => 'kg',
             'created_by' => $requester->id,
         ]);
 
@@ -177,6 +191,22 @@ class AdjustmentTest extends TestCase
         ]);
 
         return compact('requester', 'brand', 'product', 'reason', 'origin', 'destination');
+    }
+
+    /**
+     * Usuario con un rol restringido por ubicación (supervisor|farm), sin
+     * ninguna ubicación administrada por defecto — cada test asigna las
+     * ubicaciones (o ninguna) según lo que quiera probar.
+     */
+    private function createRestrictedUser(string $role): User
+    {
+        return User::create([
+            'name' => ucfirst($role) . ' Test',
+            'email' => $role . '_' . uniqid() . '@agriflor.com',
+            'password' => bcrypt('password'),
+            'role' => $role,
+            'status' => 'active',
+        ]);
     }
 
     /**
@@ -223,6 +253,35 @@ class AdjustmentTest extends TestCase
         $fixtures = $this->createCatalogFixtures();
         $payload = $this->validEntryPayload($fixtures);
 
+        // Siembra un lote real y un movimiento real para poder comparar
+        // CANTIDADES antes/después, no solo conteos: un bug que sume/reste
+        // sobre un lote existente sin crear filas nuevas pasaría inadvertido
+        // si solo se comparan conteos.
+        $inventory = Inventory::create([
+            'product_id' => $fixtures['product']->id,
+            'brand_id' => $fixtures['brand']->id,
+            'location_id' => $fixtures['destination']->id,
+            'batch_number' => 'LOTE-EXISTENTE',
+            'quantity' => 50,
+            'unit' => 'kg',
+            'unit_price' => 10,
+            'total_value' => 500,
+            'status' => 'good',
+        ]);
+
+        $movement = InventoryMovement::create([
+            'type' => 'entry',
+            'product_id' => $fixtures['product']->id,
+            'brand_id' => $fixtures['brand']->id,
+            'location_id' => $fixtures['destination']->id,
+            'quantity' => 50,
+            'unit' => 'kg',
+            'movement_date' => now()->toDateString(),
+            'unit_price' => 10,
+            'total_price' => 500,
+            'responsible_user' => $fixtures['requester']->id,
+        ]);
+
         $inventoryBefore = Inventory::count();
         $movementsBefore = InventoryMovement::count();
 
@@ -236,6 +295,14 @@ class AdjustmentTest extends TestCase
 
         $this->assertSame($inventoryBefore, Inventory::count());
         $this->assertSame($movementsBefore, InventoryMovement::count());
+
+        $inventory->refresh();
+        $this->assertEquals(50.00, (float) $inventory->quantity);
+        $this->assertEquals(500.00, (float) $inventory->total_value);
+
+        $movement->refresh();
+        $this->assertEquals(50.00, (float) $movement->quantity);
+
         $this->assertDatabaseHas('adjustments', [
             'type' => 'entry',
             'status' => 'pending',
@@ -304,17 +371,196 @@ class AdjustmentTest extends TestCase
         $response->assertStatus(422)->assertJsonValidationErrors('quantity_mode');
     }
 
+    public function test_store_entry_rejects_origin_location(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        // Entrada válida salvo por traer también un origin_location_id, que
+        // no le corresponde (solo destino).
+        $payload = $this->validEntryPayload($fixtures, [
+            'origin_location_id' => $fixtures['origin']->id,
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('origin_location_id');
+    }
+
+    public function test_store_exit_rejects_destination_location(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        // Salida válida salvo por traer también un destination_location_id,
+        // que no le corresponde (solo origen).
+        $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'type' => 'exit',
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('destination_location_id');
+    }
+
+    public function test_store_rejects_unit_not_valid_for_product(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, ['unit' => 'banana']);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('unit');
+    }
+
+    public function test_store_accepts_unit_matching_a_packaging_unit_of_the_product(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $packagingUnit = PackagingUnit::create([
+            'name' => 'Saco',
+            'base_quantity' => 25,
+            'base_unit' => 'kg',
+        ]);
+        $fixtures['product']->packagingUnits()->attach($packagingUnit->id);
+
+        $payload = $this->validEntryPayload($fixtures, ['unit' => 'Saco']);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(201)->assertJsonPath('data.unit', 'Saco');
+    }
+
+    public function test_store_rejects_reason_direction_mismatch_with_type(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $exitOnlyReason = AdjustmentReason::create([
+            'code' => 'motivo_exit_' . uniqid(),
+            'name' => 'Motivo solo salida',
+            'direction' => 'exit',
+            'active' => true,
+        ]);
+
+        $payload = $this->validEntryPayload($fixtures, ['reason_id' => $exitOnlyReason->id]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('reason_id');
+    }
+
+    public function test_store_rejects_unit_over_max_length(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, ['unit' => str_repeat('a', 300)]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('unit');
+    }
+
+    public function test_store_rejects_batch_number_over_max_length(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, [
+            'quantity_mode' => 'absolute',
+            'batch_number' => str_repeat('a', 300),
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('batch_number');
+    }
+
+    public function test_store_rejects_array_values_for_reference_ids(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        // Antes del fix, un array con un UUID EXISTENTE pasaba la regla
+        // `exists` (que acepta arrays) y sólo reventaba en el INSERT (500).
+        $idsByField = [
+            'reason_id' => $fixtures['reason']->id,
+            'product_id' => $fixtures['product']->id,
+            'brand_id' => $fixtures['brand']->id,
+        ];
+
+        foreach ($idsByField as $field => $realId) {
+            $payload = $this->validEntryPayload($fixtures, [$field => [$realId]]);
+
+            $response = $this->actingAs($fixtures['requester'], 'api')
+                ->postJson('/api/adjustments', $payload);
+
+            $response->assertStatus(422)->assertJsonValidationErrors($field);
+        }
+    }
+
+    public function test_store_ignores_mass_assignment_of_protected_fields(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $otherUser = $this->createRestrictedUser('supervisor');
+
+        $payload = $this->validEntryPayload($fixtures, [
+            'status' => 'approved',
+            'responsible_user' => $otherUser->id,
+            'adjustment_number' => 'AJU-HACKED-0001',
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.responsible_user', $fixtures['requester']->id);
+
+        $this->assertDatabaseMissing('adjustments', ['adjustment_number' => 'AJU-HACKED-0001']);
+        $this->assertDatabaseHas('adjustments', ['responsible_user' => $fixtures['requester']->id, 'status' => 'pending']);
+    }
+
+    public function test_store_denies_restricted_role_creating_in_foreign_location(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        // 'farm' sin ninguna ubicación administrada: cualquier ubicación es ajena.
+        $farmUser = $this->createRestrictedUser('farm');
+
+        $payload = $this->validEntryPayload($fixtures); // destination = bodega que farmUser no administra
+
+        $response = $this->actingAs($farmUser, 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(403);
+        $this->assertDatabaseMissing('adjustments', ['responsible_user' => $farmUser->id]);
+    }
+
+    public function test_store_allows_restricted_role_creating_in_own_location(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $farmUser = $this->createRestrictedUser('farm');
+
+        $ownWarehouse = Location::create([
+            'name' => 'Bodega Propia',
+            'type' => 'warehouse',
+            'status' => 'active',
+            'responsible_user_id' => $farmUser->id,
+        ]);
+
+        $payload = $this->validEntryPayload($fixtures, ['destination_location_id' => $ownWarehouse->id]);
+
+        $response = $this->actingAs($farmUser, 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(201)->assertJsonPath('data.responsible_user', $farmUser->id);
+    }
+
     public function test_index_isolates_by_location_for_restricted_roles(): void
     {
         $fixtures = $this->createCatalogFixtures();
 
-        $supervisor = User::create([
-            'name' => 'Supervisor Test',
-            'email' => 'supervisor_' . uniqid() . '@agriflor.com',
-            'password' => bcrypt('password'),
-            'role' => 'supervisor',
-            'status' => 'active',
-        ]);
+        $supervisor = $this->createRestrictedUser('supervisor');
 
         // Finca de la que el supervisor es responsable (managedLocationIds).
         $ownLocation = Location::create([
@@ -363,6 +609,85 @@ class AdjustmentTest extends TestCase
 
         $this->assertTrue($adminIds->contains($ownAdjustment->id));
         $this->assertTrue($adminIds->contains($otherAdjustment->id));
+    }
+
+    public function test_index_shows_own_requests_even_outside_managed_locations(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        // Supervisor SIN ninguna ubicación administrada (no hay Location con
+        // responsible_user_id = su id): la única vía de visibilidad posible
+        // es ser el solicitante (responsible_user), que es justo lo que este
+        // test verifica (orWhere('responsible_user', ...) en applyLocationScope).
+        $supervisor = $this->createRestrictedUser('supervisor');
+
+        $foreignLocation = Location::create([
+            'name' => 'Finca Ajena',
+            'type' => 'farm',
+            'status' => 'active',
+        ]);
+
+        $ownRequestOutsideScope = Adjustment::create(array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'adjustment_number' => Adjustment::generateAdjustmentNumber(),
+            'type' => 'exit',
+            'origin_location_id' => $foreignLocation->id,
+            'responsible_user' => $supervisor->id,
+        ]));
+
+        $ids = collect(
+            $this->actingAs($supervisor, 'api')
+                ->getJson('/api/adjustments')
+                ->assertStatus(200)
+                ->json('data')
+        )->pluck('id');
+
+        $this->assertTrue($ids->contains($ownRequestOutsideScope->id));
+    }
+
+    public function test_show_denies_access_to_adjustment_outside_managed_locations(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $supervisor = $this->createRestrictedUser('supervisor');
+
+        $ownLocation = Location::create([
+            'name' => 'Finca Supervisor',
+            'type' => 'farm',
+            'status' => 'active',
+            'responsible_user_id' => $supervisor->id,
+        ]);
+
+        $foreignLocation = Location::create([
+            'name' => 'Finca Ajena',
+            'type' => 'farm',
+            'status' => 'active',
+        ]);
+
+        $ownAdjustment = Adjustment::create(array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'adjustment_number' => Adjustment::generateAdjustmentNumber(),
+            'type' => 'exit',
+            'origin_location_id' => $ownLocation->id,
+            'responsible_user' => $fixtures['requester']->id,
+        ]));
+
+        $foreignAdjustment = Adjustment::create(array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'adjustment_number' => Adjustment::generateAdjustmentNumber(),
+            'type' => 'exit',
+            'origin_location_id' => $foreignLocation->id,
+            'responsible_user' => $fixtures['requester']->id,
+        ]));
+
+        // IDOR verificado: antes del fix, GET /api/adjustments/{foreignAdjustment}
+        // devolvía 200 con el registro completo (incluidas notes) aunque index()
+        // no lo mostrara.
+        $this->actingAs($supervisor, 'api')
+            ->getJson("/api/adjustments/{$foreignAdjustment->id}")
+            ->assertStatus(403);
+
+        $this->actingAs($supervisor, 'api')
+            ->getJson("/api/adjustments/{$ownAdjustment->id}")
+            ->assertStatus(200)
+            ->assertJsonPath('data.id', $ownAdjustment->id);
     }
 
     public function test_reasons_endpoint_returns_active_reasons(): void
