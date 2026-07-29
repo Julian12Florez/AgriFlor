@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdjustmentController;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\ApplicationController;
 use App\Http\Controllers\Api\AuthController;
@@ -328,6 +329,18 @@ Route::middleware('auth:api')->group(function () {
     Route::middleware('role:admin,warehouse')->group(function () {
         Route::post('inventory/adjustments', [InventoryController::class, 'adjustment']);
     });
+
+    // ----------------------------------------
+    // ADJUSTMENTS (módulo de solicitudes de ajuste de inventario)
+    // Crear/leer: CUALQUIER rol autenticado (el cliente pidió que cualquier
+    // rol pueda registrar solicitudes). El aislamiento por ubicación limita
+    // qué ajustes ve cada usuario en index(), no quién puede crear.
+    // Aprobar/rechazar (tareas siguientes) sí quedarán restringidos a admin.
+    // ----------------------------------------
+    Route::get('adjustment-reasons', [AdjustmentController::class, 'reasons']);
+    Route::get('adjustments', [AdjustmentController::class, 'index']);
+    Route::get('adjustments/{id}', [AdjustmentController::class, 'show']);
+    Route::post('adjustments', [AdjustmentController::class, 'store']);
 
     // ----------------------------------------
     // APPLICATIONS (Product Applications to Farm Lots)
