@@ -200,6 +200,11 @@ class AdjustmentTest extends TestCase
      */
     private function createRestrictedUser(string $role): User
     {
+        return $this->createUserWithRole($role);
+    }
+
+    private function createUserWithRole(string $role): User
+    {
         return User::create([
             'name' => ucfirst($role) . ' Test',
             'email' => $role . '_' . uniqid() . '@agriflor.com',
@@ -822,5 +827,451 @@ class AdjustmentTest extends TestCase
         $codes = collect($response->json('data'))->pluck('code');
         $this->assertTrue($codes->contains($fixtures['reason']->code));
         $this->assertFalse($codes->contains($inactiveReason->code));
+    }
+
+    // ------------------------------------------------------------------
+    // Task 6: approve() — la aprobación aplica el stock (solo admin)
+    // ------------------------------------------------------------------
+
+    /**
+     * Solicitud en estado 'pending' creada directamente (sin pasar por el
+     * endpoint) para que cada test de aprobación fije exactamente el escenario
+     * que necesita. Por defecto: entrada delta de 10 kg a la bodega destino.
+     */
+    private function makePendingAdjustment(array $fixtures, array $overrides = []): Adjustment
+    {
+        return Adjustment::create(array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'adjustment_number' => Adjustment::generateAdjustmentNumber(),
+            'type' => 'entry',
+            'destination_location_id' => $fixtures['destination']->id,
+            'unit_price' => 5,
+            'status' => 'pending',
+            'responsible_user' => $fixtures['requester']->id,
+        ], $overrides));
+    }
+
+    /**
+     * Lote real en `inventory` (unidad base kg) para probar reducciones FIFO,
+     * modo absoluto y costeo del traslado.
+     */
+    private function seedBatch(
+        array $fixtures,
+        string $locationId,
+        string $batchNumber,
+        float $quantity,
+        float $unitPrice = 10.0,
+        ?string $expirationDate = null
+    ): Inventory {
+        return Inventory::create([
+            'product_id' => $fixtures['product']->id,
+            'brand_id' => $fixtures['brand']->id,
+            'location_id' => $locationId,
+            'batch_number' => $batchNumber,
+            'quantity' => $quantity,
+            'unit' => 'kg',
+            'expiration_date' => $expirationDate,
+            'unit_price' => $unitPrice,
+            'total_value' => $quantity * $unitPrice,
+            'status' => 'good',
+        ]);
+    }
+
+    /**
+     * Presentación (PackagingUnit) asociada al producto: 1 {name} = {baseQuantity} kg.
+     */
+    private function attachPackagingUnit(array $fixtures, string $name, float $baseQuantity): PackagingUnit
+    {
+        $packagingUnit = PackagingUnit::create([
+            'name' => $name,
+            'base_quantity' => $baseQuantity,
+            'base_unit' => 'kg',
+        ]);
+
+        $fixtures['product']->packagingUnits()->attach($packagingUnit->id);
+
+        return $packagingUnit;
+    }
+
+    private function approve(User $user, Adjustment $adjustment)
+    {
+        return $this->actingAs($user, 'api')
+            ->putJson("/api/adjustments/{$adjustment->id}/approve");
+    }
+
+    /**
+     * Existencia total (kg) del producto/marca del ajuste en una ubicación.
+     */
+    private function stockAt(array $fixtures, string $locationId): float
+    {
+        return (float) Inventory::where('product_id', $fixtures['product']->id)
+            ->where('brand_id', $fixtures['brand']->id)
+            ->where('location_id', $locationId)
+            ->sum('quantity');
+    }
+
+    private function movementsOf(Adjustment $adjustment)
+    {
+        return InventoryMovement::where('related_document_id', $adjustment->id)->get();
+    }
+
+    public function test_approve_requires_admin_role(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $adjustment = $this->makePendingAdjustment($fixtures);
+
+        $this->approve($this->createUserWithRole('warehouse'), $adjustment)->assertStatus(403);
+        $this->approve($this->createUserWithRole('supervisor'), $adjustment)->assertStatus(403);
+
+        // Ningún intento denegado puede haber tocado el inventario.
+        $this->assertDatabaseHas('adjustments', ['id' => $adjustment->id, 'status' => 'pending']);
+        $this->assertSame(0, InventoryMovement::count());
+        $this->assertSame(0, Inventory::count());
+
+        $this->approve($this->createUserWithRole('admin'), $adjustment)
+            ->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.status', 'approved');
+    }
+
+    public function test_approve_entry_delta_increases_stock_and_records_movement(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $adjustment = $this->makePendingAdjustment($fixtures, ['quantity' => 10, 'unit_price' => 5]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $batch = Inventory::where('location_id', $fixtures['destination']->id)->first();
+        $this->assertNotNull($batch);
+        // Sin batch_number en la solicitud, el lote queda trazable al documento.
+        $this->assertSame('AJU-' . substr($adjustment->id, 0, 8), $batch->batch_number);
+        $this->assertEqualsWithDelta(10, (float) $batch->quantity, 0.01);
+        $this->assertSame('kg', $batch->unit);
+        $this->assertEqualsWithDelta(5, (float) $batch->unit_price, 0.01);
+
+        $movements = $this->movementsOf($adjustment);
+        $this->assertCount(1, $movements);
+
+        $movement = $movements->first();
+        $this->assertSame('entry', $movement->type);
+        // El enum de inventory_movements NO tiene 'adjustment'; y el tipo de
+        // documento debe guardarse con el FQCN (no el alias del morph map),
+        // que es contra lo que comparan los informes.
+        $this->assertSame('App\Models\Adjustment', $movement->related_document_type);
+        $this->assertSame($fixtures['destination']->id, $movement->location_id);
+        $this->assertEqualsWithDelta(10, (float) $movement->quantity, 0.01);
+        $this->assertSame('kg', $movement->unit);
+        $this->assertSame($admin->id, $movement->responsible_user);
+        $this->assertEqualsWithDelta(50, (float) $movement->total_price, 0.01);
+        $this->assertSame(
+            $adjustment->movement_date->toDateString(),
+            $movement->movement_date->toDateString()
+        );
+        // Palabra load-bearing: monthlyReport clasifica la columna "Aumentos"
+        // buscando 'aumento'/'ajuste positivo' en las observaciones.
+        $this->assertStringContainsStringIgnoringCase('aumento', $movement->observations);
+
+        $adjustment->refresh();
+        $this->assertSame('approved', $adjustment->status);
+        $this->assertSame($admin->id, $adjustment->approved_by);
+        $this->assertNotNull($adjustment->approved_at);
+        $this->assertEqualsWithDelta(10, (float) $adjustment->quantity_base, 0.01);
+    }
+
+    public function test_approve_exit_delta_reduces_stock_fifo(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        // FIFO ordena por vencimiento: LOTE-A sale primero.
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-A', 3, 8, '2030-01-01');
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-B', 7, 10, '2031-01-01');
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity' => 4,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $this->assertEqualsWithDelta(6, $this->stockAt($fixtures, $fixtures['origin']->id), 0.01);
+        $this->assertDatabaseMissing('inventory', [
+            'location_id' => $fixtures['origin']->id,
+            'batch_number' => 'LOTE-A',
+        ]);
+        $remaining = Inventory::where('batch_number', 'LOTE-B')->first();
+        $this->assertEqualsWithDelta(6, (float) $remaining->quantity, 0.01);
+
+        $movements = $this->movementsOf($adjustment);
+        $this->assertCount(1, $movements);
+
+        $movement = $movements->first();
+        $this->assertSame('exit', $movement->type);
+        $this->assertSame($fixtures['origin']->id, $movement->location_id);
+        $this->assertEqualsWithDelta(4, (float) $movement->quantity, 0.01);
+        $this->assertSame('App\Models\Adjustment', $movement->related_document_type);
+        // Valorado al costo promedio ponderado del origen ANTES de reducir:
+        // (3*8 + 7*10) / 10 = 9.4
+        $this->assertEqualsWithDelta(9.4, (float) $movement->unit_price, 0.01);
+        $this->assertEqualsWithDelta(37.6, (float) $movement->total_price, 0.01);
+        $this->assertStringContainsStringIgnoringCase('disminuc', $movement->observations);
+    }
+
+    public function test_approve_exit_insufficient_stock_fails_and_keeps_everything_intact(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-A', 3);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity' => 10,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(422);
+
+        $message = $response->json('message');
+        $this->assertStringContainsString('Producto Test', $message);
+        $this->assertStringContainsString('10', $message);
+        $this->assertStringContainsString('3', $message);
+
+        $this->assertEqualsWithDelta(3, $this->stockAt($fixtures, $fixtures['origin']->id), 0.01);
+        $this->assertCount(0, $this->movementsOf($adjustment));
+
+        $adjustment->refresh();
+        $this->assertSame('pending', $adjustment->status);
+        $this->assertNull($adjustment->approved_by);
+        $this->assertNull($adjustment->quantity_base);
+    }
+
+    public function test_approve_transfer_moves_stock_from_origin_to_destination(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-ORIGEN', 10, 8);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'transfer',
+            'quantity' => 4,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $this->assertEqualsWithDelta(6, $this->stockAt($fixtures, $fixtures['origin']->id), 0.01);
+        $this->assertEqualsWithDelta(4, $this->stockAt($fixtures, $fixtures['destination']->id), 0.01);
+
+        // Un traslado reubica la mercancía, no la revalúa: el lote destino
+        // hereda el costo del origen (8), no un precio nuevo.
+        $destinationBatch = Inventory::where('location_id', $fixtures['destination']->id)->first();
+        $this->assertEqualsWithDelta(8, (float) $destinationBatch->unit_price, 0.01);
+
+        $movements = $this->movementsOf($adjustment);
+        $this->assertCount(2, $movements);
+
+        $exit = $movements->firstWhere('type', 'exit');
+        $entry = $movements->firstWhere('type', 'entry');
+        $this->assertNotNull($exit);
+        $this->assertNotNull($entry);
+        $this->assertSame($fixtures['origin']->id, $exit->location_id);
+        $this->assertSame($fixtures['destination']->id, $entry->location_id);
+        $this->assertEqualsWithDelta(4, (float) $exit->quantity, 0.01);
+        $this->assertEqualsWithDelta(4, (float) $entry->quantity, 0.01);
+
+        // Decisión documentada: la pata de SALIDA de un traslado no lleva las
+        // palabras 'disminución'/'ajuste negativo' porque monthlyReport ya
+        // contabiliza esa salida en la matriz de envíos (total_shipped, vía
+        // related_document_id compartido); marcarla además como disminución la
+        // restaría DOS veces y descuadraría el informe.
+        $this->assertStringNotContainsStringIgnoringCase('disminuc', $exit->observations);
+        $this->assertStringNotContainsStringIgnoringCase('negativ', $exit->observations);
+        // La pata de ENTRADA sí es un aumento para la ubicación destino, y
+        // ningún otro concepto del informe la explica.
+        $this->assertStringContainsStringIgnoringCase('aumento', $entry->observations);
+    }
+
+    public function test_approve_absolute_entry_sets_batch_to_target_quantity(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['destination']->id, 'LOTE-CONTEO', 6, 5);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'quantity_mode' => 'absolute',
+            'quantity' => 10,
+            'batch_number' => 'LOTE-CONTEO',
+            'unit_price' => 5,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $batch = Inventory::where('batch_number', 'LOTE-CONTEO')->first();
+        $this->assertEqualsWithDelta(10, (float) $batch->quantity, 0.01);
+
+        // El movimiento registra el DELTA aplicado (10 - 6), no el absoluto.
+        $movement = $this->movementsOf($adjustment)->sole();
+        $this->assertSame('entry', $movement->type);
+        $this->assertEqualsWithDelta(4, (float) $movement->quantity, 0.01);
+
+        $adjustment->refresh();
+        $this->assertEqualsWithDelta(4, (float) $adjustment->quantity_base, 0.01);
+    }
+
+    public function test_approve_absolute_entry_rejects_target_below_current_stock(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['destination']->id, 'LOTE-CONTEO', 10, 5);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'quantity_mode' => 'absolute',
+            'quantity' => 4,
+            'batch_number' => 'LOTE-CONTEO',
+            'unit_price' => 5,
+        ]);
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(422);
+        $this->assertStringContainsStringIgnoringCase('salida', $response->json('message'));
+
+        $this->assertEqualsWithDelta(10, $this->stockAt($fixtures, $fixtures['destination']->id), 0.01);
+        $this->assertCount(0, $this->movementsOf($adjustment));
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    public function test_approve_absolute_exit_sets_batch_to_target_quantity(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-CONTEO', 10, 5);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity_mode' => 'absolute',
+            'quantity' => 4,
+            'batch_number' => 'LOTE-CONTEO',
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $batch = Inventory::where('batch_number', 'LOTE-CONTEO')->first();
+        $this->assertEqualsWithDelta(4, (float) $batch->quantity, 0.01);
+
+        $movement = $this->movementsOf($adjustment)->sole();
+        $this->assertSame('exit', $movement->type);
+        $this->assertEqualsWithDelta(6, (float) $movement->quantity, 0.01);
+    }
+
+    public function test_approve_absolute_exit_rejects_target_above_current_stock(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-CONTEO', 4, 5);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity_mode' => 'absolute',
+            'quantity' => 10,
+            'batch_number' => 'LOTE-CONTEO',
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(422);
+        $this->assertStringContainsStringIgnoringCase('entrada', $response->json('message'));
+
+        $this->assertEqualsWithDelta(4, $this->stockAt($fixtures, $fixtures['origin']->id), 0.01);
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    public function test_approve_entry_in_packaging_unit_converts_to_base_only_once(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $this->attachPackagingUnit($fixtures, 'Bulto', 50);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'unit' => 'Bulto',
+            'quantity' => 10,
+            'unit_price' => 2, // por unidad base (kg)
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        // 10 Bultos * 50 kg = 500 kg. Con doble conversión serían 25.000 kg.
+        $batch = Inventory::where('location_id', $fixtures['destination']->id)->first();
+        $this->assertEqualsWithDelta(500, (float) $batch->quantity, 0.01);
+        $this->assertSame('kg', $batch->unit);
+
+        $movement = $this->movementsOf($adjustment)->sole();
+        $this->assertEqualsWithDelta(10, (float) $movement->quantity, 0.01);
+        $this->assertSame('Bulto', $movement->unit);
+        // total = 500 kg * 2; unit_price se expresa en la unidad del movimiento
+        // para conservar el invariante total = cantidad * precio unitario.
+        $this->assertEqualsWithDelta(1000, (float) $movement->total_price, 0.01);
+        $this->assertEqualsWithDelta(100, (float) $movement->unit_price, 0.01);
+
+        $this->assertEqualsWithDelta(500, (float) $adjustment->refresh()->quantity_base, 0.01);
+    }
+
+    public function test_approve_exit_in_packaging_unit_converts_to_base_only_once(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $this->attachPackagingUnit($fixtures, 'Bulto', 50);
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-KG', 600, 3);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'unit' => 'Bulto',
+            'quantity' => 10,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => null,
+        ]);
+
+        // Con doble conversión pediría 10*50*50 = 25.000 kg y devolvería 422.
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $this->assertEqualsWithDelta(100, $this->stockAt($fixtures, $fixtures['origin']->id), 0.01);
+
+        $movement = $this->movementsOf($adjustment)->sole();
+        $this->assertSame('exit', $movement->type);
+        $this->assertEqualsWithDelta(10, (float) $movement->quantity, 0.01);
+        $this->assertSame('Bulto', $movement->unit);
+    }
+
+    public function test_approve_twice_does_not_duplicate_stock(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+        $adjustment = $this->makePendingAdjustment($fixtures, ['quantity' => 10, 'unit_price' => 5]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        $this->approve($admin, $adjustment)
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'La solicitud ya fue procesada.');
+
+        $this->assertEqualsWithDelta(10, $this->stockAt($fixtures, $fixtures['destination']->id), 0.01);
+        $this->assertCount(1, $this->movementsOf($adjustment));
     }
 }

@@ -333,9 +333,14 @@ class InventoryService
     /**
      * Base unit (kg, L, unidades) in which the product's inventory is stored.
      *
+     * Public because callers that already converted a quantity to the base unit
+     * need it to call reduceInventoryFIFO() without triggering a SECOND
+     * conversion: that method converts $quantity from $requestedUnit internally,
+     * so passing the base unit makes the conversion an identity.
+     *
      * @throws \Exception When the product does not exist
      */
-    private function baseUnitOf(string $productId): string
+    public function baseUnitOf(string $productId): string
     {
         $product = Product::find($productId);
 

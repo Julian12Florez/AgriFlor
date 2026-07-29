@@ -7,13 +7,17 @@ use App\Http\Requests\StoreAdjustmentRequest;
 use App\Http\Resources\AdjustmentResource;
 use App\Models\Adjustment;
 use App\Models\AdjustmentReason;
+use App\Models\Inventory;
+use App\Models\InventoryMovement;
 use App\Models\User;
+use App\Services\InventoryService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AdjustmentController extends Controller
 {
@@ -44,6 +48,40 @@ class AdjustmentController extends Controller
      * cualquier otro 1062 sobre la tabla adjustments (ver isDuplicateAdjustmentNumber).
      */
     private const ADJUSTMENT_NUMBER_UNIQUE_INDEX = 'adjustments_adjustment_number_unique';
+
+    /**
+     * Tipo de documento con el que se ligan los movimientos generados al aprobar.
+     *
+     * Literal a propósito (NO $adjustment->getMorphClass()): el proyecto llama a
+     * Relation::enforceMorphMap() en AppServiceProvider, así que getMorphClass()
+     * devolvería el alias 'adjustment', mientras que los informes clasifican
+     * comparando contra el nombre de clase completo — InventoryController::
+     * monthlyReport filtra `related_document_type LIKE '%Reception'` y
+     * ReportExportController compara contra 'App\Models\Reception'. Guardar el
+     * alias dejaría los movimientos de ajuste fuera de esa clasificación.
+     */
+    private const MOVEMENT_DOCUMENT_TYPE = 'App\Models\Adjustment';
+
+    /**
+     * Marcas de las observaciones que los informes usan para clasificar un
+     * movimiento como aumento o disminución de existencias
+     * (InventoryController::monthlyReport busca 'aumento'/'ajuste positivo' y
+     * 'disminuc'/'ajuste negativo' con LIKE). Cambiar estos textos rompe las
+     * columnas "Aumentos"/"Disminuciones" del informe mensual.
+     */
+    private const POSITIVE_TAG = '[AUMENTO / ajuste positivo]';
+    private const NEGATIVE_TAG = '[DISMINUCIÓN / ajuste negativo]';
+
+    /**
+     * Tolerancia (en unidad base) para comparar cantidades, la misma que usa
+     * InventoryService en su bucle FIFO: evita que un residuo de coma flotante
+     * se lea como stock faltante o como un delta real que ajustar.
+     */
+    private const QUANTITY_EPSILON = 0.01;
+
+    public function __construct(private readonly InventoryService $inventoryService)
+    {
+    }
 
     /**
      * Lista paginada de ajustes, con aislamiento por ubicación para los roles
@@ -121,6 +159,85 @@ class AdjustmentController extends Controller
             'success' => true,
             'data' => $query->orderBy('name')->get(),
         ]);
+    }
+
+    /**
+     * Aprueba una solicitud pendiente y APLICA el movimiento al inventario.
+     *
+     * Solo admin (restringido por el middleware `role:admin` en la ruta). Todo
+     * el efecto sobre el stock ocurre dentro de una transacción con
+     * lockForUpdate sobre los lotes implicados: el stock disponible se
+     * RE-VALIDA en el momento de aprobar (pudo cambiar desde que se creó la
+     * solicitud), y si algo falla se revierte por completo dejando la solicitud
+     * en 'pending' y el inventario intacto.
+     */
+    public function approve(Request $request, string $id): JsonResponse
+    {
+        $adjustment = Adjustment::with(self::RELATIONS)->findOrFail($id);
+
+        // Defensa en profundidad: hoy la ruta ya exige admin (que ve todas las
+        // ubicaciones), pero si el rol permitido se ampliara, la aprobación
+        // hereda el mismo guard de ubicación que show().
+        $this->authorizeLocationAccess($adjustment, $request->user());
+
+        if ($adjustment->status !== 'pending') {
+            return $this->alreadyProcessedResponse();
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Re-lectura del estado CON la fila bloqueada: sin esto, dos
+            // aprobaciones simultáneas del mismo ajuste pasarían ambas el
+            // chequeo de arriba y aplicarían el stock dos veces.
+            if (Adjustment::whereKey($adjustment->id)->lockForUpdate()->value('status') !== 'pending') {
+                DB::rollBack();
+
+                return $this->alreadyProcessedResponse();
+            }
+
+            $userId = $request->user()->id;
+            $deltaBase = $this->resolveDeltaBase($adjustment);
+
+            $this->applyStock($adjustment, $deltaBase, $userId);
+
+            $adjustment->update([
+                'status' => 'approved',
+                'approved_by' => $userId,
+                'approved_at' => now(),
+                'quantity_base' => $deltaBase,
+            ]);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Adjustment approval failed', [
+                'adjustment_id' => $adjustment->id,
+                'type' => $adjustment->type,
+                'quantity_mode' => $adjustment->quantity_mode,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se pudo aplicar el ajuste: ' . $e->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Ajuste aprobado y aplicado al inventario.',
+            'data' => new AdjustmentResource($adjustment->fresh(self::RELATIONS)),
+        ]);
+    }
+
+    private function alreadyProcessedResponse(): JsonResponse
+    {
+        return response()->json([
+            'success' => false,
+            'message' => 'La solicitud ya fue procesada.',
+        ], 422);
     }
 
     /**
@@ -284,5 +401,354 @@ class AdjustmentController extends Controller
     {
         return ($e->errorInfo[1] ?? null) === 1062
             && str_contains($e->getMessage(), self::ADJUSTMENT_NUMBER_UNIQUE_INDEX);
+    }
+
+    // ------------------------------------------------------------------
+    // Aprobación: cálculo del delta y aplicación al inventario.
+    // Todos los métodos de esta sección corren dentro de la transacción de
+    // approve(), y toda cantidad que manejan está en UNIDAD BASE del producto.
+    // ------------------------------------------------------------------
+
+    /**
+     * Cantidad (en unidad base) que la aprobación debe mover, siempre positiva.
+     */
+    private function resolveDeltaBase(Adjustment $adjustment): float
+    {
+        if ($adjustment->quantity_mode === 'delta') {
+            return $this->toBase($adjustment, (float) $adjustment->quantity);
+        }
+
+        return $this->resolveAbsoluteDeltaBase($adjustment);
+    }
+
+    /**
+     * Modo absoluto: la cantidad de la solicitud es el saldo QUE DEBE QUEDAR en
+     * el lote, así que el movimiento a aplicar es la diferencia contra lo que
+     * hay hoy. El lote se bloquea (lockForUpdate) para que ese "hoy" no cambie
+     * entre el cálculo y la aplicación.
+     */
+    private function resolveAbsoluteDeltaBase(Adjustment $adjustment): float
+    {
+        if (!in_array($adjustment->type, ['entry', 'exit'], true)) {
+            throw new \RuntimeException('El modo de cantidad absoluto solo aplica a entradas o salidas.');
+        }
+
+        [$currentBase] = $this->stockSnapshot($adjustment, $this->stockLocationId($adjustment), true);
+        $targetBase = $this->toBase($adjustment, (float) $adjustment->quantity);
+
+        return $this->absoluteDeltaForType($adjustment, $currentBase, $targetBase);
+    }
+
+    /**
+     * Valida que el sentido del ajuste absoluto coincida con su tipo y devuelve
+     * la magnitud a mover. Un absoluto que contradice el tipo casi siempre es un
+     * error de captura (se eligió "entrada" para bajar el saldo, o al revés).
+     */
+    private function absoluteDeltaForType(Adjustment $adjustment, float $currentBase, float $targetBase): float
+    {
+        $delta = $targetBase - $currentBase;
+        $baseUnit = $this->inventoryService->baseUnitOf($adjustment->product_id);
+        $current = round($currentBase, 2) . ' ' . $baseUnit;
+        $target = round($targetBase, 2) . ' ' . $baseUnit;
+
+        if (abs($delta) <= self::QUANTITY_EPSILON) {
+            throw new \RuntimeException(
+                "El lote '{$adjustment->batch_number}' ya tiene la cantidad indicada ({$current}): no hay nada que ajustar."
+            );
+        }
+
+        if ($adjustment->type === 'entry' && $delta < 0) {
+            throw new \RuntimeException(
+                "El valor absoluto indicado ({$target}) es menor al stock actual del lote " .
+                "'{$adjustment->batch_number}' ({$current}); use un ajuste de salida."
+            );
+        }
+
+        if ($adjustment->type === 'exit' && $delta > 0) {
+            throw new \RuntimeException(
+                "El valor absoluto indicado ({$target}) es mayor al stock actual del lote " .
+                "'{$adjustment->batch_number}' ({$current}); use un ajuste de entrada."
+            );
+        }
+
+        return abs($delta);
+    }
+
+    /**
+     * Ubicación cuyo stock se ve afectado por una entrada o una salida.
+     */
+    private function stockLocationId(Adjustment $adjustment): string
+    {
+        return $adjustment->type === 'entry'
+            ? $adjustment->destination_location_id
+            : $adjustment->origin_location_id;
+    }
+
+    private function applyStock(Adjustment $adjustment, float $deltaBase, string $userId): void
+    {
+        if ($adjustment->type === 'entry') {
+            $this->applyEntry(
+                $adjustment,
+                $adjustment->destination_location_id,
+                $deltaBase,
+                (float) ($adjustment->unit_price ?? 0),
+                $userId,
+                self::POSITIVE_TAG . ' ' . $this->reasonAndNotes($adjustment)
+            );
+
+            return;
+        }
+
+        if ($adjustment->type === 'exit') {
+            $this->applyExit(
+                $adjustment,
+                $deltaBase,
+                $userId,
+                self::NEGATIVE_TAG . ' ' . $this->reasonAndNotes($adjustment)
+            );
+
+            return;
+        }
+
+        $this->applyTransfer($adjustment, $deltaBase, $userId);
+    }
+
+    /**
+     * Traslado = salida en origen + entrada en destino por la MISMA cantidad.
+     *
+     * La entrada se valora al costo del stock que salió del origen (promedio
+     * ponderado calculado ANTES de reducir, que es lo que devuelve applyExit):
+     * un traslado reubica mercancía, no la revalúa. Si el origen no tuviera
+     * costo registrado se cae al unit_price del ajuste, y en última instancia a
+     * 0 (addStock rechaza precios negativos, no un costo desconocido).
+     */
+    private function applyTransfer(Adjustment $adjustment, float $deltaBase, string $userId): void
+    {
+        $costInBase = $this->applyExit(
+            $adjustment,
+            $deltaBase,
+            $userId,
+            $this->transferExitObservations($adjustment)
+        );
+
+        $this->applyEntry(
+            $adjustment,
+            $adjustment->destination_location_id,
+            $deltaBase,
+            $costInBase,
+            $userId,
+            $this->transferEntryObservations($adjustment)
+        );
+    }
+
+    private function applyEntry(
+        Adjustment $adjustment,
+        string $locationId,
+        float $deltaBase,
+        float $unitPriceInBase,
+        string $userId,
+        string $observations
+    ): void {
+        $this->inventoryService->addStock(
+            $adjustment->product_id,
+            $adjustment->brand_id,
+            $locationId,
+            $deltaBase,
+            $unitPriceInBase,
+            $adjustment->batch_number ?: 'AJU-' . substr($adjustment->id, 0, 8),
+            null
+        );
+
+        $this->recordMovement($adjustment, 'entry', $locationId, $deltaBase, $unitPriceInBase, $userId, $observations);
+    }
+
+    /**
+     * Salida en la ubicación de origen, consumiendo por FIFO.
+     *
+     * @return float Costo por unidad base del stock consumido (lo usa el traslado
+     *               para valorar la entrada en destino).
+     */
+    private function applyExit(Adjustment $adjustment, float $deltaBase, string $userId, string $observations): float
+    {
+        $locationId = $adjustment->origin_location_id;
+
+        // Re-validación del stock EN EL MOMENTO DE APROBAR, con las filas
+        // bloqueadas: entre la solicitud y la aprobación pudo consumirse.
+        [$availableBase, $unitPriceInBase] = $this->stockSnapshot($adjustment, $locationId, true);
+        $this->assertSufficientStock($adjustment, $availableBase, $deltaBase);
+
+        $this->inventoryService->reduceInventoryFIFO(
+            $adjustment->product_id,
+            $adjustment->brand_id,
+            $locationId,
+            $deltaBase,
+            // $deltaBase YA está en unidad base y reduceInventoryFIFO convierte
+            // internamente con la unidad que reciba: pasarle $adjustment->unit
+            // (p. ej. "Bulto") aplicaría el factor DOS veces. Con la unidad base
+            // la conversión interna es la identidad.
+            $this->inventoryService->baseUnitOf($adjustment->product_id),
+            $adjustment->batch_number
+        );
+
+        $this->recordMovement($adjustment, 'exit', $locationId, $deltaBase, $unitPriceInBase, $userId, $observations);
+
+        return $unitPriceInBase;
+    }
+
+    private function assertSufficientStock(Adjustment $adjustment, float $availableBase, float $requiredBase): void
+    {
+        if ($availableBase + self::QUANTITY_EPSILON >= $requiredBase) {
+            return;
+        }
+
+        $productName = $adjustment->product?->name ?? $adjustment->product_id;
+        $locationName = $adjustment->originLocation?->name ?? 'la ubicación de origen';
+        $baseUnit = $this->inventoryService->baseUnitOf($adjustment->product_id);
+        $batch = $adjustment->batch_number ? " (lote '{$adjustment->batch_number}')" : '';
+
+        throw new \RuntimeException(
+            "Stock insuficiente de '{$productName}' en {$locationName}{$batch}: se requieren " .
+            round($requiredBase, 2) . " {$baseUnit} y solo hay " . round($availableBase, 2) .
+            ' (faltan ' . round($requiredBase - $availableBase, 2) . ').'
+        );
+    }
+
+    /**
+     * Existencia disponible y costo promedio ponderado del producto/marca del
+     * ajuste en una ubicación, ambos en unidad base (inventory.unit_price se
+     * almacena por unidad base desde la migración que corrigió los precios de
+     * presentación). Si el ajuste apunta a un lote concreto, solo mira ese lote.
+     *
+     * Con $lock, bloquea las filas para que la re-validación, el cálculo del
+     * delta absoluto y la reducción posterior vean exactamente el mismo estado.
+     *
+     * @return array{0: float, 1: float} [disponible en base, costo por unidad base]
+     */
+    private function stockSnapshot(Adjustment $adjustment, string $locationId, bool $lock = false): array
+    {
+        $query = Inventory::where('product_id', $adjustment->product_id)
+            ->where('brand_id', $adjustment->brand_id)
+            ->where('location_id', $locationId)
+            ->where('quantity', '>', 0);
+
+        if ($adjustment->batch_number !== null) {
+            $query->where('batch_number', $adjustment->batch_number);
+        }
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        $totalBase = 0.0;
+        $totalValue = 0.0;
+
+        foreach ($query->get() as $batch) {
+            $quantityInBase = $this->inventoryService->toBaseUnit(
+                (float) $batch->quantity,
+                $batch->unit,
+                $adjustment->product_id
+            );
+
+            $totalBase += $quantityInBase;
+            $totalValue += $quantityInBase * (float) $batch->unit_price;
+        }
+
+        $averagePrice = $totalBase > 0
+            ? $totalValue / $totalBase
+            : (float) ($adjustment->unit_price ?? 0);
+
+        return [$totalBase, $averagePrice];
+    }
+
+    /**
+     * Movimiento de kardex ligado al ajuste.
+     *
+     * `type` solo puede ser 'entry' o 'exit': el enum de inventory_movements es
+     * ('entry','exit','transfer','application') y NO incluye 'adjustment'.
+     *
+     * La cantidad se registra en la unidad que eligió el solicitante (kg,
+     * Bulto...), pero el VALOR del movimiento no depende de la presentación:
+     * total = cantidad_base * costo_por_unidad_base. El precio unitario se
+     * deriva de ese total para conservar el invariante del proyecto
+     * (total_price = quantity * unit_price) también cuando la unidad es una
+     * presentación.
+     */
+    private function recordMovement(
+        Adjustment $adjustment,
+        string $type,
+        string $locationId,
+        float $deltaBase,
+        float $unitPriceInBase,
+        string $userId,
+        string $observations
+    ): void {
+        $quantity = $this->inventoryService->fromBaseUnit($deltaBase, $adjustment->unit, $adjustment->product_id);
+        $totalPrice = $deltaBase * $unitPriceInBase;
+
+        InventoryMovement::create([
+            'type' => $type,
+            'product_id' => $adjustment->product_id,
+            'brand_id' => $adjustment->brand_id,
+            'location_id' => $locationId,
+            'quantity' => $quantity,
+            'unit' => $adjustment->unit,
+            'movement_date' => $adjustment->movement_date?->toDateString(),
+            'unit_price' => $quantity > 0 ? $totalPrice / $quantity : $unitPriceInBase,
+            'total_price' => $totalPrice,
+            'responsible_user' => $userId,
+            'related_document_id' => $adjustment->id,
+            'related_document_type' => self::MOVEMENT_DOCUMENT_TYPE,
+            'observations' => $observations,
+        ]);
+    }
+
+    /**
+     * Salida de un traslado: deliberadamente SIN las palabras
+     * 'disminución'/'ajuste negativo'.
+     *
+     * InventoryController::monthlyReport ya contabiliza esta salida en la matriz
+     * de envíos a fincas (empareja las entradas del destino con los exit del
+     * origen por related_document_id, que ambas patas comparten). Marcarla
+     * además como disminución la restaría DOS veces del movimiento total y
+     * descuadraría el informe justo en el caso dominante (bodega → finca).
+     * Un traslado, además, no cambia el inventario total de la empresa: solo lo
+     * reubica; las columnas Aumentos/Disminuciones existen para ajustes netos
+     * (mermas, sobrantes), que son los que se concilian contra contabilidad.
+     */
+    private function transferExitObservations(Adjustment $adjustment): string
+    {
+        $destination = $adjustment->destinationLocation?->name ?? 'la ubicación de destino';
+
+        return "[TRASLADO POR AJUSTE] Salida hacia {$destination} - " . $this->reasonAndNotes($adjustment);
+    }
+
+    /**
+     * Entrada de un traslado: SÍ lleva 'aumento'.
+     *
+     * Para la ubicación de destino esta entrada sí es un ingreso de existencias
+     * y ningún otro concepto del informe mensual la explica (no es compra: el
+     * filtro de compras exige related_document_type Reception/Purchase o nulo,
+     * y el nuestro es Adjustment). Sin la marca quedaría como "Variación" —un
+     * descuadre aparente— en el informe del destino. Contabilizarla aquí no
+     * duplica nada: la columna de envíos de la ubicación ORIGEN usa esta misma
+     * fila, pero en otro informe y con otro propósito.
+     */
+    private function transferEntryObservations(Adjustment $adjustment): string
+    {
+        $origin = $adjustment->originLocation?->name ?? 'la ubicación de origen';
+
+        return "[TRASLADO POR AJUSTE] Entrada (aumento) desde {$origin} - " . $this->reasonAndNotes($adjustment);
+    }
+
+    private function reasonAndNotes(Adjustment $adjustment): string
+    {
+        $reason = $adjustment->reason?->name ?? 'Ajuste de inventario';
+
+        return $adjustment->notes ? "{$reason} - {$adjustment->notes}" : $reason;
+    }
+
+    private function toBase(Adjustment $adjustment, float $quantity): float
+    {
+        return $this->inventoryService->toBaseUnit($quantity, $adjustment->unit, $adjustment->product_id);
     }
 }
