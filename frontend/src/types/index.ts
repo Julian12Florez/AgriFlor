@@ -298,6 +298,53 @@ export interface ReceptionBatchItem {
   observations?: string;
 }
 
+// Adjustments Module Types (solicitudes de ajuste de inventario con aprobación)
+export interface AdjustmentReason {
+  id: string;
+  code: string;
+  name: string;
+  direction: 'any' | 'entry' | 'exit' | 'transfer';
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Adjustment {
+  id: string;
+  adjustment_number: string;
+  type: 'entry' | 'exit' | 'transfer';
+  reason_id: string;
+  notes: string | null;
+  product_id: string;
+  brand_id: string;
+  unit: string;
+  quantity_mode: 'delta' | 'absolute';
+  quantity: number;
+  quantity_base: number | null;
+  origin_location_id: string | null;
+  destination_location_id: string | null;
+  batch_number: string | null;
+  unit_price: number | null;
+  movement_date: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  responsible_user: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  rejection_reason: string | null;
+  created_at: string;
+
+  // Campos planos (dual naming) poblados por AdjustmentResource cuando la
+  // relación viene cargada desde el backend.
+  reason_name?: string;
+  product_name?: string;
+  product_code?: string;
+  brand_name?: string;
+  origin_location_name?: string;
+  destination_location_name?: string;
+  requester_name?: string;
+  approver_name?: string;
+}
+
 // Common Types
 export interface ApiResponse<T> {
   data: T;

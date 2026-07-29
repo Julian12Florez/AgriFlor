@@ -127,6 +127,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         label: 'Inventario',
         children: [
           { key: '/inventory', label: 'Inventario y Kardex' },
+          { key: '/inventory/adjustments', label: 'Ajustes de Inventario' },
           { key: '/reports/stock', label: 'Stock Actual' },
           { key: '/reports/monthly-inventory', label: 'Inventario Mensual' },
           { key: '/reports/farm-monthly', label: 'Inventario Mensual por Finca' },
