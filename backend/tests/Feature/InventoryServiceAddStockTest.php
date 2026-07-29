@@ -178,6 +178,69 @@ class InventoryServiceAddStockTest extends TestCase
         $this->addStock(0, 5.0, 'AJU-invalid');
     }
 
+    /**
+     * Crea un lote con cantidad corrupta (negativa) saltandose el servicio,
+     * para poder ejercitar la guarda de increaseBatch().
+     */
+    private function makeCorruptBatch(string $batchNumber, float $quantity): Inventory
+    {
+        return Inventory::create([
+            'product_id' => $this->product->id,
+            'brand_id' => $this->brand->id,
+            'location_id' => $this->location->id,
+            'batch_number' => $batchNumber,
+            'quantity' => $quantity,
+            'unit' => 'kg',
+            'unit_price' => 5.0,
+            'total_value' => $quantity * 5.0,
+            'status' => 'good',
+        ]);
+    }
+
+    private function captureThrowable(callable $callback): ?\Throwable
+    {
+        try {
+            $callback();
+        } catch (\Throwable $throwable) {
+            return $throwable;
+        }
+
+        return null;
+    }
+
+    public function test_does_not_divide_by_zero_when_resulting_quantity_is_zero(): void
+    {
+        // -10 (dato corrupto) + 10 => 0 : sin la guarda esto seria un DivisionByZeroError fatal.
+        $batch = $this->makeCorruptBatch('AJU-zero', -10);
+
+        $thrown = $this->captureThrowable(fn () => $this->addStock(10, 7.0, 'AJU-zero'));
+
+        $this->assertNotNull($thrown, 'Se esperaba una excepcion controlada.');
+        $this->assertNotInstanceOf(\DivisionByZeroError::class, $thrown);
+        $this->assertInstanceOf(\Exception::class, $thrown);
+        $this->assertStringContainsString('cantidad no positiva', $thrown->getMessage());
+
+        // El lote no se toca: la operacion se rechaza completa.
+        $batch->refresh();
+        $this->assertEqualsWithDelta(-10, (float) $batch->quantity, 0.01);
+        $this->assertEqualsWithDelta(5.0, (float) $batch->unit_price, 0.01);
+    }
+
+    public function test_rejects_when_resulting_quantity_stays_negative(): void
+    {
+        // -30 + 10 => -20 : nunca se persiste stock negativo.
+        $batch = $this->makeCorruptBatch('AJU-neg', -30);
+
+        $thrown = $this->captureThrowable(fn () => $this->addStock(10, 7.0, 'AJU-neg'));
+
+        $this->assertNotNull($thrown, 'Se esperaba una excepcion controlada.');
+        $this->assertInstanceOf(\Exception::class, $thrown);
+        $this->assertStringContainsString('cantidad no positiva', $thrown->getMessage());
+
+        $batch->refresh();
+        $this->assertEqualsWithDelta(-30, (float) $batch->quantity, 0.01);
+    }
+
     public function test_keeps_expiration_date_and_marks_expired_batches(): void
     {
         $this->addStock(10, 5.0, 'AJU-exp', now()->subDay()->toDateString());

@@ -282,6 +282,8 @@ class InventoryService
      * Add quantity to an existing batch using weighted average cost.
      *
      * newUnitPrice = ((qty * unitPrice) + (delta * incomingPrice)) / (qty + delta)
+     *
+     * @throws \Exception When the resulting quantity is not positive (corrupt batch)
      */
     private function increaseBatch(
         Inventory $batch,
@@ -293,6 +295,18 @@ class InventoryService
         $currentUnitPrice = floatval($batch->unit_price);
 
         $newQuantity = $currentQuantity + $quantityInBase;
+
+        // Guarda obligatoria: addStock ya valida que $quantityInBase > 0, asi que un
+        // resultado <= 0 solo puede venir de un lote con cantidad negativa (dato corrupto).
+        // Sin esta guarda, $newQuantity == 0 provocaria un DivisionByZeroError fatal.
+        if ($newQuantity <= 0) {
+            throw new \Exception(
+                "El lote '{$batch->batch_number}' quedaria con una cantidad no positiva (" .
+                round($newQuantity, 2) . "): tiene " . round($currentQuantity, 2) .
+                " en existencia. Revise el inventario antes de registrar el ingreso."
+            );
+        }
+
         $newUnitPrice = (($currentQuantity * $currentUnitPrice) + ($quantityInBase * $unitPrice)) / $newQuantity;
         $newExpirationDate = $expirationDate ?? optional($batch->expiration_date)->toDateString();
 
