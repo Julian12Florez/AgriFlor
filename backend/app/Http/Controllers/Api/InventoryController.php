@@ -16,6 +16,14 @@ use Illuminate\Support\Facades\Validator;
 
 class InventoryController extends Controller
 {
+    /**
+     * Tipo de documento con el que se guardan los movimientos que genera la
+     * aprobación de una solicitud de ajuste (espejo de
+     * AdjustmentController::MOVEMENT_DOCUMENT_TYPE: el nombre de clase completo,
+     * NO el alias del morph map).
+     */
+    private const ADJUSTMENT_DOCUMENT_TYPE = 'App\Models\Adjustment';
+
     private InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -1508,27 +1516,32 @@ class InventoryController extends Controller
                     $currentStock += $this->inventoryService->toBaseUnit((float) $inv->quantity, $inv->unit, $product->id);
                 }
 
-                // 6. Increases (adjustments positive - not purchases, not remanentes)
-                $increases = InventoryMovement::where('product_id', $product->id)
-                    ->where('type', 'entry')
-                    ->where('location_id', $warehouseId)
-                    ->whereBetween('movement_date', [$startDate, $endDate])
-                    ->where(function ($q) {
-                        $q->where('observations', 'like', '%aumento%')
-                            ->orWhere('observations', 'like', '%ajuste%positiv%');
-                    })
-                    ->sum('quantity');
+                // 6. Aumentos: ajustes que INCREMENTAN las existencias de la ubicación.
+                //    Incluye la pata de ENTRADA de un traslado: para el destino es un
+                //    ingreso real y ninguna otra columna la explica (no es compra), así
+                //    que sin contarla quedaría como "Variación", un descuadre aparente.
+                $increases = $this->whereClassifiedAsAdjustment(
+                    InventoryMovement::where('product_id', $product->id)
+                        ->where('type', 'entry')
+                        ->where('location_id', $warehouseId)
+                        ->whereBetween('movement_date', [$startDate, $endDate]),
+                    ['entry', 'transfer'],
+                    ['%aumento%', '%ajuste%positiv%']
+                )->sum('quantity');
 
-                // 7. Decreases (adjustments negative - not shipments)
-                $decreases = InventoryMovement::where('product_id', $product->id)
-                    ->whereIn('type', ['exit', 'application'])
-                    ->where('location_id', $warehouseId)
-                    ->whereBetween('movement_date', [$startDate, $endDate])
-                    ->where(function ($q) {
-                        $q->where('observations', 'like', '%disminuc%')
-                            ->orWhere('observations', 'like', '%ajuste%negativ%');
-                    })
-                    ->sum('quantity');
+                // 7. Disminuciones: ajustes que REDUCEN las existencias de la ubicación.
+                //    Solo los de tipo 'exit' (ajustes netos: mermas, bajas). La pata de
+                //    SALIDA de un traslado queda deliberadamente fuera porque ya se
+                //    resta arriba en la matriz de envíos (paso 3, emparejada por
+                //    related_document_id): contarla también aquí la restaría DOS veces.
+                $decreases = $this->whereClassifiedAsAdjustment(
+                    InventoryMovement::where('product_id', $product->id)
+                        ->whereIn('type', ['exit', 'application'])
+                        ->where('location_id', $warehouseId)
+                        ->whereBetween('movement_date', [$startDate, $endDate]),
+                    ['exit'],
+                    ['%disminuc%', '%ajuste%negativ%']
+                )->sum('quantity');
 
                 // Total movements = purchases + increases - shipped - decreases + returns
                 $totalMov = round((float)$purchases + (float)$increases - (float)$totalShipped - (float)$decreases + (float)$returns, 2);
@@ -1587,6 +1600,63 @@ class InventoryController extends Controller
                 'message' => 'Error al generar el reporte mensual: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Restringe una consulta de movimientos a los que cuentan en las columnas
+     * "Aumentos" / "Disminuciones" del inventario mensual.
+     *
+     * La clasificación depende del ORIGEN del movimiento:
+     *
+     * - Si viene de una solicitud de ajuste (related_document_type =
+     *   'App\Models\Adjustment'), se clasifica por el TIPO DEL DOCUMENTO
+     *   (adjustments.type), nunca por el texto. Las observaciones incluyen las
+     *   notas que escribe el solicitante, así que clasificar por texto deja el
+     *   informe a merced de lo que alguien redacte: una nota con la palabra
+     *   "disminución" convertiría la SALIDA de un traslado en una disminución,
+     *   y esa salida ya se resta en la matriz de envíos (ambas patas del
+     *   traslado comparten related_document_id) — se restaría dos veces y la
+     *   "Variación" del origen dejaría de ser 0, que es justo la columna que el
+     *   cliente concilia contra contabilidad.
+     *
+     * - Si NO viene de un ajuste (incluidos los movimientos antiguos, donde
+     *   related_document_type es NULL), se clasifica por el texto de la
+     *   observación: es la única marca que tiene el histórico previo al módulo
+     *   de ajustes.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query  consulta ya filtrada por producto, tipo de movimiento, ubicación y rango de fechas
+     * @param  array<int, string>  $adjustmentTypes  valores de adjustments.type que cuentan en esta columna
+     * @param  array<int, string>  $legacyObservationPatterns  patrones LIKE para los movimientos que no provienen de un ajuste
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    private function whereClassifiedAsAdjustment($query, array $adjustmentTypes, array $legacyObservationPatterns)
+    {
+        return $query->where(function ($outer) use ($adjustmentTypes, $legacyObservationPatterns) {
+            // Proviene de una solicitud de ajuste: manda el tipo del documento.
+            $outer->where(function ($fromAdjustment) use ($adjustmentTypes) {
+                $fromAdjustment
+                    ->where('related_document_type', self::ADJUSTMENT_DOCUMENT_TYPE)
+                    ->whereExists(function ($exists) use ($adjustmentTypes) {
+                        $exists->selectRaw('1')
+                            ->from('adjustments')
+                            ->whereColumn('adjustments.id', 'inventory_movements.related_document_id')
+                            ->whereIn('adjustments.type', $adjustmentTypes);
+                    });
+            });
+
+            // Histórico / cualquier otro documento: manda el texto.
+            $outer->orWhere(function ($legacy) use ($legacyObservationPatterns) {
+                $legacy->where(function ($notFromAdjustment) {
+                    $notFromAdjustment
+                        ->where('related_document_type', '!=', self::ADJUSTMENT_DOCUMENT_TYPE)
+                        ->orWhereNull('related_document_type');
+                })->where(function ($byText) use ($legacyObservationPatterns) {
+                    foreach ($legacyObservationPatterns as $pattern) {
+                        $byText->orWhere('observations', 'like', $pattern);
+                    }
+                });
+            });
+        });
     }
 
     /**
