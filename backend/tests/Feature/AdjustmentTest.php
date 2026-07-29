@@ -1143,6 +1143,93 @@ class AdjustmentTest extends TestCase
         $this->assertEqualsWithDelta(34, (float) $entry->total_price, 0.01);
     }
 
+    public function test_approve_transfer_from_zero_cost_batch_preserves_value(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        // Costo 0 legítimo (producto donado / carga inicial sin valorar).
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-SIN-COSTO', 10, 0);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'transfer',
+            'quantity' => 4,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+            'unit_price' => 5, // debe ignorarse: el costo consumido SÍ se conoce, y es 0
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        // Costo 0 es un costo CONOCIDO: tomarlo por "desconocido" y sustituirlo
+        // por el unit_price del ajuste acreditaría el destino a 5/kg y el
+        // inventario total pasaría de 0 a 20.
+        $this->assertEqualsWithDelta(0, (float) Inventory::sum('total_value'), 0.01);
+
+        $destinationBatch = Inventory::where('location_id', $fixtures['destination']->id)->sole();
+        $this->assertEqualsWithDelta(4, (float) $destinationBatch->quantity, 0.01);
+        $this->assertEqualsWithDelta(0, (float) $destinationBatch->unit_price, 0.01);
+
+        foreach ($this->movementsOf($adjustment) as $movement) {
+            $this->assertEqualsWithDelta(0, (float) $movement->unit_price, 0.01);
+            $this->assertEqualsWithDelta(0, (float) $movement->total_price, 0.01);
+        }
+    }
+
+    public function test_approve_exit_from_zero_cost_batch_records_zero_value(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-SIN-COSTO', 10, 0);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'exit',
+            'quantity' => 4,
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => null,
+            'unit_price' => 5, // idem: no puede valorar una baja de stock sin costo
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        // El kardex no puede dar de baja 20 de un inventario que valía 0.
+        $movement = $this->movementsOf($adjustment)->sole();
+        $this->assertEqualsWithDelta(0, (float) $movement->unit_price, 0.01);
+        $this->assertEqualsWithDelta(0, (float) $movement->total_price, 0.01);
+        $this->assertEqualsWithDelta(0, (float) Inventory::sum('total_value'), 0.01);
+    }
+
+    public function test_approve_transfer_keeps_nearest_expiration_when_merging_batches(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $nearExpiry = now()->addDays(10)->toDateString();
+        // Mismo número de lote en ambas ubicaciones: la entrada se fusiona con
+        // el lote que YA existe en el destino.
+        $this->seedBatch($fixtures, $fixtures['destination']->id, 'L1', 5, 8, $nearExpiry);
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'L1', 5, 8, '2031-01-01');
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'transfer',
+            'quantity' => 3,
+            'batch_number' => 'L1',
+            'origin_location_id' => $fixtures['origin']->id,
+            'destination_location_id' => $fixtures['destination']->id,
+            'unit_price' => null,
+        ]);
+
+        $this->approve($admin, $adjustment)->assertStatus(200);
+
+        // La fusión NO puede rejuvenecer el lote del destino: se queda con la
+        // fecha más próxima de las dos, y con el status que le corresponde.
+        $destinationBatch = Inventory::where('location_id', $fixtures['destination']->id)->sole();
+        $this->assertEqualsWithDelta(8, (float) $destinationBatch->quantity, 0.01);
+        $this->assertSame($nearExpiry, $destinationBatch->expiration_date->toDateString());
+        $this->assertSame('near_expiry', $destinationBatch->status);
+    }
+
     public function test_approve_transfer_inherits_expiration_date_from_consumed_batches(): void
     {
         $fixtures = $this->createCatalogFixtures();

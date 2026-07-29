@@ -326,6 +326,14 @@ class InventoryService
      *
      * newUnitPrice = ((qty * unitPrice) + (delta * incomingPrice)) / (qty + delta)
      *
+     * La fecha de vencimiento resultante es la MÁS PRÓXIMA entre la del lote y
+     * la que entra (no la que entra sin más): al mezclar dos existencias en un
+     * mismo lote, la fecha segura es la del producto que caduca antes; quedarse
+     * con la más lejana "rejuvenecería" mercancía próxima a vencer y la sacaría
+     * de las alertas y del frente del FIFO. La regla vive aquí, que es el único
+     * punto que conoce AMBAS fechas, para que valga para cualquier llamador de
+     * addStock() y no solo para el flujo que la necesitó primero.
+     *
      * @throws \Exception When the resulting quantity is not positive (corrupt batch)
      */
     private function increaseBatch(
@@ -351,7 +359,10 @@ class InventoryService
         }
 
         $newUnitPrice = (($currentQuantity * $currentUnitPrice) + ($quantityInBase * $unitPrice)) / $newQuantity;
-        $newExpirationDate = $expirationDate ?? optional($batch->expiration_date)->toDateString();
+        $newExpirationDate = $this->earlierDate(
+            optional($batch->expiration_date)->toDateString(),
+            $expirationDate
+        );
 
         $batch->update([
             'quantity' => $newQuantity,

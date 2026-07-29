@@ -619,10 +619,13 @@ class AdjustmentController extends Controller
             $adjustment->batch_number
         );
 
-        // Solo si los lotes consumidos no tenían costo registrado se recurre al
-        // del ajuste (y en última instancia a 0: addStock rechaza negativos,
-        // no un costo desconocido).
-        $unitPriceInBase = $consumption['consumed_value'] > 0
+        // El guard va sobre la CANTIDAD consumida, no sobre el valor: un costo de
+        // 0 es un costo conocido y legítimo (producto donado, carga inicial sin
+        // valorar), y sustituirlo por el unit_price del ajuste crearía valor de
+        // la nada igual que valorar con un promedio ajeno a lo consumido. El
+        // fallback queda solo para cuando no se consumió nada (y en última
+        // instancia 0: addStock rechaza negativos, no un costo desconocido).
+        $unitPriceInBase = $consumption['consumed_base_qty'] > 0
             ? $consumption['unit_price_base']
             : (float) ($adjustment->unit_price ?? 0);
 
