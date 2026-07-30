@@ -113,30 +113,73 @@ export interface OutputProduct {
   id: string;
   productId: string;
   productName: string;
+  brandId: string;
   brandName: string;
   quantityRequested: number;
   quantityDelivered: number;
   unit: string;
-  expirationDate?: Date;
-  availableStock: number;
+  batchNumber?: string;
+  expirationDate?: string;
+  suggestedExpirationDate?: string;
 }
 
+export interface ProductOutputLocation {
+  id: string;
+  name: string;
+  type: 'warehouse' | 'farm';
+  municipality: string;
+}
+
+export interface ProductOutputFarmLot {
+  id: string;
+  name: string;
+  area?: number;
+  area_unit?: string;
+  description?: string;
+  location?: {
+    id: string;
+    name: string;
+  };
+}
+
+// Alineado con ProductOutputResource.php: la API NUNCA envía orderNumber, orderName,
+// originLocationName, destinationLocationName ni farmName (eran campos del mock). Envía
+// technicalOrder/originLocation/destinationLocation/farmLots/outputType como objetos anidados,
+// y solo cuando la relación viene cargada.
 export interface ProductOutput {
   id: string;
   outputNumber: string;
-  orderNumber: string;
-  orderName: string;
-  outputDate: Date;
+  technicalOrderId?: string | null;
+  technicalOrder?: {
+    id: string;
+    orderNumber: string;
+    orderDate: string | null;
+    status: string;
+  };
+  outputDate: string;
   originLocationId: string;
-  originLocationName: string;
+  originLocation?: ProductOutputLocation;
   destinationLocationId: string;
-  destinationLocationName: string;
+  destinationLocation?: ProductOutputLocation;
   products: OutputProduct[];
   responsibleUser: string;
+  responsibleUserDetails?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   status: 'pending' | 'partial' | 'completed';
   observations?: string;
-  totalCost: number;
-  createdAt: Date;
+  totalCost?: number;
+  outputTypeId: string;
+  outputType?: {
+    id: string;
+    name: string;
+    code: 'transfer' | 'consumption' | 'remanente' | 'technical_order' | 'free_request' | string;
+    requires_lots: boolean;
+  };
+  farmLots?: ProductOutputFarmLot[];
+  createdAt: string;
 }
 
 // Recepción Unificada - Maneja tanto compras como salidas
