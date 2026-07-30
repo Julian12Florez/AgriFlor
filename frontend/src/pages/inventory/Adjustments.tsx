@@ -70,9 +70,69 @@ const getLocationsText = (record: Adjustment): string => {
   return `${record.origin_location_name || 'Origen'} → ${record.destination_location_name || 'Destino'}`;
 };
 
-const getSignedQuantityText = (record: Adjustment): string => {
-  const sign = record.type === 'entry' ? '+' : record.type === 'exit' ? '-' : '';
-  return `${sign}${formatQuantity(record.quantity)} ${record.unit}`;
+interface QuantityDisplay {
+  /** Número principal, coloreado según el tipo (o neutro si aún no se conoce). */
+  primary: string;
+  /** Aclaración opcional, en letra más pequeña. */
+  secondary?: string;
+  color: string;
+}
+
+const NEUTRAL_QUANTITY_COLOR = '#666';
+const QUANTITY_COLOR_BY_TYPE: Record<string, string> = {
+  entry: '#389e0d',
+  exit: '#cf1322',
+  transfer: '#1890ff',
+};
+
+/**
+ * Cómo presentar la columna "Cantidad" de una solicitud de ajuste.
+ *
+ * En modo `delta`, `record.quantity` YA es lo que se mueve (con signo según el
+ * tipo): se muestra tal cual, como siempre.
+ *
+ * En modo `absolute`, `record.quantity` es el SALDO OBJETIVO del lote, NO lo
+ * que se mueve — pintarlo con signo (como hacía getSignedQuantityText, la
+ * función que esta reemplaza) hace que la pantalla donde el admin aprueba
+ * muestre un número hasta 60x mayor que el movimiento real: medido con
+ * AJU-20260730-0018 (exit, absolute, saldo objetivo 15.000 kg sobre un lote de
+ * 15.250), donde el movimiento real fue de 250 kg pero la celda mostró
+ * "−15.000,00 kg".
+ *
+ * El delta real solo se conoce al aprobar: `quantity_base` lo calcula
+ * approve() contra el stock EN ESE MOMENTO (ver
+ * AdjustmentController::resolveAbsoluteDeltaBase) y queda `null` mientras la
+ * solicitud siga pending/rejected/cancelled — no se inventa un número antes de
+ * que exista.
+ */
+const getQuantityDisplay = (record: Adjustment): QuantityDisplay => {
+  const color = QUANTITY_COLOR_BY_TYPE[record.type] || NEUTRAL_QUANTITY_COLOR;
+
+  if (record.quantity_mode === 'delta') {
+    const sign = record.type === 'entry' ? '+' : record.type === 'exit' ? '-' : '';
+    return { primary: `${sign}${formatQuantity(record.quantity)} ${record.unit}`, color };
+  }
+
+  const target = `Fijar saldo en ${formatQuantity(record.quantity)} ${record.unit}`;
+
+  if (record.quantity_base === null || record.quantity_base === undefined) {
+    return {
+      primary: target,
+      secondary: 'El movimiento se calculará al aprobar, según el stock en ese momento.',
+      color: NEUTRAL_QUANTITY_COLOR,
+    };
+  }
+
+  // Ya aprobado: quantity_base es el delta REAL que se aplicó (siempre
+  // positivo; transfer no admite modo absoluto, así que type es entry|exit).
+  const appliedSign = record.type === 'exit' ? '-' : '+';
+  const baseUnit = record.product_base_unit || record.unit;
+
+  return {
+    primary: `${appliedSign}${formatQuantity(record.quantity_base)} ${baseUnit}`,
+    secondary: target,
+    color,
+  };
 };
 
 const Adjustments: React.FC = () => {
@@ -217,14 +277,21 @@ const Adjustments: React.FC = () => {
     {
       title: 'Ajuste',
       key: 'adjustment',
-      render: (_, record) => (
+      render: (_, record) => {
+        const quantityDisplay = getQuantityDisplay(record);
+
+        return (
         <div>
           <div style={{ fontWeight: 500, fontSize: '14px', marginBottom: 4 }}>
             {TYPE_ICONS[record.type]} {record.adjustment_number}
           </div>
           <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
-            {record.product_name} — {getSignedQuantityText(record)}
+            {record.product_name} —{' '}
+            <span style={{ color: quantityDisplay.color, fontWeight: 600 }}>{quantityDisplay.primary}</span>
           </div>
+          {quantityDisplay.secondary && (
+            <div style={{ fontSize: '11px', color: '#999', marginBottom: 4 }}>{quantityDisplay.secondary}</div>
+          )}
           {/* Ubicación(es) y motivo: imprescindibles para aprobar/rechazar con criterio
               (los botones de acción están disponibles en esta misma vista mobile). */}
           <div style={{ fontSize: '12px', color: '#666', marginBottom: 4 }}>
@@ -237,7 +304,8 @@ const Adjustments: React.FC = () => {
             {STATUS_LABELS[record.status]}
           </Tag>
         </div>
-      ),
+        );
+      },
     },
     {
       title: 'Acciones',
@@ -293,11 +361,18 @@ const Adjustments: React.FC = () => {
     {
       title: 'Cantidad',
       key: 'quantity',
-      render: (_, record) => (
-        <span style={{ fontWeight: 500, color: record.type === 'exit' ? '#cf1322' : record.type === 'entry' ? '#389e0d' : '#1890ff' }}>
-          {getSignedQuantityText(record)}
-        </span>
-      ),
+      render: (_, record) => {
+        const quantityDisplay = getQuantityDisplay(record);
+
+        return (
+          <div>
+            <div style={{ fontWeight: 600, color: quantityDisplay.color }}>{quantityDisplay.primary}</div>
+            {quantityDisplay.secondary && (
+              <div style={{ fontSize: '12px', color: '#999' }}>{quantityDisplay.secondary}</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Motivo',
@@ -336,10 +411,19 @@ const Adjustments: React.FC = () => {
     },
   ];
 
-  const expandedRowRender = (record: Adjustment) => (
+  const expandedRowRender = (record: Adjustment) => {
+    const quantityDisplay = getQuantityDisplay(record);
+
+    return (
     <Descriptions size="small" column={2}>
       <Descriptions.Item label="Modo de cantidad">
         {record.quantity_mode === 'absolute' ? 'Valor absoluto (fija el lote)' : 'Delta (+/-)'}
+      </Descriptions.Item>
+      <Descriptions.Item label="Cantidad">
+        <span style={{ color: quantityDisplay.color, fontWeight: 600 }}>{quantityDisplay.primary}</span>
+        {quantityDisplay.secondary && (
+          <div style={{ fontSize: '12px', color: '#999' }}>{quantityDisplay.secondary}</div>
+        )}
       </Descriptions.Item>
       <Descriptions.Item label="Lote">{record.batch_number || 'Automático (FIFO / nuevo)'}</Descriptions.Item>
       {record.unit_price !== null && record.unit_price !== undefined && (
@@ -355,7 +439,8 @@ const Adjustments: React.FC = () => {
         </Descriptions.Item>
       )}
     </Descriptions>
-  );
+    );
+  };
 
   return (
     <div>
