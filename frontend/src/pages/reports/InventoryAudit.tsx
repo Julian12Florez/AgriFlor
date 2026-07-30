@@ -131,7 +131,11 @@ const InventoryAudit: React.FC = () => {
       'App\\Models\\Purchase': 'Compra',
       'App\\Models\\ProductOutput': 'Salida',
       'App\\Models\\TechnicalOrder': 'Orden Técnica',
-      'App\\Models\\InventoryAdjustment': 'Ajuste',
+      // El módulo de Ajustes de Inventario escribe 'App\Models\Adjustment' en
+      // related_document_type (ver AdjustmentController::MOVEMENT_DOCUMENT_TYPE),
+      // NUNCA 'App\Models\InventoryAdjustment' (esa clase no existe): con la
+      // clave vieja el fallback mostraba el literal en inglés "Adjustment".
+      'App\\Models\\Adjustment': 'Ajuste',
     };
 
     return docLabels[docType] || docType.split('\\').pop() || docType;
