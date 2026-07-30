@@ -50,6 +50,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
 
         $headers[] = 'COMPRAS';
         $headers[] = 'REMANENTE';
+        $headers[] = 'ENVIOS RECIBIDOS';
         $headers[] = 'AUMENTOS';
         $headers[] = 'DISMINUCIONES';
         $headers[] = 'TOTAL MOV';
@@ -86,6 +87,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
 
             $row[] = $product['purchases'];
             $row[] = $product['returns'] ?? 0;
+            $row[] = $product['shipments_in'] ?? 0;
             $row[] = $product['increases'];
             $row[] = $product['decreases'];
             $row[] = $product['total_movements'];
@@ -112,7 +114,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
     public function styles(Worksheet $sheet): array
     {
         $lastRow = count($this->data) + 1;
-        $lastCol = 8 + count($this->farmColumns) + 1 + 6; // 8 fijas + fincas + Traslados Salientes + 6 extra (incl. Remanente)
+        $lastCol = 8 + count($this->farmColumns) + 1 + 7; // 8 fijas + fincas + Traslados Salientes + 7 extra (incl. Remanente y Envíos Recibidos)
         $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($lastCol);
 
         return [
