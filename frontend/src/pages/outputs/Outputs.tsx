@@ -206,6 +206,16 @@ const Outputs: React.FC = () => {
     return icons[status as keyof typeof icons] || <ClockCircleOutlined />;
   };
 
+  // La columna "Destino" y el detalle expandido comparten esta lógica. Antes pintaban
+  // `record.farmName`, un campo que la API nunca envía (era del mock). El API siempre entrega
+  // `destinationLocation` (a dónde se fue realmente el producto, incluso para "consumo" donde
+  // destino == origen: ahí lo que informa es la finca) y, solo cuando el tipo de salida requiere
+  // lotes (hoy solo "consumo"), `farmLots` con los lotes donde se aplicó.
+  const getOutputDestinationInfo = (record: ProductOutput) => ({
+    locationName: record.destinationLocation?.name || 'Sin ubicación',
+    lotNames: (record.farmLots || []).map((lot) => lot.name),
+  });
+
   const getEquivalenceText = (productId: string, quantity: number, unit: string) => {
     const product = availableProducts.find((p: any) => p.id === productId);
     if (!product || !product.packaging_units || quantity <= 0) {
@@ -306,14 +316,16 @@ const Outputs: React.FC = () => {
 
     form.setFieldsValue({
       outputTypeId: record.outputType?.id,
-      orderNumber: record.orderNumber,
+      orderNumber: record.technicalOrderId || record.technicalOrder?.id,
       outputDate: dayjs(record.outputDate),
       originLocationId: record.originLocation?.id,
       destinationLocationId: record.destinationLocation?.id,
       farmLotIds: farmLotIds,
       responsibleUser: record.responsibleUserDetails ? {
         value: record.responsibleUser,
-        label: `${record.responsibleUserDetails.name} - ${getRoleLabel(record.responsibleUserDetails.role || 'Usuario')}`
+        // La API solo envía {id, name, email} en responsibleUserDetails (sin "role"); el rol se
+        // busca en la lista de usuarios ya cargada, igual que en las opciones del Select de abajo.
+        label: `${record.responsibleUserDetails.name} - ${getRoleLabel(availableUsers.find((u: any) => u.id === record.responsibleUser)?.role || 'Usuario')}`
       } : record.responsibleUser,
       observations: record.observations,
       products: mappedProducts
@@ -574,26 +586,36 @@ const Outputs: React.FC = () => {
             <ExportOutlined style={{ marginRight: 8, color: '#1890ff' }} />
             {record.outputNumber}
           </div>
-          <div style={{ color: '#666', fontSize: 12 }}>
-            {record.orderNumber} - {record.orderName}
-          </div>
+          {record.technicalOrder?.orderNumber && (
+            <div style={{ color: '#666', fontSize: 12 }}>
+              {record.technicalOrder.orderNumber}
+            </div>
+          )}
         </div>
       ),
     },
     {
       title: 'Destino',
       key: 'destination',
-      render: (_, record) => (
-        <div>
-          <div style={{ fontWeight: 500, fontSize: 14 }}>
-            <EnvironmentOutlined style={{ marginRight: 4 }} />
-            {record.farmName}
+      render: (_, record) => {
+        const { locationName, lotNames } = getOutputDestinationInfo(record);
+        return (
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 14 }}>
+              <EnvironmentOutlined style={{ marginRight: 4 }} />
+              {locationName}
+            </div>
+            {lotNames.length > 0 && (
+              <div style={{ color: '#666', fontSize: 12 }}>
+                Lote{lotNames.length > 1 ? 's' : ''}: {lotNames.join(', ')}
+              </div>
+            )}
+            <div style={{ color: '#999', fontSize: 12 }}>
+              {dayjs(record.outputDate).format('DD/MM/YYYY')}
+            </div>
           </div>
-          <div style={{ color: '#666', fontSize: 12 }}>
-            {dayjs(record.outputDate).format('DD/MM/YYYY')}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: 'Productos',
@@ -673,34 +695,42 @@ const Outputs: React.FC = () => {
     },
   ];
 
-  const expandedRowRender = (record: ProductOutput) => (
-    <Descriptions size="small" column={1}>
-      <Descriptions.Item label="Orden técnica">{record.orderNumber} - {record.orderName}</Descriptions.Item>
-      <Descriptions.Item label="Destino">{record.farmName}</Descriptions.Item>
-      <Descriptions.Item label="Fecha de salida">
-        {dayjs(record.outputDate).format('DD/MM/YYYY')}
-      </Descriptions.Item>
-      <Descriptions.Item label="Responsable">
-        {record.responsibleUserDetails?.name || record.responsibleUser || 'Sin asignar'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Productos">
-        {record.products.map((product, index) => (
-          <div key={index} style={{ marginBottom: 4 }}>
-            <strong>{product.productName}</strong> - {product.brandName}
-            <br />
-            <span style={{ color: '#666', fontSize: 12 }}>
-              Solicitado: {product.quantityRequested} {product.unit} |
-              Entregado: {product.quantityDelivered} {product.unit}
-              {product.batchNumber && ` | Lote: ${product.batchNumber}`}
-            </span>
-          </div>
-        ))}
-      </Descriptions.Item>
-      {record.observations && (
-        <Descriptions.Item label="Observaciones">{record.observations}</Descriptions.Item>
-      )}
-    </Descriptions>
-  );
+  const expandedRowRender = (record: ProductOutput) => {
+    const { locationName, lotNames } = getOutputDestinationInfo(record);
+    return (
+      <Descriptions size="small" column={1}>
+        {record.technicalOrder?.orderNumber && (
+          <Descriptions.Item label="Orden técnica">{record.technicalOrder.orderNumber}</Descriptions.Item>
+        )}
+        <Descriptions.Item label="Destino">{locationName}</Descriptions.Item>
+        {lotNames.length > 0 && (
+          <Descriptions.Item label="Lotes de finca">{lotNames.join(', ')}</Descriptions.Item>
+        )}
+        <Descriptions.Item label="Fecha de salida">
+          {dayjs(record.outputDate).format('DD/MM/YYYY')}
+        </Descriptions.Item>
+        <Descriptions.Item label="Responsable">
+          {record.responsibleUserDetails?.name || record.responsibleUser || 'Sin asignar'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Productos">
+          {record.products.map((product, index) => (
+            <div key={index} style={{ marginBottom: 4 }}>
+              <strong>{product.productName}</strong> - {product.brandName}
+              <br />
+              <span style={{ color: '#666', fontSize: 12 }}>
+                Solicitado: {product.quantityRequested} {product.unit} |
+                Entregado: {product.quantityDelivered} {product.unit}
+                {product.batchNumber && ` | Lote: ${product.batchNumber}`}
+              </span>
+            </div>
+          ))}
+        </Descriptions.Item>
+        {record.observations && (
+          <Descriptions.Item label="Observaciones">{record.observations}</Descriptions.Item>
+        )}
+      </Descriptions>
+    );
+  };
 
   const renderFormContent = () => (
     <Form
