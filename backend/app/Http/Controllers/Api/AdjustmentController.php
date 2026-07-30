@@ -9,8 +9,11 @@ use App\Http\Requests\StoreAdjustmentRequest;
 use App\Http\Resources\AdjustmentResource;
 use App\Models\Adjustment;
 use App\Models\AdjustmentReason;
+use App\Models\Brand;
 use App\Models\Inventory;
 use App\Models\InventoryMovement;
+use App\Models\Location;
+use App\Models\Product;
 use App\Models\User;
 use App\Services\InventoryService;
 use Illuminate\Database\Eloquent\Builder;
@@ -65,11 +68,24 @@ class AdjustmentController extends Controller
     private const MOVEMENT_DOCUMENT_TYPE = 'App\Models\Adjustment';
 
     /**
-     * Marcas de las observaciones que los informes usan para clasificar un
-     * movimiento como aumento o disminución de existencias
-     * (InventoryController::monthlyReport busca 'aumento'/'ajuste positivo' y
-     * 'disminuc'/'ajuste negativo' con LIKE). Cambiar estos textos rompe las
-     * columnas "Aumentos"/"Disminuciones" del informe mensual.
+     * Etiquetas legibles al inicio de las observaciones del movimiento, para que
+     * el kardex y el detalle del ajuste digan de un vistazo si subió o bajó el
+     * stock.
+     *
+     * NO son las que clasifican el informe mensual. Desde el endurecimiento de
+     * InventoryController::whereClassifiedAsAdjustment, un movimiento cuyo
+     * `related_document_type` es 'App\Models\Adjustment' se clasifica por
+     * `adjustments.type` (el DOCUMENTO), y el texto de las observaciones solo se
+     * usa como criterio para el histórico previo a este módulo, que no tiene
+     * documento relacionado. Cambiar estos textos, por tanto, ya no rompe las
+     * columnas "Aumentos"/"Disminuciones".
+     *
+     * Lo que SÍ sigue siendo load-bearing es no ponerle la etiqueta negativa a
+     * la salida de un traslado (ver transferExitObservations): el histórico se
+     * clasifica por texto, así que un mantenedor que "unifique" las
+     * observaciones dejaría esa salida marcada como disminución y cualquier
+     * consumidor que clasifique por texto —incluido cualquier informe futuro—
+     * la restaría dos veces.
      */
     private const POSITIVE_TAG = '[AUMENTO / ajuste positivo]';
     private const NEGATIVE_TAG = '[DISMINUCIÓN / ajuste negativo]';
@@ -134,6 +150,14 @@ class AdjustmentController extends Controller
                 'success' => false,
                 'message' => $deniedMessage,
             ], 403);
+        }
+
+        $inapplicableMessage = $this->inapplicableAdjustmentMessage($data);
+        if ($inapplicableMessage !== null) {
+            return response()->json([
+                'success' => false,
+                'message' => $inapplicableMessage,
+            ], 422);
         }
 
         $adjustment = $this->createAdjustment($data, $user->id);
@@ -539,6 +563,136 @@ class AdjustmentController extends Controller
     }
 
     /**
+     * Rechazo TEMPRANO (al solicitar) de un ajuste que la aprobación nunca podría
+     * aplicar. Devuelve el mensaje de error, o null si la solicitud es viable.
+     *
+     * Sin esto, el error solo aparece al APROBAR —días después, en la pantalla de
+     * otra persona— y el solicitante se queda en un callejón sin salida: el caso
+     * real es el de la marca. `inventory.brand_id` puede diferir de
+     * `products.brand_id` (en producción, 77 lotes con ~89.000 unidades están
+     * guardados bajo una marca distinta a la del producto), así que una salida
+     * pedida con la marca del PRODUCTO sobre un lote guardado con otra marca no
+     * encuentra existencias: el desplegable muestra 500 kg y la aprobación
+     * responde "solo hay 0". Validarlo aquí obliga a que el ajuste apunte al
+     * (producto, marca, ubicación) que realmente tiene el stock.
+     *
+     * Ojo con lo que este chequeo NO hace: no compara contra la cantidad pedida.
+     * El stock puede cambiar legítimamente entre la solicitud y la aprobación, y
+     * la validación autoritativa (con las filas bloqueadas) vive en applyExit().
+     * Aquí solo se descarta el caso imposible: que NO haya nada que ajustar.
+     */
+    private function inapplicableAdjustmentMessage(array $data): ?string
+    {
+        $type = $data['type'] ?? null;
+        $productId = $data['product_id'] ?? null;
+        $brandId = $data['brand_id'] ?? null;
+        $batchNumber = $data['batch_number'] ?? null;
+
+        $locationId = $type === 'entry'
+            ? ($data['destination_location_id'] ?? null)
+            : ($data['origin_location_id'] ?? null);
+
+        if (!is_string($productId) || !is_string($brandId) || !is_string($locationId)) {
+            // Faltan datos que la validación ya reportó (o el tipo no aplica).
+            return null;
+        }
+
+        if (($data['quantity_mode'] ?? null) === 'absolute') {
+            return $this->missingBatchForAbsoluteMessage($productId, $brandId, $locationId, $batchNumber);
+        }
+
+        if (!in_array($type, ['exit', 'transfer'], true)) {
+            return null;
+        }
+
+        if ($this->stockInBase($productId, $brandId, $locationId, $batchNumber) > 0) {
+            return null;
+        }
+
+        return sprintf(
+            "No hay existencias de %s en %s%s: no se puede registrar una salida ni un traslado desde ahí. " .
+            'Revise la marca y el lote del inventario que quiere ajustar (el stock puede estar registrado bajo otra marca).',
+            $this->describeProductAndBrand($productId, $brandId),
+            $this->locationName($locationId),
+            $batchNumber ? " para el lote '{$batchNumber}'" : ''
+        );
+    }
+
+    /**
+     * El modo absoluto FIJA el saldo de un lote existente, así que exige que el
+     * lote exista: si no existe, el "saldo que debe quedar" se aplicaría como un
+     * delta completo sobre un lote nuevo y DUPLICARÍA las existencias del
+     * producto en esa ubicación (medido: 16.044 g → 32.044 g al fijar el saldo
+     * en 16.000 con un número de lote inventado).
+     *
+     * El mensaje empuja explícitamente a la entrada en modo DELTA, que es el
+     * camino correcto para crear un lote nuevo.
+     */
+    private function missingBatchForAbsoluteMessage(
+        string $productId,
+        string $brandId,
+        string $locationId,
+        ?string $batchNumber
+    ): ?string {
+        if ($batchNumber === null || $batchNumber === '') {
+            // Ya reportado por validateQuantityMode (batch_number requerido).
+            return null;
+        }
+
+        if ($this->batchExists($productId, $brandId, $locationId, $batchNumber)) {
+            return null;
+        }
+
+        return sprintf(
+            "El lote '%s' de %s no existe en %s: fijar el saldo de un lote solo puede ajustar un lote que ya existe " .
+            '(si no, el saldo indicado se sumaría como stock nuevo y duplicaría las existencias). ' .
+            'Para cargar un lote nuevo registre un ajuste de ENTRADA en modo delta con la cantidad a ingresar.',
+            $batchNumber,
+            $this->describeProductAndBrand($productId, $brandId),
+            $this->locationName($locationId)
+        );
+    }
+
+    private function describeProductAndBrand(string $productId, string $brandId): string
+    {
+        $productName = Product::where('id', $productId)->value('name') ?? $productId;
+        $brandName = Brand::where('id', $brandId)->value('name');
+
+        return $brandName ? "'{$productName}' (marca {$brandName})" : "'{$productName}'";
+    }
+
+    private function locationName(string $locationId): string
+    {
+        return Location::where('id', $locationId)->value('name') ?? 'la ubicación indicada';
+    }
+
+    /**
+     * ¿Existe la fila de `inventory` de ese lote exacto?
+     *
+     * Deliberadamente SIN filtrar por `quantity > 0`: un lote con saldo cero
+     * sigue siendo un lote existente y addStock() lo reutiliza (la clave única es
+     * product+brand+location+batch), así que fijarle el saldo es legítimo.
+     */
+    private function batchExists(
+        string $productId,
+        string $brandId,
+        string $locationId,
+        string $batchNumber,
+        bool $lock = false
+    ): bool {
+        $query = Inventory::where('product_id', $productId)
+            ->where('brand_id', $brandId)
+            ->where('location_id', $locationId)
+            ->where('batch_number', $batchNumber);
+
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->exists();
+    }
+
+    /**
      * Crea el Adjustment con número autogenerado, reintentando ante una colisión de
      * UNIQUE en adjustment_number (generateAdjustmentNumber() no usa lock).
      */
@@ -611,10 +765,58 @@ class AdjustmentController extends Controller
             throw new AdjustmentException('El modo de cantidad absoluto solo aplica a entradas o salidas.');
         }
 
-        $currentBase = $this->availableStockInBase($adjustment, $this->stockLocationId($adjustment), true);
+        $locationId = $this->stockLocationId($adjustment);
+
+        $this->assertBatchExistsForAbsolute($adjustment, $locationId);
+
+        $currentBase = $this->availableStockInBase($adjustment, $locationId, true);
         $targetBase = $this->toBase($adjustment, (float) $adjustment->quantity);
 
         return $this->absoluteDeltaForType($adjustment, $currentBase, $targetBase);
+    }
+
+    /**
+     * El modo absoluto FIJA el saldo de un lote, así que el lote tiene que
+     * existir: sobre un lote inexistente el saldo objetivo se convierte en un
+     * delta igual a sí mismo (target − 0) y la aprobación CREA un lote con el
+     * saldo completo, duplicando las existencias de la ubicación en vez de
+     * corregirlas (medido: BENOMYL 16.044 g → 32.044 g al "fijar el saldo" en
+     * 16.000 con un número de lote que no existía).
+     *
+     * store() ya rechaza el caso al solicitar, pero la comprobación autoritativa
+     * es esta: corre dentro de la transacción de approve() y con la fila
+     * bloqueada, así que también cubre las solicitudes creadas antes de este fix
+     * y el lote que se haya borrado (consumido) entre la solicitud y la
+     * aprobación.
+     */
+    private function assertBatchExistsForAbsolute(Adjustment $adjustment, string $locationId): void
+    {
+        $batchNumber = $adjustment->batch_number;
+
+        if ($batchNumber === null || $batchNumber === '') {
+            throw new AdjustmentException(
+                'Fijar el saldo de un lote exige indicar el número de lote. Para mover una cantidad sin ' .
+                'identificar el lote, registre el ajuste en modo delta.'
+            );
+        }
+
+        if ($this->batchExists($adjustment->product_id, $adjustment->brand_id, $locationId, $batchNumber, true)) {
+            return;
+        }
+
+        $productName = $adjustment->product?->name ?? $adjustment->product_id;
+        $brandName = $adjustment->brand?->name;
+        $locationName = Location::where('id', $locationId)->value('name') ?? 'la ubicación del ajuste';
+
+        throw new AdjustmentException(sprintf(
+            "El lote '%s' de '%s'%s no existe en %s: fijar el saldo solo puede ajustar un lote que ya existe " .
+            '(si no, el saldo indicado se sumaría como stock nuevo y duplicaría las existencias). ' .
+            'Para cargar un lote nuevo registre un ajuste de ENTRADA en modo delta con la cantidad a ingresar.',
+            $batchNumber,
+            $productName,
+            $brandName ? " (marca {$brandName})" : '',
+            $locationName
+        ));
     }
 
     /**
@@ -819,13 +1021,34 @@ class AdjustmentController extends Controller
      */
     private function availableStockInBase(Adjustment $adjustment, string $locationId, bool $lock = false): float
     {
-        $query = Inventory::where('product_id', $adjustment->product_id)
-            ->where('brand_id', $adjustment->brand_id)
+        return $this->stockInBase(
+            $adjustment->product_id,
+            $adjustment->brand_id,
+            $locationId,
+            $adjustment->batch_number,
+            $lock
+        );
+    }
+
+    /**
+     * Misma existencia disponible que availableStockInBase(), a partir de los
+     * identificadores sueltos: la comparte store(), que valida la viabilidad de
+     * la solicitud ANTES de que exista el Adjustment.
+     */
+    private function stockInBase(
+        string $productId,
+        string $brandId,
+        string $locationId,
+        ?string $batchNumber,
+        bool $lock = false
+    ): float {
+        $query = Inventory::where('product_id', $productId)
+            ->where('brand_id', $brandId)
             ->where('location_id', $locationId)
             ->where('quantity', '>', 0);
 
-        if ($adjustment->batch_number !== null) {
-            $query->where('batch_number', $adjustment->batch_number);
+        if ($batchNumber !== null) {
+            $query->where('batch_number', $batchNumber);
         }
 
         if ($lock) {
@@ -838,7 +1061,7 @@ class AdjustmentController extends Controller
             $totalBase += $this->inventoryService->toBaseUnit(
                 (float) $batch->quantity,
                 $batch->unit,
-                $adjustment->product_id
+                $productId
             );
         }
 
@@ -851,12 +1074,24 @@ class AdjustmentController extends Controller
      * `type` solo puede ser 'entry' o 'exit': el enum de inventory_movements es
      * ('entry','exit','transfer','application') y NO incluye 'adjustment'.
      *
-     * La cantidad se registra en la unidad que eligió el solicitante (kg,
-     * Bulto...), pero el VALOR del movimiento no depende de la presentación:
-     * total = cantidad_base * costo_por_unidad_base. El precio unitario se
-     * deriva de ese total para conservar el invariante del proyecto
-     * (total_price = quantity * unit_price) también cuando la unidad es una
-     * presentación.
+     * La cantidad se registra SIEMPRE EN LA UNIDAD BASE del producto, no en la
+     * unidad de captura, y esto NO es un detalle cosmético: los informes que el
+     * cliente concilia contra contabilidad suman `inventory_movements.quantity`
+     * EN CRUDO, sin convertir (InventoryController::monthlyReport y
+     * farmMonthlyReport). Un movimiento guardado en "Bulto" se sumaría como si
+     * fueran kilogramos y descuadraría el cierre del mes — medido: un ajuste
+     * capturado en presentación dejó el informe con 15.694 kg contra 15.400
+     * reales (−294 kg) y, peor, con "Variación 0", porque el mismo error entra
+     * en los dos lados de la resta y el descuadre queda invisible.
+     *
+     * Lo que el usuario capturó (p. ej. "2 Bulto") no se pierde: queda en las
+     * observaciones vía captureNote(), que es donde sirve para auditar sin
+     * contaminar ninguna suma.
+     *
+     * El valor no depende de la presentación: total = cantidad_base *
+     * costo_por_unidad_base, y con la cantidad ya en unidad base el precio
+     * unitario del movimiento ES el costo por unidad base, conservando el
+     * invariante del proyecto (total_price = quantity * unit_price).
      */
     private function recordMovement(
         Adjustment $adjustment,
@@ -867,38 +1102,67 @@ class AdjustmentController extends Controller
         string $userId,
         string $observations
     ): void {
-        $quantity = $this->inventoryService->fromBaseUnit($deltaBase, $adjustment->unit, $adjustment->product_id);
-        $totalPrice = $deltaBase * $unitPriceInBase;
-
         InventoryMovement::create([
             'type' => $type,
             'product_id' => $adjustment->product_id,
             'brand_id' => $adjustment->brand_id,
             'location_id' => $locationId,
-            'quantity' => $quantity,
-            'unit' => $adjustment->unit,
+            'quantity' => $deltaBase,
+            'unit' => $this->inventoryService->baseUnitOf($adjustment->product_id),
             'movement_date' => $adjustment->movement_date?->toDateString(),
-            'unit_price' => $quantity > 0 ? $totalPrice / $quantity : $unitPriceInBase,
-            'total_price' => $totalPrice,
+            'unit_price' => $unitPriceInBase,
+            'total_price' => $deltaBase * $unitPriceInBase,
             'responsible_user' => $userId,
             'related_document_id' => $adjustment->id,
             'related_document_type' => self::MOVEMENT_DOCUMENT_TYPE,
-            'observations' => $observations,
+            'observations' => $observations . $this->captureNote($adjustment),
         ]);
+    }
+
+    /**
+     * Trazabilidad de la unidad de CAPTURA en las observaciones del movimiento,
+     * ya que la cantidad se guarda convertida a unidad base (ver
+     * recordMovement). Solo se añade cuando la unidad de captura no es la base,
+     * que es el único caso en que el dato aporta algo.
+     *
+     * El texto se elige a propósito sin las palabras que clasifican un
+     * movimiento en el informe mensual ('aumento', 'disminuc', 'ajuste
+     * positivo/negativo'): añadirlas aquí metería la salida de un traslado en la
+     * columna "Disminuciones", donde ya está contada como envío.
+     */
+    private function captureNote(Adjustment $adjustment): string
+    {
+        $baseUnit = $this->inventoryService->baseUnitOf($adjustment->product_id);
+        $capturedUnit = (string) $adjustment->unit;
+
+        if ($capturedUnit === '' || strcasecmp($capturedUnit, $baseUnit) === 0) {
+            return '';
+        }
+
+        $quantity = rtrim(rtrim(number_format((float) $adjustment->quantity, 2, '.', ''), '0'), '.');
+
+        return $adjustment->quantity_mode === 'absolute'
+            ? " [saldo fijado en {$quantity} {$capturedUnit}]"
+            : " [capturado como {$quantity} {$capturedUnit}]";
     }
 
     /**
      * Salida de un traslado: deliberadamente SIN las palabras
      * 'disminución'/'ajuste negativo'.
      *
-     * InventoryController::monthlyReport ya contabiliza esta salida en la matriz
-     * de envíos a fincas (empareja las entradas del destino con los exit del
-     * origen por related_document_id, que ambas patas comparten). Marcarla
-     * además como disminución la restaría DOS veces del movimiento total y
-     * descuadraría el informe justo en el caso dominante (bodega → finca).
-     * Un traslado, además, no cambia el inventario total de la empresa: solo lo
-     * reubica; las columnas Aumentos/Disminuciones existen para ajustes netos
-     * (mermas, sobrantes), que son los que se concilian contra contabilidad.
+     * Un traslado no cambia el inventario total de la empresa (solo lo reubica),
+     * y su salida ya está contabilizada como TRASLADO SALIENTE en el informe
+     * mensual del origen: como envío en la matriz de fincas cuando el destino es
+     * una finca, o en la columna de traslados salientes cuando no lo es (ver
+     * InventoryController::monthlyReport, pasos 3 y 3b). Las columnas
+     * Aumentos/Disminuciones existen para ajustes NETOS (mermas, sobrantes).
+     *
+     * Que hoy el informe clasifique estos movimientos por `adjustments.type` y no
+     * por texto NO vuelve inocuo añadir aquí la etiqueta negativa: el histórico
+     * sin documento relacionado se sigue clasificando por texto, y cualquier
+     * consumidor que lo haga (informes, exportaciones, integraciones futuras)
+     * restaría esta salida dos veces y dejaría la "Variación" del origen —la
+     * columna que el cliente concilia contra contabilidad— distinta de 0.
      */
     private function transferExitObservations(Adjustment $adjustment): string
     {
@@ -912,11 +1176,13 @@ class AdjustmentController extends Controller
      *
      * Para la ubicación de destino esta entrada sí es un ingreso de existencias
      * y ningún otro concepto del informe mensual la explica (no es compra: el
-     * filtro de compras exige related_document_type Reception/Purchase o nulo,
-     * y el nuestro es Adjustment). Sin la marca quedaría como "Variación" —un
-     * descuadre aparente— en el informe del destino. Contabilizarla aquí no
-     * duplica nada: la columna de envíos de la ubicación ORIGEN usa esta misma
-     * fila, pero en otro informe y con otro propósito.
+     * filtro de compras exige related_document_type Reception/Purchase o nulo, y
+     * el nuestro es Adjustment), así que cuenta en su columna "Aumentos" —hoy por
+     * `adjustments.type`, que incluye 'transfer' entre los tipos que aumentan, y
+     * por el texto en cualquier consumidor que clasifique al modo del histórico.
+     * Sin ese conteo la entrada quedaría como "Variación" (un descuadre aparente)
+     * en el informe del destino. No duplica nada: la ubicación ORIGEN usa esta
+     * misma fila para su matriz de envíos, pero en otro informe.
      */
     private function transferEntryObservations(Adjustment $adjustment): string
     {

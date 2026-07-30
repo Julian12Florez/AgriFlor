@@ -440,6 +440,238 @@ class AdjustmentTest extends TestCase
         $response->assertStatus(201)->assertJsonPath('data.unit', 'Saco');
     }
 
+    /**
+     * Caso medido en producción: NATURAMIN tiene unidad base 'kg' y una
+     * presentación "GRAMOS" con base_quantity=1 y base_unit='g'.
+     * InventoryService::toBaseUnit() solo multiplica por base_quantity e IGNORA
+     * base_unit, así que una salida de 50 GRAMOS descontaba 50 kg en vez de
+     * 0,05 kg (96,51 → 46,51 kg): 1000x, con casi 50 kg de stock real
+     * destruidos por un clic legítimo. Mientras toBaseUnit siga así, la única
+     * salida segura es rechazar la presentación.
+     */
+    public function test_store_rejects_packaging_unit_whose_base_unit_differs_from_product(): void
+    {
+        $fixtures = $this->createCatalogFixtures(); // producto con base_unit = 'kg'
+
+        BaseUnit::firstOrCreate(
+            ['symbol' => 'g'],
+            ['name' => 'Gramos', 'description' => 'Unidad de masa', 'status' => 'active']
+        );
+
+        $gramos = PackagingUnit::create([
+            'name' => 'GRAMOS',
+            'base_quantity' => 1,
+            'base_unit' => 'g',
+        ]);
+        $fixtures['product']->packagingUnits()->attach($gramos->id);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', array_merge($this->baseAdjustmentAttributes($fixtures), [
+                'type' => 'exit',
+                'unit' => 'GRAMOS',
+                'quantity' => 50,
+                'origin_location_id' => $fixtures['origin']->id,
+            ]));
+
+        $response->assertStatus(422)->assertJsonValidationErrors('unit');
+        $this->assertStringContainsString(
+            'está expresada en g y la unidad base del producto es kg',
+            implode(' ', $response->json('errors.unit'))
+        );
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    /**
+     * El simétrico, también medido: MOLIB-K tiene unidad base 'g' y una
+     * presentación "Kilogramo" (1 kg), con la que una salida de 2 Kilogramo
+     * descontaba 2 g en vez de 2.000 g.
+     */
+    public function test_store_rejects_packaging_unit_in_larger_base_unit_than_product(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        BaseUnit::firstOrCreate(
+            ['symbol' => 'g'],
+            ['name' => 'Gramos', 'description' => 'Unidad de masa', 'status' => 'active']
+        );
+        $fixtures['product']->update(['base_unit' => 'g']);
+
+        $kilogramo = PackagingUnit::create([
+            'name' => 'Kilogramo',
+            'base_quantity' => 1,
+            'base_unit' => 'kg',
+        ]);
+        $fixtures['product']->packagingUnits()->attach($kilogramo->id);
+
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', array_merge($this->baseAdjustmentAttributes($fixtures), [
+                'type' => 'exit',
+                'unit' => 'Kilogramo',
+                'quantity' => 2,
+                'origin_location_id' => $fixtures['origin']->id,
+            ]))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('unit');
+
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    /**
+     * Contraparte de los dos anteriores: una presentación expresada en la MISMA
+     * unidad base del producto sí es utilizable (y su factor se aplica bien).
+     */
+    public function test_store_accepts_packaging_unit_with_matching_base_unit(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-KG', 600);
+
+        $bulto = PackagingUnit::create([
+            'name' => 'Bulto',
+            'base_quantity' => 50,
+            'base_unit' => 'kg',
+        ]);
+        $fixtures['product']->packagingUnits()->attach($bulto->id);
+
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', array_merge($this->baseAdjustmentAttributes($fixtures), [
+                'type' => 'exit',
+                'unit' => 'Bulto',
+                'quantity' => 2,
+                'origin_location_id' => $fixtures['origin']->id,
+            ]))
+            ->assertStatus(201)
+            ->assertJsonPath('data.unit', 'Bulto');
+    }
+
+    /**
+     * Caso medido en producción: YODO y NATIVO tienen DOS presentaciones
+     * llamadas "CANECA" (20 L y 200 L), y DINASTIA dos "Galón" (4 L y 5 L).
+     * InventoryService::findPackagingUnit() resuelve por nombre con ->first()
+     * SIN orderBy, así que elige una arbitrariamente: un ajuste de 1 CANECA
+     * creó un lote de 20 L, y quien quiso la de 200 L habría obtenido 10x menos
+     * en silencio. Un nombre ambiguo no puede aceptarse.
+     */
+    public function test_store_rejects_ambiguous_packaging_unit_name(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        foreach ([20, 200] as $baseQuantity) {
+            $caneca = PackagingUnit::create([
+                'name' => 'CANECA',
+                'base_quantity' => $baseQuantity,
+                'base_unit' => 'kg',
+            ]);
+            $fixtures['product']->packagingUnits()->attach($caneca->id);
+        }
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $this->validEntryPayload($fixtures, [
+                'unit' => 'CANECA',
+                'quantity' => 1,
+            ]));
+
+        $response->assertStatus(422)->assertJsonValidationErrors('unit');
+
+        $error = implode(' ', $response->json('errors.unit'));
+        $this->assertStringContainsString('2 presentaciones', $error);
+        $this->assertStringContainsString('20 kg', $error);
+        $this->assertStringContainsString('200 kg', $error);
+
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    /**
+     * `inventory.brand_id` puede diferir de `products.brand_id` (77 lotes de
+     * producción, ~89.000 unidades). Pedir una salida con la marca del PRODUCTO
+     * cuando el stock está guardado con otra marca no encuentra existencias, y
+     * antes eso solo se descubría al APROBAR ("solo hay 0" con el lote a la
+     * vista): un callejón sin salida. Debe fallar al solicitar, con un mensaje
+     * que apunte a la marca.
+     */
+    public function test_store_rejects_exit_when_the_brand_has_no_stock_in_the_location(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $otherBrand = Brand::create(['name' => 'Sin Marca ' . uniqid(), 'status' => 'active']);
+
+        // Todo el stock está bajo OTRA marca, no la del producto.
+        Inventory::create([
+            'product_id' => $fixtures['product']->id,
+            'brand_id' => $otherBrand->id,
+            'location_id' => $fixtures['origin']->id,
+            'batch_number' => 'LOTE-OTRA-MARCA',
+            'quantity' => 500,
+            'unit' => 'kg',
+            'unit_price' => 10,
+            'total_value' => 5000,
+            'status' => 'good',
+        ]);
+
+        $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
+            'type' => 'exit',
+            'quantity' => 100,
+            'origin_location_id' => $fixtures['origin']->id,
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload)
+            ->assertStatus(422);
+
+        $this->assertStringContainsString('No hay existencias', $response->json('message'));
+        $this->assertStringContainsString('marca', $response->json('message'));
+        $this->assertDatabaseCount('adjustments', 0);
+
+        // Con la marca del INVENTARIO (la que realmente tiene el stock) sí procede.
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', array_merge($payload, ['brand_id' => $otherBrand->id]))
+            ->assertStatus(201)
+            ->assertJsonPath('data.brand_id', $otherBrand->id);
+    }
+
+    public function test_store_rejects_transfer_when_the_origin_has_no_stock(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', array_merge($this->baseAdjustmentAttributes($fixtures), [
+                'type' => 'transfer',
+                'origin_location_id' => $fixtures['origin']->id,
+                'destination_location_id' => $fixtures['destination']->id,
+            ]))
+            ->assertStatus(422);
+
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    /**
+     * Fijar el saldo de un lote que no existe NO puede aceptarse: el saldo
+     * objetivo se convierte en un delta igual a sí mismo (target − 0) y la
+     * aprobación crea un lote nuevo con el saldo completo, DUPLICANDO las
+     * existencias (medido: BENOMYL 16.044 g → 32.044 g al fijar el saldo en
+     * 16.000 con un lote inventado).
+     */
+    public function test_store_absolute_rejects_unknown_batch(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+
+        $this->seedBatch($fixtures, $fixtures['destination']->id, 'LOTE-REAL', 16044);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $this->validEntryPayload($fixtures, [
+                'quantity_mode' => 'absolute',
+                'quantity' => 16000,
+                'batch_number' => 'LOTE-INVENTADO',
+            ]))
+            ->assertStatus(422);
+
+        $this->assertStringContainsString("El lote 'LOTE-INVENTADO'", $response->json('message'));
+        $this->assertStringContainsString('modo delta', $response->json('message'));
+
+        $this->assertDatabaseCount('adjustments', 0);
+        $this->assertEqualsWithDelta(16044, $this->stockAt($fixtures, $fixtures['destination']->id), 0.01);
+    }
+
     public function test_store_rejects_reason_direction_mismatch_with_type(): void
     {
         $fixtures = $this->createCatalogFixtures();
@@ -608,6 +840,10 @@ class AdjustmentTest extends TestCase
             'responsible_user_id' => $farmUser->id,
         ]);
 
+        // Existencias reales en el origen: desde el fix de la marca, store() rechaza
+        // un traslado desde una ubicación sin stock del (producto, marca) pedido.
+        $this->seedBatch($fixtures, $ownFarm->id, 'LOTE-ORIGEN', 50);
+
         $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
             'type' => 'transfer',
             'origin_location_id' => $ownFarm->id,
@@ -644,6 +880,8 @@ class AdjustmentTest extends TestCase
             'status' => 'active',
             'responsible_user_id' => $farmUser->id,
         ]);
+
+        $this->seedBatch($fixtures, $fixtures['origin']->id, 'LOTE-ORIGEN', 50);
 
         $payload = array_merge($this->baseAdjustmentAttributes($fixtures), [
             'type' => 'transfer',
@@ -1417,6 +1655,64 @@ class AdjustmentTest extends TestCase
         $this->assertSame('pending', $adjustment->refresh()->status);
     }
 
+    /**
+     * La comprobación autoritativa del modo absoluto está en approve(), dentro de
+     * la transacción y con la fila bloqueada: cubre las solicitudes creadas antes
+     * de este fix y el lote que se haya consumido entre la solicitud y la
+     * aprobación. Sin ella, un absoluto sobre un lote inexistente DUPLICA el
+     * stock de la ubicación (medido: 16.044 g → 32.044 g).
+     */
+    public function test_approve_absolute_entry_on_unknown_batch_fails_and_does_not_duplicate_stock(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $this->seedBatch($fixtures, $fixtures['destination']->id, 'LOTE-REAL', 16044, 5);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'quantity_mode' => 'absolute',
+            'quantity' => 16000,
+            'batch_number' => 'LOTE-INVENTADO',
+            'unit_price' => 5,
+        ]);
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(422);
+        $this->assertStringContainsString('no existe', $response->json('message'));
+
+        // Stock intacto: ni lote nuevo ni movimiento.
+        $this->assertEqualsWithDelta(16044, $this->stockAt($fixtures, $fixtures['destination']->id), 0.01);
+        $this->assertSame(1, Inventory::where('location_id', $fixtures['destination']->id)->count());
+        $this->assertCount(0, $this->movementsOf($adjustment));
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    /**
+     * El lote existe al solicitar pero se consume antes de aprobar: el absoluto
+     * ya no tiene nada que fijar y no puede recrear el lote.
+     */
+    public function test_approve_absolute_fails_when_batch_disappeared_after_request(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $batch = $this->seedBatch($fixtures, $fixtures['destination']->id, 'LOTE-CONTEO', 10, 5);
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'quantity_mode' => 'absolute',
+            'quantity' => 25,
+            'batch_number' => 'LOTE-CONTEO',
+            'unit_price' => 5,
+        ]);
+
+        $batch->delete();
+
+        $this->approve($admin, $adjustment)->assertStatus(422);
+
+        $this->assertSame(0, Inventory::count());
+        $this->assertCount(0, $this->movementsOf($adjustment));
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
     public function test_approve_entry_in_packaging_unit_converts_to_base_only_once(): void
     {
         $fixtures = $this->createCatalogFixtures();
@@ -1436,13 +1732,17 @@ class AdjustmentTest extends TestCase
         $this->assertEqualsWithDelta(500, (float) $batch->quantity, 0.01);
         $this->assertSame('kg', $batch->unit);
 
+        // El movimiento se registra en UNIDAD BASE, no en la unidad de captura:
+        // monthlyReport suma inventory_movements.quantity en crudo, así que un 10
+        // "Bulto" se sumaría como 10 kg y descuadraría el cierre del mes.
         $movement = $this->movementsOf($adjustment)->sole();
-        $this->assertEqualsWithDelta(10, (float) $movement->quantity, 0.01);
-        $this->assertSame('Bulto', $movement->unit);
-        // total = 500 kg * 2; unit_price se expresa en la unidad del movimiento
-        // para conservar el invariante total = cantidad * precio unitario.
+        $this->assertEqualsWithDelta(500, (float) $movement->quantity, 0.01);
+        $this->assertSame('kg', $movement->unit);
+        // total = 500 kg * 2, y el precio unitario ES el costo por unidad base.
         $this->assertEqualsWithDelta(1000, (float) $movement->total_price, 0.01);
-        $this->assertEqualsWithDelta(100, (float) $movement->unit_price, 0.01);
+        $this->assertEqualsWithDelta(2, (float) $movement->unit_price, 0.01);
+        // La unidad de captura no se pierde: queda en las observaciones.
+        $this->assertStringContainsString('capturado como 10 Bulto', $movement->observations);
 
         $this->assertEqualsWithDelta(500, (float) $adjustment->refresh()->quantity_base, 0.01);
     }
@@ -1471,8 +1771,10 @@ class AdjustmentTest extends TestCase
 
         $movement = $this->movementsOf($adjustment)->sole();
         $this->assertSame('exit', $movement->type);
-        $this->assertEqualsWithDelta(10, (float) $movement->quantity, 0.01);
-        $this->assertSame('Bulto', $movement->unit);
+        // En unidad base (500 kg), igual que la entrada: es lo que suman los informes.
+        $this->assertEqualsWithDelta(500, (float) $movement->quantity, 0.01);
+        $this->assertSame('kg', $movement->unit);
+        $this->assertStringContainsString('capturado como 10 Bulto', $movement->observations);
     }
 
     public function test_approve_twice_does_not_duplicate_stock(): void
@@ -1560,6 +1862,10 @@ class AdjustmentTest extends TestCase
     public function test_store_accepts_zero_quantity_only_in_absolute_mode(): void
     {
         $fixtures = $this->createCatalogFixtures();
+
+        // El lote debe existir: fijar el saldo de un lote inexistente lo crearía
+        // con el saldo completo (ver test_store_absolute_rejects_unknown_batch).
+        $this->seedBatch($fixtures, $fixtures['destination']->id, 'LOTE-CONTEO', 6);
 
         // Absoluto: 0 es legítimo ("el conteo físico dio cero").
         $this->actingAs($fixtures['requester'], 'api')
