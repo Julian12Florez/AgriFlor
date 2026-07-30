@@ -78,6 +78,17 @@ use Illuminate\Support\Facades\Schema;
  * alguno falla, revertir con `down()` (que restaura desde
  * `inventory_movements_md_backup`) e investigar.
  *
+ * COTEJO (collation) — el fallo que tumbó el primer despliegue: en producción el
+ * cotejo por defecto del SERVIDOR es `utf8mb4_0900_ai_ci` mientras que las tablas
+ * de la aplicación son `utf8mb4_unicode_ci`. Las tablas auxiliares (el respaldo y
+ * la temporal del plan) se creaban sin `COLLATE` explícito, heredaban el del
+ * servidor, y el JOIN contra `inventory_movements.id` moría con el error 1267
+ * «Illegal mix of collations». Ahora las dos se crean con el cotejo LEÍDO de
+ * `information_schema` para `inventory_movements.id`, los predicados de JOIN
+ * llevan `COLLATE` explícito como cinturón, y una tabla de respaldo preexistente
+ * con el cotejo equivocado se repara con `ALTER TABLE ... MODIFY` conservando sus
+ * filas. Nada de esto se ve en un entorno donde servidor y tablas coinciden.
+ *
  * Solo se escribe `movement_date`. Ni cantidades, ni unidades, ni precios, ni la
  * tabla `inventory`: el stock actual ya es correcto (las cantidades siempre se
  * movieron bien), lo único mal era en qué mes caía cada movimiento.
@@ -98,6 +109,9 @@ return new class extends Migration
     /** Plan de corrección: fuente única del respaldo y del UPDATE. */
     private const PLAN_TABLE = 'tmp_md_realign_plan';
 
+    /** Cotejo de `inventory_movements.id`, resuelto una sola vez por corrida. */
+    private ?string $movementIdCollation = null;
+
     public function up(): void
     {
         $this->ensureBackupTable();
@@ -109,6 +123,7 @@ return new class extends Migration
             'sin_marcador_de_lote' => $this->countEntriesWithoutBatchMarker(),
             'respaldadas' => $this->backupPlannedRows(),
             'corregidas' => $this->applyPlan(),
+            'cotejo' => $this->movementIdCollation(),
         ];
 
         $this->dropPlan();
@@ -117,12 +132,14 @@ return new class extends Migration
 
     public function down(): void
     {
+        $this->ensureBackupTable();
+
         // Restaura la fecha original desde el respaldo. La tabla de respaldo NO
         // se borra: es la única evidencia de qué se corrigió y con qué valor.
         $restored = DB::affectingStatement("
             UPDATE inventory_movements im
             JOIN " . self::BACKUP_TABLE . " b
-                ON b.movement_id = im.id
+                ON b.movement_id " . $this->collateClause() . " = im.id
                AND b.reason = '" . self::REASON . "'
             SET im.movement_date = b.original_movement_date
             WHERE b.original_movement_date IS NOT NULL
@@ -133,26 +150,103 @@ return new class extends Migration
     }
 
     /**
-     * El `CREATE TABLE` va detrás de un `hasTable` a propósito: en MySQL
+     * Cotejo (collation) de la columna con la que se emparejan las tablas
+     * auxiliares. Se LEE del esquema en vez de fijarlo a un literal para que la
+     * migración no dependa de que hoy sea `utf8mb4_unicode_ci`: si algún día las
+     * tablas de la aplicación se convierten a otro cotejo, esto lo sigue.
+     */
+    private function movementIdCollation(): string
+    {
+        if ($this->movementIdCollation !== null) {
+            return $this->movementIdCollation;
+        }
+
+        $collation = DB::selectOne("
+            SELECT COLLATION_NAME AS name
+            FROM information_schema.columns
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'inventory_movements'
+              AND COLUMN_NAME = 'id'
+        ")?->name ?? null;
+
+        // El valor sale del esquema, no de una entrada de usuario, pero se
+        // interpola en DDL: se valida antes de usarlo.
+        if (!is_string($collation) || !preg_match('/^[A-Za-z0-9_]+$/', $collation)) {
+            throw new \RuntimeException(
+                'No se pudo determinar el cotejo de inventory_movements.id.'
+            );
+        }
+
+        return $this->movementIdCollation = $collation;
+    }
+
+    private function collateClause(): string
+    {
+        return 'COLLATE ' . $this->movementIdCollation();
+    }
+
+    /**
+     * Crea la tabla de respaldo, o repara la que ya exista con el cotejo
+     * equivocado.
+     *
+     * Las dos cosas son necesarias por lo que pasó en producción: allí el cotejo
+     * por defecto del SERVIDOR es `utf8mb4_0900_ai_ci` mientras que las tablas de
+     * la aplicación son `utf8mb4_unicode_ci`, así que un `CREATE TABLE` sin
+     * COLLATE explícito heredaba el del servidor y el JOIN contra
+     * `inventory_movements.id` moría con «Illegal mix of collations» (error 1267).
+     * Como `hasTable()` devolvía true en el reintento, la tabla mala se quedaba y
+     * el fallo se repetía en cada despliegue. Por eso aquí no basta con crear:
+     * hay que detectar y corregir. El `MODIFY` conserva las filas ya respaldadas,
+     * que son válidas (en producción el UPDATE nunca llegó a ejecutarse).
+     *
+     * El `CREATE`/`ALTER` va detrás de una comprobación a propósito: en MySQL
      * cualquier DDL fuerza un COMMIT implícito, y eso rompería la transacción de
-     * las pruebas (y con ella su aislamiento). Si la tabla ya existe —el caso
-     * normal, porque esta misma migración la creó— no se emite DDL alguno.
+     * las pruebas (y con ella su aislamiento). Si la tabla ya existe y su cotejo
+     * es el correcto —el caso normal— no se emite DDL alguno.
      */
     private function ensureBackupTable(): void
     {
-        if (Schema::hasTable(self::BACKUP_TABLE)) {
+        if (!Schema::hasTable(self::BACKUP_TABLE)) {
+            DB::statement("
+                CREATE TABLE " . self::BACKUP_TABLE . " (
+                    movement_id CHAR(36) " . $this->collateClause() . " NOT NULL PRIMARY KEY,
+                    original_movement_date DATE NULL,
+                    corrected_movement_date DATE NULL,
+                    reason VARCHAR(50) " . $this->collateClause() . " NULL,
+                    backed_up_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
+                )
+            ");
+
+            return;
+        }
+
+        if ($this->backupCollationIsCorrect()) {
             return;
         }
 
         DB::statement("
-            CREATE TABLE " . self::BACKUP_TABLE . " (
-                movement_id CHAR(36) NOT NULL PRIMARY KEY,
-                original_movement_date DATE NULL,
-                corrected_movement_date DATE NULL,
-                reason VARCHAR(50) NULL,
-                backed_up_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP
-            )
+            ALTER TABLE " . self::BACKUP_TABLE . "
+                MODIFY movement_id CHAR(36) " . $this->collateClause() . " NOT NULL,
+                MODIFY reason VARCHAR(50) " . $this->collateClause() . " NULL
         ");
+
+        \Log::warning('realign_transfer_entry_movement_dates: respaldo re-cotejado', [
+            'tabla' => self::BACKUP_TABLE,
+            'cotejo' => $this->movementIdCollation(),
+        ]);
+    }
+
+    private function backupCollationIsCorrect(): bool
+    {
+        $current = DB::selectOne("
+            SELECT COLLATION_NAME AS name
+            FROM information_schema.columns
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = '" . self::BACKUP_TABLE . "'
+              AND COLUMN_NAME = 'movement_id'
+        ")?->name ?? null;
+
+        return $current === $this->movementIdCollation();
     }
 
     /**
@@ -164,9 +258,13 @@ return new class extends Migration
     {
         $this->dropPlan();
 
+        // El COLLATE explícito es obligatorio: sin él la tabla hereda el cotejo
+        // por defecto del SERVIDOR, que en producción no coincide con el de las
+        // tablas de la aplicación, y el JOIN de `applyPlan()` muere con el
+        // error 1267 «Illegal mix of collations».
         DB::statement("
             CREATE TEMPORARY TABLE " . self::PLAN_TABLE . " (
-                movement_id CHAR(36) NOT NULL PRIMARY KEY,
+                movement_id CHAR(36) " . $this->collateClause() . " NOT NULL PRIMARY KEY,
                 original_movement_date DATE NULL,
                 corrected_movement_date DATE NULL
             )
@@ -241,9 +339,13 @@ return new class extends Migration
 
     private function applyPlan(): int
     {
+        // El COLLATE del predicado es cinturón de seguridad: aunque la tabla del
+        // plan se creara con otro cotejo, la comparación se resuelve en el de
+        // `inventory_movements.id` en vez de reventar.
         return DB::affectingStatement("
             UPDATE inventory_movements im
-            JOIN " . self::PLAN_TABLE . " p ON p.movement_id = im.id
+            JOIN " . self::PLAN_TABLE . " p
+                ON p.movement_id " . $this->collateClause() . " = im.id
             SET im.movement_date = p.corrected_movement_date
             WHERE im.movement_date <> p.corrected_movement_date
               AND im.movement_date > '" . self::CLOSED_THROUGH . "'

@@ -466,4 +466,138 @@ class RealignTransferEntryDatesMigrationTest extends TestCase
             'down() no debe borrar el respaldo: es la evidencia de qué se corrigió.'
         );
     }
+
+    // ------------------------------------------------------------------
+    // 6. COTEJO (collation): el fallo que tumbó el despliegue
+    // ------------------------------------------------------------------
+
+    /** Cotejo real de la columna contra la que se emparejan las tablas auxiliares. */
+    private function movementsCollation(): string
+    {
+        return DB::selectOne("
+            SELECT COLLATION_NAME AS name
+            FROM information_schema.columns
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'inventory_movements'
+              AND COLUMN_NAME = 'id'
+        ")->name;
+    }
+
+    private function backupCollation(): ?string
+    {
+        return DB::selectOne("
+            SELECT COLLATION_NAME AS name
+            FROM information_schema.columns
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = '" . self::BACKUP_TABLE . "'
+              AND COLUMN_NAME = 'movement_id'
+        ")?->name;
+    }
+
+    /**
+     * En producción el cotejo por defecto del SERVIDOR (`utf8mb4_0900_ai_ci`) no
+     * coincide con el de las tablas de la aplicación (`utf8mb4_unicode_ci`). Las
+     * tablas auxiliares se creaban sin `COLLATE` explícito, heredaban el del
+     * servidor, y el JOIN contra `inventory_movements.id` moría con el error 1267.
+     *
+     * Esta prueba no puede cambiar el cotejo por defecto de la base de pruebas sin
+     * contaminarla, así que verifica el CONTRATO: que el SQL que emite la
+     * migración declare explícitamente el cotejo de `inventory_movements.id` tanto
+     * al crear la tabla temporal del plan como al emparejarla en el UPDATE. Sin
+     * eso, el resultado depende de cómo esté configurado el servidor.
+     */
+    public function test_auxiliary_tables_declare_the_movements_collation(): void
+    {
+        $fixtures = $this->createFixtures();
+        $this->seedTransferPair(
+            $fixtures, self::JULY_CORRECT_DATE, self::JULY_WRONG_DATE, self::JULY_WRONG_DATE, 140
+        );
+
+        $statements = [];
+        DB::listen(function ($query) use (&$statements) {
+            $statements[] = $query->sql;
+        });
+
+        $this->runMigration();
+
+        $collation = $this->movementsCollation();
+        $find = fn (string $needle) => collect($statements)
+            ->first(fn (string $sql) => str_contains($sql, $needle));
+
+        $createPlan = $find('CREATE TEMPORARY TABLE');
+        $this->assertNotNull($createPlan, 'La migración debe crear la tabla temporal del plan.');
+        $this->assertStringContainsString(
+            'COLLATE ' . $collation,
+            $createPlan,
+            'La tabla temporal debe declarar el cotejo de inventory_movements.id; ' .
+            'sin COLLATE explícito hereda el del servidor y el JOIN revienta (error 1267).'
+        );
+
+        $update = $find('UPDATE inventory_movements im');
+        $this->assertNotNull($update, 'La migración debe emitir el UPDATE del plan.');
+        $this->assertStringContainsString(
+            'COLLATE ' . $collation,
+            $update,
+            'El predicado del JOIN debe llevar COLLATE explícito como cinturón de seguridad.'
+        );
+    }
+
+    /**
+     * El escenario exacto en el que quedó producción tras el despliegue fallido:
+     * la tabla de respaldo YA existe, creada con el cotejo equivocado, y con filas
+     * válidas dentro (el UPDATE nunca llegó a correr). Como `ensureBackupTable()`
+     * salía por `hasTable()`, la tabla mala se quedaba y el fallo se repetía en
+     * cada arranque. La migración debe detectarlo, repararlo conservando las filas
+     * y seguir adelante.
+     */
+    public function test_repairs_a_backup_table_created_with_the_wrong_collation(): void
+    {
+        $correct = $this->movementsCollation();
+        $wrong = $correct === 'utf8mb4_0900_ai_ci' ? 'utf8mb4_unicode_ci' : 'utf8mb4_0900_ai_ci';
+
+        // Reproduce la tabla que dejó el despliegue fallido.
+        DB::statement(
+            'ALTER TABLE ' . self::BACKUP_TABLE . " MODIFY movement_id CHAR(36) COLLATE {$wrong} NOT NULL"
+        );
+        $this->assertSame($wrong, $this->backupCollation(), 'Precondición: el respaldo está mal cotejado.');
+
+        // Fila previa del despliegue fallido: debe sobrevivir a la reparación.
+        $sentinelId = (string) \Illuminate\Support\Str::uuid();
+        DB::table(self::BACKUP_TABLE)->insert([
+            'movement_id' => $sentinelId,
+            'original_movement_date' => '2026-07-20',
+            'corrected_movement_date' => '2026-06-30',
+            'reason' => 'E3E4_entry_transfer',
+        ]);
+
+        $fixtures = $this->createFixtures();
+        $july = $this->seedTransferPair(
+            $fixtures, self::JULY_CORRECT_DATE, self::JULY_WRONG_DATE, self::JULY_WRONG_DATE, 140
+        );
+
+        $this->runMigration();
+
+        $this->assertSame(
+            $correct,
+            $this->backupCollation(),
+            'La migración debe re-cotejar el respaldo al cotejo de inventory_movements.id.'
+        );
+        $this->assertSame(
+            self::JULY_CORRECT_DATE,
+            $this->movementDateOf($july['entry']->id),
+            'Reparado el cotejo, la corrección debe aplicarse igual que siempre.'
+        );
+
+        $sentinel = $this->backupRowFor($sentinelId);
+        $this->assertNotNull($sentinel, 'La reparación NO debe perder las filas ya respaldadas.');
+        $this->assertSame('2026-07-20', $sentinel->original_movement_date);
+
+        // Y down() debe poder emparejar contra el respaldo sin morir por cotejos.
+        $this->migration()->down();
+        $this->assertSame(
+            self::JULY_WRONG_DATE,
+            $this->movementDateOf($july['entry']->id),
+            'down() debe seguir funcionando tras la reparación.'
+        );
+    }
 }
