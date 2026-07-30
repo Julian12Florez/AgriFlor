@@ -13,6 +13,7 @@ use App\Models\InventoryMovement;
 use App\Models\OutputProduct;
 use App\Models\ProductOutput;
 use App\Models\Reception;
+use App\Services\CommittedStockService;
 use App\Services\InventoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -23,10 +24,12 @@ use Illuminate\Support\Facades\DB;
 class ProductOutputController extends Controller
 {
     private InventoryService $inventoryService;
+    private CommittedStockService $committedStockService;
 
-    public function __construct(InventoryService $inventoryService)
+    public function __construct(InventoryService $inventoryService, CommittedStockService $committedStockService)
     {
         $this->inventoryService = $inventoryService;
+        $this->committedStockService = $committedStockService;
     }
 
     /**
@@ -139,9 +142,9 @@ class ProductOutputController extends Controller
                 ], 403);
             }
 
-            $otherCommittedOutputs = ProductOutput::where('origin_location_id', $originLocationId)
-                ->whereIn('status', ['approved', 'in_transit', 'partial'])
-                ->get();
+            // Precargado UNA vez (no depende del producto): CommittedStockService lo
+            // reutiliza para cada producto de la salida sin repetir esta consulta.
+            $otherCommittedOutputs = $this->committedStockService->otherOutputsForLocation($originLocationId);
 
             foreach ($products as $productData) {
                 $productId = $productData['product_id'];
@@ -159,45 +162,20 @@ class ProductOutputController extends Controller
                 $physicalBase = $this->inventoryService->toBaseUnit($physicalQty, $unit, $productId);
                 $requestedBase = $this->inventoryService->toBaseUnit($requestedQty, $unit, $productId);
 
-                // Calcular comprometido por otras salidas (no recibidas)
-                // FIX: usar 'output_id' (FK real en OutputProduct), no 'product_output_id'
-                $committedBase = 0;
-                $blockingOutputs = []; // salidas que retienen este stock (para el mensaje de error)
-                foreach ($otherCommittedOutputs as $otherOutput) {
-                    $otherProducts = OutputProduct::where('output_id', $otherOutput->id)
-                        ->where('product_id', $productId)
-                        ->where('brand_id', $brandId)
-                        ->get();
-
-                    foreach ($otherProducts as $otherProduct) {
-                        $deliveredBase = $this->inventoryService->toBaseUnit(
-                            floatval($otherProduct->quantity_delivered),
-                            $otherProduct->unit,
-                            $productId
-                        );
-                        // Restar lo ya recibido
-                        $receivedBase = 0;
-                        $reception = Reception::where('source_id', $otherOutput->id)
-                            ->where('source_type', 'output')->first();
-                        if ($reception) {
-                            $items = $reception->receptionItems()
-                                ->where('product_id', $productId)
-                                ->where('brand_id', $brandId)
-                                ->get();
-                            foreach ($items as $item) {
-                                $receivedBase += $this->inventoryService->toBaseUnit(
-                                    floatval($item->quantity_received), $item->unit, $productId
-                                );
-                            }
-                        }
-                        $pendingBase = max(0, $deliveredBase - $receivedBase);
-                        if ($pendingBase > 0.01) {
-                            $committedBase += $pendingBase;
-                            $blockingOutputs[] = ($otherOutput->output_number ?? $otherOutput->id)
-                                . ' (' . round($pendingBase, 2) . ')';
-                        }
-                    }
-                }
+                // Calcular comprometido por otras salidas (no recibidas). Misma regla
+                // que usa ProductController::getForOutputs() para ofrecer el desplegable
+                // (CommittedStockService, C-3 PR-C) — no se duplica la lógica.
+                $breakdown = $this->committedStockService->committedBreakdown(
+                    $otherCommittedOutputs,
+                    $productId,
+                    $brandId
+                );
+                $committedBase = $breakdown['total'];
+                // Salidas que retienen este stock (para el mensaje de error)
+                $blockingOutputs = array_map(
+                    fn (array $b) => $b['output_number'] . ' (' . $b['pending'] . ')',
+                    $breakdown['blocking']
+                );
 
                 $availableBase = $physicalBase - $committedBase;
                 if ($availableBase < $requestedBase - 0.01) {

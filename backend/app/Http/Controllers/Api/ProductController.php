@@ -8,12 +8,17 @@ use App\Http\Requests\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
 use App\Models\Product;
 use App\Models\Inventory;
+use App\Services\CommittedStockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ProductController extends Controller
 {
+    public function __construct(private CommittedStockService $committedStockService)
+    {
+    }
+
     /**
      * Display a listing of products
      */
@@ -230,7 +235,8 @@ class ProductController extends Controller
 
     /**
      * Get products with inventory details for product outputs
-     * Returns products ordered by expiration date (FIFO) and then by stock
+     * Returns products ordered by expiration date (FIFO — vencimientos sin
+     * fecha van al final, no al frente) and then by stock
      */
     public function getForOutputs(Request $request): JsonResponse
     {
@@ -240,12 +246,42 @@ class ProductController extends Controller
         ]);
 
         // Get all inventory items for the location (including expired — users may need to dispose of them)
+        // FIFO real: MySQL ordena los NULL primero por defecto, así que "Sin
+        // vencimiento" encabezaba la lista por delante de lotes que sí vencen —
+        // rompía el criterio FIFO que el propio rótulo del selector promete
+        // ("producto ordenado por vencimiento"). orderByRaw manda los NULL al
+        // final (C-3, PR-C).
         $inventoryItems = Inventory::where('location_id', $request->location_id)
             ->where('quantity', '>', 0)
             ->with(['product.packagingUnits', 'brand'])
-            ->orderBy('expiration_date', 'asc') // FIFO: Expiration date first
+            ->orderByRaw('expiration_date IS NULL, expiration_date ASC')
             ->orderBy('quantity', 'desc') // Then by stock
             ->get();
+
+        // Comprometido/disponible por [producto, marca]: se calcula sobre TODO el
+        // inventario de la ubicación (antes del filtro de búsqueda, que solo decide
+        // qué filas se muestran, no cuánto hay disponible). Usa la MISMA regla que
+        // ProductOutputController::store() (vía CommittedStockService), para que el
+        // desplegable jamás ofrezca algo que el backend luego rechace con 422
+        // "Stock insuficiente" (C-3, PR-C).
+        $otherOutputs = $this->committedStockService->otherOutputsForLocation($request->location_id);
+
+        $groupPhysicalBase = [];
+        foreach ($inventoryItems as $item) {
+            [$baseQty] = $this->resolveBaseQuantity($item);
+            $key = $item->product_id . '|' . $item->brand_id;
+            $groupPhysicalBase[$key] = ($groupPhysicalBase[$key] ?? 0) + $baseQty;
+        }
+
+        $groupCommitted = [];
+        $groupAvailable = [];
+        foreach ($groupPhysicalBase as $key => $physical) {
+            [$productId, $brandId] = explode('|', $key, 2);
+            $committed = $this->committedStockService
+                ->committedBreakdown($otherOutputs, $productId, $brandId)['total'];
+            $groupCommitted[$key] = $committed;
+            $groupAvailable[$key] = max(0, $physical - $committed);
+        }
 
         // Apply search filter if provided
         if ($request->search) {
@@ -259,7 +295,7 @@ class ProductController extends Controller
         }
 
         // Format data for frontend dropdown
-        $formattedData = $inventoryItems->map(function ($item) {
+        $formattedData = $inventoryItems->map(function ($item) use ($groupCommitted, $groupAvailable) {
             $expirationDate = $item->expiration_date
                 ? $item->expiration_date->format('d/m/Y')
                 : 'Sin vencimiento';
@@ -269,21 +305,14 @@ class ProductController extends Controller
                 $daysToExpiry = now()->diffInDays($item->expiration_date, false);
             }
 
-            // Calculate converted quantity to base unit
-            $baseQuantity = $item->quantity;
-            $baseUnit = $item->unit;
+            [$baseQuantity, $baseUnit] = $this->resolveBaseQuantity($item);
 
-            // Find the packaging unit that matches the inventory unit
-            if ($item->product && $item->product->packagingUnits) {
-                $matchingPackagingUnit = $item->product->packagingUnits->first(function ($pu) use ($item) {
-                    return strtolower($pu->name) === strtolower($item->unit);
-                });
-
-                if ($matchingPackagingUnit) {
-                    $baseQuantity = $item->quantity * $matchingPackagingUnit->base_quantity;
-                    $baseUnit = $matchingPackagingUnit->base_unit;
-                }
-            }
+            $key = $item->product_id . '|' . $item->brand_id;
+            $committedForGroup = $groupCommitted[$key] ?? 0;
+            // Disponible de ESTE lote: no puede superar ni su propio físico ni el
+            // disponible agregado de producto+marca (físico total − comprometido) —
+            // así el desplegable nunca ofrece más de lo que el backend acepta.
+            $availableForRow = min($baseQuantity, $groupAvailable[$key] ?? $baseQuantity);
 
             $isExpired = $item->status === 'expired' || ($daysToExpiry !== null && $daysToExpiry < 0);
             $expiredLabel = $isExpired ? ' [VENCIDO]' : '';
@@ -304,18 +333,23 @@ class ProductController extends Controller
                 'unit' => $item->unit,
                 'base_quantity' => $baseQuantity,
                 'base_unit' => $baseUnit,
+                // Comprometido por otras salidas aprobadas/en tránsito/parciales aún no
+                // recibidas (mismo producto+marca, en toda la ubicación) y lo que
+                // realmente queda disponible para ESTE lote.
+                'committed_quantity' => round($committedForGroup, 2),
+                'available_quantity' => round($availableForRow, 2),
                 'unit_price' => $item->unit_price,
                 'category' => $item->product->category?->name,
                 'category_id' => $item->product->category_id,
                 'active_ingredient' => $item->product->active_ingredient,
-                // Display label for dropdown: "ProductName [code] - Brand - ExpDate - ConvertedStock"
+                // Display label for dropdown: "ProductName [code] - Brand - ExpDate - Disponible"
                 'display_label' => sprintf(
                     '%s%s%s - %s - %s %s disponible%s',
                     $item->product->name,
                     $item->product->product_code ? ' [' . $item->product->product_code . ']' : '',
                     $item->brand && $item->brand->name ? ' - ' . $item->brand->name : '',
                     $expirationDate,
-                    number_format($baseQuantity, 2),
+                    number_format($availableForRow, 2),
                     $baseUnit,
                     $expiredLabel
                 ),
@@ -325,7 +359,7 @@ class ProductController extends Controller
                     $item->product->name,
                     $item->product->product_code ? ' [' . $item->product->product_code . ']' : '',
                     $expirationDate,
-                    number_format($baseQuantity, 2),
+                    number_format($availableForRow, 2),
                     $baseUnit,
                     $expiredLabel
                 ),
@@ -338,5 +372,32 @@ class ProductController extends Controller
             'data' => $formattedData,
             'count' => $formattedData->count(),
         ]);
+    }
+
+    /**
+     * Cantidad física de un lote de inventario convertida a la unidad base del
+     * producto (p. ej. "2 Bultos" -> 100 kg), y esa unidad. Extraído para que la
+     * agregación por [producto, marca] (comprometido/disponible) y el formateo
+     * final de cada fila usen EXACTAMENTE la misma conversión.
+     *
+     * @return array{0: float, 1: string} [cantidad_en_unidad_base, unidad_base]
+     */
+    private function resolveBaseQuantity(Inventory $item): array
+    {
+        $baseQuantity = (float) $item->quantity;
+        $baseUnit = $item->unit;
+
+        if ($item->product && $item->product->packagingUnits) {
+            $matchingPackagingUnit = $item->product->packagingUnits->first(function ($pu) use ($item) {
+                return strtolower($pu->name) === strtolower($item->unit);
+            });
+
+            if ($matchingPackagingUnit) {
+                $baseQuantity = $item->quantity * $matchingPackagingUnit->base_quantity;
+                $baseUnit = $matchingPackagingUnit->base_unit;
+            }
+        }
+
+        return [$baseQuantity, $baseUnit];
     }
 }

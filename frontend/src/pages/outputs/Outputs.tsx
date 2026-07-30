@@ -312,8 +312,12 @@ const Outputs: React.FC = () => {
         realProductId: p.productId,
         brandId: p.brandId,
         inventoryId: inventoryItem?.inventory_id,
-        maxQuantity: inventoryItem?.base_quantity || inventoryItem?.quantity,
+        // maxQuantity = DISPONIBLE (físico − comprometido por otras salidas
+        // pendientes), no el físico completo: es lo que el backend acepta (C-3).
+        maxQuantity: inventoryItem?.available_quantity ?? inventoryItem?.base_quantity ?? inventoryItem?.quantity,
         baseQuantity: inventoryItem?.base_quantity || inventoryItem?.quantity,
+        committedQuantity: inventoryItem?.committed_quantity || 0,
+        availableQuantity: inventoryItem?.available_quantity ?? inventoryItem?.base_quantity ?? inventoryItem?.quantity,
         baseUnit: inventoryItem?.base_unit || inventoryItem?.unit,
         quantityRequested: p.quantityRequested,
         quantityDelivered: p.quantityDelivered,
@@ -973,8 +977,12 @@ const Outputs: React.FC = () => {
                                   unit: item.unit,
                                   batchNumber: item.batch_number,
                                   inventoryId: item.inventory_id,
-                                  maxQuantity: item.base_quantity || item.quantity,
+                                  // maxQuantity = DISPONIBLE (físico − comprometido), no el
+                                  // físico completo: es lo que el backend acepta (C-3).
+                                  maxQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                   baseQuantity: item.base_quantity || item.quantity,
+                                  committedQuantity: item.committed_quantity || 0,
+                                  availableQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                   baseUnit: item.base_unit || item.unit,
                                   expirationDate: item.expiration_date
                                 };
@@ -996,6 +1004,22 @@ const Outputs: React.FC = () => {
                               </Option>
                             ))}
                           </Select>
+                        </Form.Item>
+                        <Form.Item dependencies={[[name, 'productId']]} noStyle>
+                          {({ getFieldValue }) => {
+                            const products = getFieldValue('products') || [];
+                            const currentProduct = products[name];
+                            if (!currentProduct?.productId) return null;
+                            return (
+                              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                                Físico: {(currentProduct.baseQuantity || 0).toFixed(2)} {currentProduct.baseUnit}
+                                {currentProduct.committedQuantity > 0 && (
+                                  <> · Comprometido: {currentProduct.committedQuantity.toFixed(2)} {currentProduct.baseUnit} (otras salidas pendientes)</>
+                                )}
+                                {' '}· Disponible: {(currentProduct.availableQuantity ?? currentProduct.baseQuantity ?? 0).toFixed(2)} {currentProduct.baseUnit}
+                              </Typography.Text>
+                            );
+                          }}
                         </Form.Item>
                         <Form.Item
                           {...restField}
@@ -1176,8 +1200,12 @@ const Outputs: React.FC = () => {
                                 unit: item.unit,
                                 batchNumber: item.batch_number,
                                 inventoryId: item.inventory_id,
-                                maxQuantity: item.base_quantity || item.quantity,
+                                // maxQuantity = DISPONIBLE (físico − comprometido), no el
+                                // físico completo: es lo que el backend acepta (C-3).
+                                maxQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                 baseQuantity: item.base_quantity || item.quantity,
+                                committedQuantity: item.committed_quantity || 0,
+                                availableQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                 baseUnit: item.base_unit || item.unit,
                                 expirationDate: item.expiration_date
                               };
@@ -1199,6 +1227,22 @@ const Outputs: React.FC = () => {
                             </Option>
                           ))}
                         </Select>
+                      </Form.Item>
+                      <Form.Item dependencies={[[name, 'productId']]} noStyle>
+                        {({ getFieldValue }) => {
+                          const products = getFieldValue('products') || [];
+                          const currentProduct = products[name];
+                          if (!currentProduct?.productId) return null;
+                          return (
+                            <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                              Físico: {(currentProduct.baseQuantity || 0).toFixed(2)} {currentProduct.baseUnit}
+                              {currentProduct.committedQuantity > 0 && (
+                                <> · Comprometido: {currentProduct.committedQuantity.toFixed(2)} {currentProduct.baseUnit} (otras salidas pendientes)</>
+                              )}
+                              {' '}· Disponible: {(currentProduct.availableQuantity ?? currentProduct.baseQuantity ?? 0).toFixed(2)} {currentProduct.baseUnit}
+                            </Typography.Text>
+                          );
+                        }}
                       </Form.Item>
                       <Form.Item
                         {...restField}
