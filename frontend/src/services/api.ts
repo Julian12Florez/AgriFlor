@@ -1,4 +1,4 @@
-import type { ApiResponse, PaginatedResponse } from '../types/index';
+import type { ApiResponse, PaginatedResponse, Adjustment, AdjustmentReason } from '../types/index';
 import type { FormInstance, MessageInstance } from 'antd';
 
 // API Configuration
@@ -503,8 +503,10 @@ export const inventoryApi = {
   getConsumptionReport: (params?: Record<string, any>) =>
     api.get<ApiResponse<any>>('/inventory/consumption/report', params),
 
-  adjust: (data: any) =>
-    api.post<ApiResponse<any>>('/inventory/adjustments', data),
+  // NOTA: `adjust()` (POST /inventory/adjustments) se eliminó junto con su ruta en el
+  // backend: no tenía ningún llamador y escribía inventario sin FIFO, sin conversión de
+  // unidades y sin documento relacionado (sus entradas se contaban como compras en el
+  // informe mensual). Los ajustes se registran con adjustmentsApi.create().
 
   // Kardex endpoints
   getKardex: (params?: Record<string, any>) =>
@@ -524,6 +526,35 @@ export const inventoryApi = {
 
   getProductListing: (params?: Record<string, any>) =>
     api.get<ApiResponse<any>>('/inventory/product-listing', params),
+};
+
+// Adjustments API - Solicitudes de ajuste de inventario (Entrada/Salida/Traslado).
+// Cualquier rol autenticado puede crear/cancelar; aprobar/rechazar es exclusivo de admin
+// (el backend lo re-valida con el middleware role:admin, esto es solo UX).
+export const adjustmentsApi = {
+  list: (params?: Record<string, any>) =>
+    api.get<PaginatedResponse<Adjustment>>('/adjustments', params),
+
+  get: (id: string) =>
+    api.get<ApiResponse<Adjustment>>(`/adjustments/${id}`),
+
+  create: (data: any) =>
+    api.post<ApiResponse<Adjustment>>('/adjustments', data),
+
+  approve: (id: string) =>
+    api.put<ApiResponse<Adjustment>>(`/adjustments/${id}/approve`, {}),
+
+  reject: (id: string, rejectionReason: string) =>
+    api.put<ApiResponse<Adjustment>>(`/adjustments/${id}/reject`, { rejection_reason: rejectionReason }),
+
+  cancel: (id: string) =>
+    api.put<ApiResponse<Adjustment>>(`/adjustments/${id}/cancel`, {}),
+};
+
+// Adjustment Reasons API - Catálogo de motivos de ajuste (filtrable por dirección).
+export const adjustmentReasonsApi = {
+  list: (params?: { direction?: 'any' | 'entry' | 'exit' | 'transfer' }) =>
+    api.get<ApiResponse<AdjustmentReason[]>>('/adjustment-reasons', params),
 };
 
 // Locations API

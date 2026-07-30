@@ -16,6 +16,14 @@ use Illuminate\Support\Facades\Validator;
 
 class InventoryController extends Controller
 {
+    /**
+     * Tipo de documento con el que se guardan los movimientos que genera la
+     * aprobación de una solicitud de ajuste (espejo de
+     * AdjustmentController::MOVEMENT_DOCUMENT_TYPE: el nombre de clase completo,
+     * NO el alias del morph map).
+     */
+    private const ADJUSTMENT_DOCUMENT_TYPE = 'App\Models\Adjustment';
+
     private InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -1487,6 +1495,27 @@ class InventoryController extends Controller
                     }
                 }
 
+                // 3b. Traslados salientes que la matriz de fincas NO explica: la
+                //     matriz solo recorre ubicaciones type='farm', así que un
+                //     traslado finca→bodega (el caso que el módulo de ajustes
+                //     publicita: "devolver producto de mi finca a la bodega
+                //     central") o bodega→bodega dejaba su SALIDA sin contabilizar
+                //     en el informe del ORIGEN y aparecía como "Variación"
+                //     (medido: −30 en un traslado de 30 kg).
+                //     El criterio es EXCLUYENTE respecto del paso 3: se descartan
+                //     los traslados cuya entrada emparejada sí quedó contada como
+                //     envío a una finca, para no restarlos dos veces en el caso
+                //     bodega→finca, que ya cuadraba.
+                $transfersOut = $this->transferExitsNotShippedToFarms(
+                    $product->id,
+                    $warehouseId,
+                    $startDate,
+                    $endDate,
+                    $originExitDocIds,
+                    $this->shippedDocumentIds($product->id, $warehouseId, $farms, $startDate, $endDate, $originExitDocIds)
+                );
+                $totalShipped += $transfersOut;
+
                 // 4. Remanente devuelto a la ubicación (documentos de salida tipo
                 //    'remanente' con destino = la ubicación seleccionada).
                 $returns = (float) ($remanenteByProduct[$product->id] ?? 0);
@@ -1508,27 +1537,32 @@ class InventoryController extends Controller
                     $currentStock += $this->inventoryService->toBaseUnit((float) $inv->quantity, $inv->unit, $product->id);
                 }
 
-                // 6. Increases (adjustments positive - not purchases, not remanentes)
-                $increases = InventoryMovement::where('product_id', $product->id)
-                    ->where('type', 'entry')
-                    ->where('location_id', $warehouseId)
-                    ->whereBetween('movement_date', [$startDate, $endDate])
-                    ->where(function ($q) {
-                        $q->where('observations', 'like', '%aumento%')
-                            ->orWhere('observations', 'like', '%ajuste%positiv%');
-                    })
-                    ->sum('quantity');
+                // 6. Aumentos: ajustes que INCREMENTAN las existencias de la ubicación.
+                //    Incluye la pata de ENTRADA de un traslado: para el destino es un
+                //    ingreso real y ninguna otra columna la explica (no es compra), así
+                //    que sin contarla quedaría como "Variación", un descuadre aparente.
+                $increases = $this->whereClassifiedAsAdjustment(
+                    InventoryMovement::where('product_id', $product->id)
+                        ->where('type', 'entry')
+                        ->where('location_id', $warehouseId)
+                        ->whereBetween('movement_date', [$startDate, $endDate]),
+                    ['entry', 'transfer'],
+                    ['%aumento%', '%ajuste%positiv%']
+                )->sum('quantity');
 
-                // 7. Decreases (adjustments negative - not shipments)
-                $decreases = InventoryMovement::where('product_id', $product->id)
-                    ->whereIn('type', ['exit', 'application'])
-                    ->where('location_id', $warehouseId)
-                    ->whereBetween('movement_date', [$startDate, $endDate])
-                    ->where(function ($q) {
-                        $q->where('observations', 'like', '%disminuc%')
-                            ->orWhere('observations', 'like', '%ajuste%negativ%');
-                    })
-                    ->sum('quantity');
+                // 7. Disminuciones: ajustes que REDUCEN las existencias de la ubicación.
+                //    Solo los de tipo 'exit' (ajustes netos: mermas, bajas). La pata de
+                //    SALIDA de un traslado queda deliberadamente fuera porque ya se
+                //    resta arriba en la matriz de envíos (paso 3, emparejada por
+                //    related_document_id): contarla también aquí la restaría DOS veces.
+                $decreases = $this->whereClassifiedAsAdjustment(
+                    InventoryMovement::where('product_id', $product->id)
+                        ->whereIn('type', ['exit', 'application'])
+                        ->where('location_id', $warehouseId)
+                        ->whereBetween('movement_date', [$startDate, $endDate]),
+                    ['exit'],
+                    ['%disminuc%', '%ajuste%negativ%']
+                )->sum('quantity');
 
                 // Total movements = purchases + increases - shipped - decreases + returns
                 $totalMov = round((float)$purchases + (float)$increases - (float)$totalShipped - (float)$decreases + (float)$returns, 2);
@@ -1547,6 +1581,10 @@ class InventoryController extends Controller
                         'purchases' => round((float) $purchases, 2),
                         'farm_shipments' => $farmShipments,
                         'total_shipped' => round((float) $totalShipped, 2),
+                        // Parte de total_shipped que NO fue a una finca (traslados
+                        // a bodegas u otras ubicaciones), separada para poder
+                        // auditar la diferencia contra la matriz de fincas.
+                        'transfers_out' => round((float) $transfersOut, 2),
                         'returns' => round((float) $returns, 2),
                         'increases' => round((float) $increases, 2),
                         'decreases' => round((float) $decreases, 2),
@@ -1577,6 +1615,10 @@ class InventoryController extends Controller
                         'total_products' => count($result),
                         'total_with_stock' => count(array_filter($result, fn($p) => $p['final_stock'] > 0)),
                         'total_purchases' => round(array_sum(array_column($result, 'purchases')), 2),
+                        // Incluye envíos a fincas Y transfersOut (traslados a
+                        // ubicaciones que no son finca, p. ej. bodega -> bodega).
+                        // El frontend lo etiqueta "Total Enviado / Trasladado"
+                        // (no "a Fincas") para que el rótulo sea veraz.
                         'total_shipped' => round(array_sum(array_column($result, 'total_shipped')), 2),
                     ],
                 ],
@@ -1587,6 +1629,163 @@ class InventoryController extends Controller
                 'message' => 'Error al generar el reporte mensual: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Documentos cuya ENTRADA ya quedó contada como envío en la matriz de fincas
+     * del inventario mensual (paso 3), para poder excluirlos del conteo de
+     * traslados salientes y no restar dos veces la misma salida.
+     *
+     * Replica exactamente los filtros del paso 3 (fincas activas, excluida la
+     * propia ubicación del informe, mismo producto, mismo rango, emparejadas por
+     * related_document_id con un exit del origen).
+     *
+     * @param  \Illuminate\Support\Collection  $farms
+     * @param  array<int, string>  $originExitDocIds
+     * @return array<int, string>
+     */
+    private function shippedDocumentIds(
+        string $productId,
+        string $warehouseId,
+        $farms,
+        $startDate,
+        $endDate,
+        array $originExitDocIds
+    ): array {
+        if (empty($originExitDocIds)) {
+            return [];
+        }
+
+        $farmIds = $farms->pluck('id')->reject(fn ($id) => $id === $warehouseId)->values()->all();
+
+        if (empty($farmIds)) {
+            return [];
+        }
+
+        return InventoryMovement::where('product_id', $productId)
+            ->whereIn('location_id', $farmIds)
+            ->where('type', 'entry')
+            ->whereBetween('movement_date', [$startDate, $endDate])
+            ->whereIn('related_document_id', $originExitDocIds)
+            ->distinct()
+            ->pluck('related_document_id')
+            ->all();
+    }
+
+    /**
+     * Suma de las SALIDAS por traslado desde la ubicación del informe cuya
+     * entrada emparejada NO se contabilizó como envío a una finca.
+     *
+     * Es la pata que faltaba para que la "Variación" del origen sea 0 en un
+     * traslado finca→bodega o bodega→bodega: la salida existe en el kardex y baja
+     * el stock, pero ninguna columna del informe la explicaba.
+     *
+     * Solo mira movimientos que provienen de una solicitud de ajuste de tipo
+     * 'transfer' (el documento manda, no el texto de las observaciones): las
+     * salidas de ajustes NETOS ya se cuentan en "Disminuciones" y las de
+     * recepciones/aplicaciones tienen otro documento y otras columnas.
+     *
+     * @param  array<int, string>  $originExitDocIds
+     * @param  array<int, string>  $shippedDocIds
+     */
+    private function transferExitsNotShippedToFarms(
+        string $productId,
+        string $warehouseId,
+        $startDate,
+        $endDate,
+        array $originExitDocIds,
+        array $shippedDocIds
+    ): float {
+        if (empty($originExitDocIds)) {
+            return 0.0;
+        }
+
+        $query = InventoryMovement::where('product_id', $productId)
+            ->where('location_id', $warehouseId)
+            ->where('type', 'exit')
+            ->whereBetween('movement_date', [$startDate, $endDate])
+            ->where('related_document_type', self::ADJUSTMENT_DOCUMENT_TYPE)
+            ->whereExists(function ($exists) {
+                $exists->selectRaw('1')
+                    ->from('adjustments')
+                    ->whereColumn('adjustments.id', 'inventory_movements.related_document_id')
+                    ->where('adjustments.type', 'transfer');
+            });
+
+        if (!empty($shippedDocIds)) {
+            $query->whereNotIn('related_document_id', $shippedDocIds);
+        }
+
+        return (float) $query->sum('quantity');
+    }
+
+    /**
+     * Restringe una consulta de movimientos a los que cuentan en las columnas
+     * "Aumentos" / "Disminuciones" del inventario mensual.
+     *
+     * La clasificación depende del ORIGEN del movimiento:
+     *
+     * - Si viene de una solicitud de ajuste (related_document_type =
+     *   'App\Models\Adjustment'), se clasifica por el TIPO DEL DOCUMENTO
+     *   (adjustments.type), nunca por el texto. Las observaciones incluyen las
+     *   notas que escribe el solicitante, así que clasificar por texto deja el
+     *   informe a merced de lo que alguien redacte: una nota con la palabra
+     *   "disminución" convertiría la SALIDA de un traslado en una disminución,
+     *   y esa salida ya se resta en la matriz de envíos (ambas patas del
+     *   traslado comparten related_document_id) — se restaría dos veces y la
+     *   "Variación" del origen dejaría de ser 0, que es justo la columna que el
+     *   cliente concilia contra contabilidad.
+     *
+     * - Si NO viene de un ajuste (incluidos los movimientos antiguos, donde
+     *   related_document_type es NULL), se clasifica por el texto de la
+     *   observación: es la única marca que tiene el histórico previo al módulo
+     *   de ajustes.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder  $query  consulta ya filtrada por producto, tipo de movimiento, ubicación y rango de fechas
+     * @param  array<int, string>  $adjustmentTypes  valores de adjustments.type que cuentan en esta columna
+     * @param  array<int, string>  $legacyObservationPatterns  patrones LIKE para los movimientos que no provienen de un ajuste
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    private function whereClassifiedAsAdjustment($query, array $adjustmentTypes, array $legacyObservationPatterns)
+    {
+        return $query->where(function ($outer) use ($adjustmentTypes, $legacyObservationPatterns) {
+            // Proviene de una solicitud de ajuste: manda el tipo del documento.
+            $outer->where(function ($fromAdjustment) use ($adjustmentTypes) {
+                $fromAdjustment
+                    ->where('related_document_type', self::ADJUSTMENT_DOCUMENT_TYPE)
+                    ->whereExists(function ($exists) use ($adjustmentTypes) {
+                        $exists->selectRaw('1')
+                            ->from('adjustments')
+                            ->whereColumn('adjustments.id', 'inventory_movements.related_document_id')
+                            ->whereIn('adjustments.type', $adjustmentTypes);
+                    });
+            });
+
+            // Histórico / cualquier otro documento: manda el texto.
+            $outer->orWhere(function ($legacy) use ($legacyObservationPatterns) {
+                $legacy->where(function ($notFromAdjustment) {
+                    $notFromAdjustment
+                        ->where('related_document_type', '!=', self::ADJUSTMENT_DOCUMENT_TYPE)
+                        ->orWhereNull('related_document_type');
+                })->where(function ($byText) use ($legacyObservationPatterns) {
+                    // Guarda obligatoria: sin patrones, este where anidado se
+                    // compilaría vacío y el predicado degeneraría en una
+                    // tautología ("no viene de un ajuste") que sumaría TODOS los
+                    // movimientos del rango en la columna de aumentos o de
+                    // disminuciones. Sin patrones no hay nada que clasificar por
+                    // texto, así que la respuesta correcta es "ninguno".
+                    if (empty($legacyObservationPatterns)) {
+                        $byText->whereRaw('0 = 1');
+
+                        return;
+                    }
+
+                    foreach ($legacyObservationPatterns as $pattern) {
+                        $byText->orWhere('observations', 'like', $pattern);
+                    }
+                });
+            });
+        });
     }
 
     /**
@@ -1641,9 +1840,19 @@ class InventoryController extends Controller
 
                 $remanente = (float) ($remanenteByProduct[$product->id] ?? 0);
                 $consumo = (float) ($consumoByProduct[$product->id] ?? 0);
-                $final = round($initial + $entries - $consumo - $remanente, 2);
 
-                if ($initial != 0 || $entries > 0 || $remanente > 0 || $consumo > 0) {
+                // Salidas de la finca que NO pasan por un documento de salida
+                // (ajustes de salida, traslados salientes, aplicaciones sueltas,
+                // histórico sin documento). Sin restarlas, el informe reportaba
+                // stock que la finca ya no tiene (medido: final_stock 100 con 70
+                // reales tras un ajuste de salida de 30) y rompía la continuidad
+                // final(mes N) == inicial(mes N+1), porque el inventario inicial
+                // SÍ resta todas las salidas.
+                $otherExits = $this->farmExitsOutsideOutputs($product->id, $fincaId, $startDate, $endDate);
+
+                $final = round($initial + $entries - $consumo - $remanente - $otherExits, 2);
+
+                if ($initial != 0 || $entries > 0 || $remanente > 0 || $consumo > 0 || $otherExits > 0) {
                     $result[] = [
                         'product_id' => $product->id,
                         'product_code' => $product->product_code,
@@ -1654,6 +1863,7 @@ class InventoryController extends Controller
                         'entries' => round($entries, 2),
                         'consumption' => round($consumo, 2),
                         'remanente_to_warehouse' => round($remanente, 2),
+                        'other_exits' => round($otherExits, 2),
                         'final_stock' => $final,
                     ];
                 }
@@ -1672,6 +1882,34 @@ class InventoryController extends Controller
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => 'Error al generar el inventario por finca: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Salidas de kardex de una finca que NINGUNA otra columna del inventario por
+     * finca explica.
+     *
+     * Las columnas "consumo" y "remanente" se derivan de los documentos de salida
+     * (product_outputs), cuyos movimientos de kardex se registran al recepcionar
+     * la salida con related_document_type = 'App\Models\Reception' (ver
+     * ReceptionController). Esas se excluyen aquí para no restarlas dos veces.
+     *
+     * Todo lo demás (ajustes de salida, la pata de salida de un traslado,
+     * aplicaciones registradas por su propio módulo, movimientos históricos sin
+     * documento) reduce el stock real de la finca y debe restarse: es exactamente
+     * lo que hace el cálculo del inventario INICIAL, que resta todas las salidas
+     * hasta la fecha de corte.
+     */
+    private function farmExitsOutsideOutputs(string $productId, string $fincaId, $start, $end): float
+    {
+        return (float) InventoryMovement::where('product_id', $productId)
+            ->where('location_id', $fincaId)
+            ->where('type', 'exit')
+            ->whereBetween('movement_date', [$start, $end])
+            ->where(function ($q) {
+                $q->whereNull('related_document_type')
+                    ->orWhere('related_document_type', 'not like', '%Reception');
+            })
+            ->sum('quantity');
     }
 
     /**

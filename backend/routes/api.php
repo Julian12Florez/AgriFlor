@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\AdjustmentController;
 use App\Http\Controllers\Api\AlertController;
 use App\Http\Controllers\Api\ApplicationController;
 use App\Http\Controllers\Api\AuthController;
@@ -324,9 +325,33 @@ Route::middleware('auth:api')->group(function () {
     Route::get('inventory/product/{productId}/details', [InventoryController::class, 'byProduct']);
     Route::get('inventory/{productId}', [InventoryController::class, 'show']);
 
-    // INVENTORY - Adjustments (Admin, Warehouse only)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('inventory/adjustments', [InventoryController::class, 'adjustment']);
+    // NOTA: aquí vivía POST inventory/adjustments (InventoryController::adjustment),
+    // eliminada al entrar el módulo de solicitudes de ajuste. Era un atajo sin
+    // ningún llamador en el frontend y peligroso: escribía siempre sobre un lote
+    // ficticio 'MANUAL' (sin FIFO ni conversión de unidades), aceptaba
+    // `type=adjustment` —que NO existe en el enum de inventory_movements— y dejaba
+    // `related_document_type` en NULL, con lo que sus entradas se contaban como
+    // COMPRAS en el inventario mensual. Todo ajuste pasa ahora por
+    // /api/adjustments, con solicitud + aprobación y trazabilidad.
+
+    // ----------------------------------------
+    // ADJUSTMENTS (módulo de solicitudes de ajuste de inventario)
+    // Crear/leer: CUALQUIER rol autenticado (el cliente pidió que cualquier
+    // rol pueda registrar solicitudes). El aislamiento por ubicación limita
+    // qué ajustes ve cada usuario en index(), no quién puede crear.
+    // Aprobar: SOLO admin, porque es la única acción que toca el inventario.
+    // ----------------------------------------
+    Route::get('adjustment-reasons', [AdjustmentController::class, 'reasons']);
+    Route::get('adjustments', [AdjustmentController::class, 'index']);
+    Route::get('adjustments/{id}', [AdjustmentController::class, 'show']);
+    Route::post('adjustments', [AdjustmentController::class, 'store']);
+    // Cancelar: cualquier autenticado puede intentarlo, la autorización real
+    // (solo el solicitante, solo si está pending) vive en el controlador.
+    Route::put('adjustments/{id}/cancel', [AdjustmentController::class, 'cancel']);
+
+    Route::middleware('role:admin')->group(function () {
+        Route::put('adjustments/{id}/approve', [AdjustmentController::class, 'approve']);
+        Route::put('adjustments/{id}/reject', [AdjustmentController::class, 'reject']);
     });
 
     // ----------------------------------------

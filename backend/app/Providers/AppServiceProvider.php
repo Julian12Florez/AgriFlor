@@ -7,6 +7,7 @@ use Illuminate\Support\ServiceProvider;
 use App\Models\ReceptionBatch;
 use App\Models\ProductOutput;
 use App\Models\InventoryMovement;
+use App\Models\Adjustment;
 use App\Observers\ReceptionBatchObserver;
 use App\Observers\ProductOutputObserver;
 use App\Observers\InventoryMovementObserver;
@@ -38,6 +39,7 @@ class AppServiceProvider extends ServiceProvider
             'location' => 'App\Models\Location',
             'supplier' => 'App\Models\Supplier',
             'user' => 'App\Models\User',
+            'adjustment' => 'App\Models\Adjustment',
         ]);
 
         // Register model observers for automatic inventory management

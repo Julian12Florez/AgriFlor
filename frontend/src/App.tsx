@@ -26,6 +26,7 @@ import Purchases from './pages/purchases/Purchases';
 import Outputs from './pages/outputs/Outputs';
 import Reception from './pages/reception/Reception';
 import Inventory from './pages/inventory/Inventory';
+import Adjustments from './pages/inventory/Adjustments';
 import Reports from './pages/reports/Reports';
 import Alerts from './pages/reports/Alerts';
 import InventoryMovementsReport from './pages/reports/InventoryMovementsReport';
@@ -207,6 +208,15 @@ const App: React.FC = () => {
                 <ProtectedRoute module="inventory" showAccessDenied>
                   <MainLayout>
                     <Inventory />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+
+              {/* Inventory Adjustments Routes - module: 'inventory' */}
+              <Route path="/inventory/adjustments" element={
+                <ProtectedRoute module="inventory" showAccessDenied>
+                  <MainLayout>
+                    <Adjustments />
                   </MainLayout>
                 </ProtectedRoute>
               } />
