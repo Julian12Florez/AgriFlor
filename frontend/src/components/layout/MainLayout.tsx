@@ -109,6 +109,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     if (hasModuleAccess('reception')) {
       purchaseChildren.push({ key: '/reception', label: 'Recepción' });
     }
+    // Ajustes de inventario: vive junto a las operaciones (compras/salidas/recepción)
+    // porque se usa para corregir esos movimientos, no para consultar el inventario.
+    if (hasModuleAccess('inventory')) {
+      purchaseChildren.push({ key: '/inventory/adjustments', label: 'Ajustes de Inventario' });
+    }
 
     if (purchaseChildren.length > 0) {
       items.push({
@@ -127,7 +132,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
         label: 'Inventario',
         children: [
           { key: '/inventory', label: 'Inventario y Kardex' },
-          { key: '/inventory/adjustments', label: 'Ajustes de Inventario' },
           { key: '/reports/stock', label: 'Stock Actual' },
           { key: '/reports/monthly-inventory', label: 'Inventario Mensual' },
           { key: '/reports/farm-monthly', label: 'Inventario Mensual por Finca' },
