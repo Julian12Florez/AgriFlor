@@ -43,6 +43,11 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
             $headers[] = strtoupper($farm['name']);
         }
 
+        // Traslados salientes que NO van a una finca (p. ej. bodega -> bodega):
+        // la matriz de columnas de finca no los explica, así que sin esta
+        // columna el Excel del cliente no cuadraba contra el Total Mov.
+        $headers[] = 'TRASLADOS SALIENTES';
+
         $headers[] = 'COMPRAS';
         $headers[] = 'REMANENTE';
         $headers[] = 'AUMENTOS';
@@ -74,6 +79,11 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
                 $row[] = $val > 0 ? -$val : 0; // Negative = sent to farm
             }
 
+            // Traslados salientes que no fueron a una finca. Mismo signo que las
+            // columnas de finca de arriba: negativo porque salió de la ubicación.
+            $transfersOut = (float) ($product['transfers_out'] ?? 0);
+            $row[] = $transfersOut > 0 ? -$transfersOut : 0;
+
             $row[] = $product['purchases'];
             $row[] = $product['returns'] ?? 0;
             $row[] = $product['increases'];
@@ -102,7 +112,7 @@ class MonthlyInventoryExport implements FromArray, WithHeadings, WithStyles, Wit
     public function styles(Worksheet $sheet): array
     {
         $lastRow = count($this->data) + 1;
-        $lastCol = 8 + count($this->farmColumns) + 6; // 8 fijas + fincas + 6 extra (incl. Remanente)
+        $lastCol = 8 + count($this->farmColumns) + 1 + 6; // 8 fijas + fincas + Traslados Salientes + 6 extra (incl. Remanente)
         $lastColLetter = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($lastCol);
 
         return [

@@ -35,6 +35,19 @@ import { invalidateAdjustmentRelated } from './adjustmentQueries';
 // contemplado ve/elige todas las ubicaciones.
 const LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
 
+// Clave de comparación para nombres de presentación: quita acentos/diacríticos
+// y pasa a minúsculas. String.toLowerCase() por sí solo NO basta — es sensible a
+// acentos ("Galón" !== "Galon") mientras MySQL compara con utf8mb4_unicode_ci,
+// que SÍ los trata como iguales. Sin esto, dos presentaciones que MySQL ve como
+// homónimas (p. ej. "Galón (4 L)" y "GALON (5 L)") quedaban ambas habilitadas en
+// vez de deshabilitarse como ambiguas, y las dos terminaban dando 422 al guardar.
+const normalizeUnitName = (name: string) =>
+  (name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 type AdjustmentType = 'entry' | 'exit' | 'transfer';
 type QuantityMode = 'delta' | 'absolute';
 
@@ -191,13 +204,13 @@ const AdjustmentRequestModal: React.FC<AdjustmentRequestModalProps> = ({ open, o
     const packagingUnits = selectedProduct.packaging_units || [];
     const nameCounts = new Map<string, number>();
     packagingUnits.forEach((pu: any) => {
-      const key = (pu.name || '').toLowerCase();
+      const key = normalizeUnitName(pu.name);
       nameCounts.set(key, (nameCounts.get(key) || 0) + 1);
     });
 
     const duplicatesShown = new Set<string>();
     packagingUnits.forEach((pu: any) => {
-      const key = (pu.name || '').toLowerCase();
+      const key = normalizeUnitName(pu.name);
 
       if ((nameCounts.get(key) || 0) > 1) {
         if (duplicatesShown.has(key)) return;

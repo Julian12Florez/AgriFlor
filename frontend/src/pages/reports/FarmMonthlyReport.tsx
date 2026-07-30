@@ -17,6 +17,7 @@ interface FarmProductRow {
   entries: number;
   consumption: number;
   remanente_to_warehouse: number;
+  other_exits: number;
   final_stock: number;
 }
 
@@ -55,6 +56,8 @@ const FarmMonthlyReport: React.FC = () => {
       render: (v: number) => <span style={{ color: '#c62828' }}>{fmt(v)}</span> },
     { title: 'Remanente a bodega', dataIndex: 'remanente_to_warehouse', key: 'rem', width: 150, align: 'right' as const,
       render: (v: number) => <span style={{ color: '#e65100', fontWeight: 600 }}>{fmt(v)}</span> },
+    { title: 'Salidas por Ajuste', dataIndex: 'other_exits', key: 'other_exits', width: 140, align: 'right' as const,
+      render: (v: number) => <span style={{ color: '#c62828' }}>{fmt(v)}</span> },
     { title: 'Inv. Final (finca)', dataIndex: 'final_stock', key: 'final', width: 130, align: 'right' as const,
       render: (v: number) => <span style={{ fontWeight: 700, color: '#2E7D32' }}>{fmt(v)}</span> },
   ];
@@ -104,8 +107,8 @@ const FarmMonthlyReport: React.FC = () => {
             type="warning"
             showIcon
             style={{ marginBottom: 16 }}
-            message="Consumo y Remanente a bodega"
-            description="Estas columnas se llenan cuando se registran en el sistema las salidas de tipo 'Remanente' (finca → bodega) y 'Consumo' en la finca. Si aún no se registran, aparecen en 0 y el inventario final solo refleja inicial + entradas."
+            message="Consumo, Remanente a bodega y Salidas por Ajuste"
+            description="Consumo y Remanente se llenan cuando se registran en el sistema las salidas de esos tipos (finca → bodega / consumo en finca). 'Salidas por Ajuste' agrupa lo demás que redujo el stock de la finca sin pasar por esas salidas (ajustes de salida, traslados salientes, aplicaciones sueltas). El inventario final es: inicial + entradas − consumo − remanente − salidas por ajuste."
           />
           <Card title={`Inventario ${selectedMonth.format('MMMM YYYY')} — ${reportData?.farm ?? ''}`}
             extra={<Tag color="blue">{products.length} productos</Tag>}>

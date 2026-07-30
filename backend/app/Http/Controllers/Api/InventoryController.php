@@ -1615,6 +1615,10 @@ class InventoryController extends Controller
                         'total_products' => count($result),
                         'total_with_stock' => count(array_filter($result, fn($p) => $p['final_stock'] > 0)),
                         'total_purchases' => round(array_sum(array_column($result, 'purchases')), 2),
+                        // Incluye envíos a fincas Y transfersOut (traslados a
+                        // ubicaciones que no son finca, p. ej. bodega -> bodega).
+                        // El frontend lo etiqueta "Total Enviado / Trasladado"
+                        // (no "a Fincas") para que el rótulo sea veraz.
                         'total_shipped' => round(array_sum(array_column($result, 'total_shipped')), 2),
                     ],
                 ],

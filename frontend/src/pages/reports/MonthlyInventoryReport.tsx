@@ -38,6 +38,7 @@ interface ProductRow {
   purchases: number;
   farm_shipments: Record<string, number>;
   total_shipped: number;
+  transfers_out: number;
   returns: number;
   increases: number;
   decreases: number;
@@ -196,6 +197,8 @@ const MonthlyInventoryReport: React.FC = () => {
     });
 
     cols.push(
+      { title: 'Traslados Salientes', dataIndex: 'transfers_out', key: 'transfers_out', width: 130, align: 'right' as const,
+        render: (v: number) => v ? <span style={{ color: '#e65100' }}>{fmt(v)}</span> : '-' },
       { title: 'Compras', dataIndex: 'purchases', key: 'purch', width: 100, align: 'right' as const,
         render: (v: number) => v ? <span style={{ color: '#52c41a', fontWeight: 500 }}>{fmt(v)}</span> : '-' },
       { title: 'Remanente', dataIndex: 'returns', key: 'rem', width: 100, align: 'right' as const,
@@ -222,6 +225,7 @@ const MonthlyInventoryReport: React.FC = () => {
         <p style={{ color: '#666', margin: 0 }}>
           Control de existencias mensuales: inicio, movimientos por finca y cierre.
           Las columnas de fincas muestran lo enviado <strong>desde la ubicación seleccionada</strong> hacia cada finca.
+          "Traslados Salientes" suma lo enviado a otras ubicaciones que no son fincas (p. ej. bodega → bodega).
         </p>
       </div>
 
@@ -292,7 +296,7 @@ const MonthlyInventoryReport: React.FC = () => {
             <Card><Statistic title="Total Compras (qty)" value={reportData.summary.total_purchases} prefix={<ShoppingCartOutlined />} valueStyle={{ color: '#1890ff' }} precision={2} /></Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card><Statistic title="Total Enviado a Fincas" value={reportData.summary.total_shipped} prefix={<SendOutlined />} valueStyle={{ color: '#fa8c16' }} precision={2} /></Card>
+            <Card><Statistic title="Total Enviado / Trasladado" value={reportData.summary.total_shipped} prefix={<SendOutlined />} valueStyle={{ color: '#fa8c16' }} precision={2} /></Card>
           </Col>
         </Row>
       )}
@@ -302,7 +306,7 @@ const MonthlyInventoryReport: React.FC = () => {
         <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
           {topShippedData.length > 0 && (
             <Col xs={24} lg={14}>
-              <Card title="Top 10 Productos Más Enviados a Fincas" size="small">
+              <Card title="Top 10 Productos Más Enviados / Trasladados" size="small">
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={topShippedData} layout="vertical" margin={{ left: 20, right: 20 }}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -310,7 +314,7 @@ const MonthlyInventoryReport: React.FC = () => {
                     <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: number) => fmt(v)} />
                     <Legend />
-                    <Bar dataKey="enviado" name="Enviado a Fincas" fill="#F57C00" />
+                    <Bar dataKey="enviado" name="Enviado / Trasladado" fill="#F57C00" />
                     <Bar dataKey="compras" name="Compras" fill="#2E7D32" />
                   </BarChart>
                 </ResponsiveContainer>
