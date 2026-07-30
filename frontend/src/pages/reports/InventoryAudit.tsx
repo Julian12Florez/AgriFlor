@@ -6,6 +6,7 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi, productsApi, locationsApi, usersApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
+import { buildMovementTypeParams, matchesMovementTypeFilter } from '../../utils/movementFilters';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -73,7 +74,7 @@ const InventoryAudit: React.FC = () => {
 
       if (locationId) params.location_id = locationId;
       if (productId) params.product_id = productId;
-      if (type) params.type = type;
+      Object.assign(params, buildMovementTypeParams(type));
 
       return inventoryApi.getMovements(params);
     },
@@ -232,7 +233,7 @@ const InventoryAudit: React.FC = () => {
         { text: 'Aplicación', value: 'application' },
         { text: 'Ajuste', value: 'adjustment' },
       ],
-      onFilter: (value, record) => record.type === value,
+      onFilter: (value, record) => matchesMovementTypeFilter(String(value), record),
     },
     {
       title: 'Producto',

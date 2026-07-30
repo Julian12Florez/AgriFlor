@@ -49,6 +49,13 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             $query->where('type', $this->filters['type']);
         }
 
+        // 'related_document_type' ya llega resuelto a FQCN (ver
+        // ReportExportController::resolveRelatedDocumentTypeAlias): filtra los
+        // movimientos originados en un ajuste, no un `type` inexistente.
+        if ($this->filters['related_document_type'] ?? null) {
+            $query->where('related_document_type', $this->filters['related_document_type']);
+        }
+
         return $query->orderBy('movement_date', 'desc')->orderBy('created_at', 'desc')->get();
     }
 

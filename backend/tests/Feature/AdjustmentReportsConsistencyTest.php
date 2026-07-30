@@ -771,4 +771,63 @@ class AdjustmentReportsConsistencyTest extends TestCase
         $this->assertSame(self::ADJUSTMENT_DATE, $movements[0]['movement_date']);
         $this->assertSame('entry', $movements[0]['type']);
     }
+
+    // ------------------------------------------------------------------
+    // 7. PR-A / AJ-4: filtro "Ajuste" en el kardex (related_document_type,
+    // NO un `type=adjustment` inexistente en el enum).
+    // ------------------------------------------------------------------
+
+    /**
+     * `inventory_movements.type` es entry/exit/transfer/application y NUNCA
+     * incluye 'adjustment': medido, `?type=adjustment` da SIEMPRE
+     * meta.total=0 aunque existan ajustes aprobados. El filtro correcto es por
+     * ORIGEN del movimiento (`related_document_type`), con el alias legible
+     * 'adjustment' que el frontend envía en su lugar.
+     */
+    public function test_movements_filter_by_adjustment_origin_returns_only_adjustment_linked_movements(): void
+    {
+        $fixtures = $this->createFixtures();
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'type' => 'entry',
+            'quantity' => 10,
+            'destination_location_id' => $fixtures['bodega']->id,
+        ]);
+        $this->approve($fixtures['admin'], $adjustment)->assertStatus(200);
+
+        // Movimiento del MISMO producto que NO viene de un ajuste (una
+        // recepción): el filtro debe excluirlo.
+        InventoryMovement::create([
+            'type' => 'entry',
+            'product_id' => $fixtures['product']->id,
+            'brand_id' => $fixtures['brand']->id,
+            'location_id' => $fixtures['bodega']->id,
+            'quantity' => 5,
+            'unit' => 'kg',
+            'movement_date' => self::ADJUSTMENT_DATE,
+            'unit_price' => 10,
+            'total_price' => 50,
+            'responsible_user' => $fixtures['admin']->id,
+            'related_document_type' => 'App\Models\Reception',
+            'related_document_id' => $fixtures['admin']->id,
+            'observations' => 'Recepción de compra',
+        ]);
+
+        // El filtro roto (el que reportaba el bug) sigue dando 0, tal cual se
+        // midió: no lo tocamos, solo dejamos de usarlo desde el frontend.
+        $broken = $this->actingAs($fixtures['admin'], 'api')
+            ->getJson('/api/inventory/movements?type=adjustment&product_id=' . $fixtures['product']->id)
+            ->assertStatus(200);
+        $this->assertSame(0, $broken->json('meta.total'));
+
+        // El filtro correcto SÍ devuelve el movimiento del ajuste, y solo ese.
+        $response = $this->actingAs($fixtures['admin'], 'api')
+            ->getJson('/api/inventory/movements?related_document_type=adjustment&product_id=' . $fixtures['product']->id)
+            ->assertStatus(200);
+
+        $this->assertGreaterThan(0, $response->json('meta.total'));
+
+        $documentTypes = collect($response->json('data'))->pluck('related_document_type')->unique()->values();
+        $this->assertSame(['App\Models\Adjustment'], $documentTypes->all());
+    }
 }

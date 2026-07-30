@@ -24,6 +24,24 @@ class ReportExportController extends Controller
     {
         $this->inventoryService = $inventoryService;
     }
+
+    /**
+     * Alias legible -> FQCN de documento relacionado, para el filtro por
+     * ORIGEN de los exports de movimientos (mismo alias 'adjustment' que
+     * InventoryController::resolveRelatedDocumentTypeAlias acepta en
+     * `/inventory/movements`; se duplica aquí porque son controladores
+     * distintos, igual que ya se duplica el FQCN literal entre
+     * AdjustmentController y InventoryController — ver comentarios en esas
+     * clases sobre por qué no puede ser getMorphClass()).
+     */
+    private function resolveRelatedDocumentTypeAlias(?string $alias): ?string
+    {
+        return match ($alias) {
+            'adjustment' => 'App\Models\Adjustment',
+            default => null,
+        };
+    }
+
     /**
      * Export Stock Report to Excel
      */
@@ -161,6 +179,7 @@ class ReportExportController extends Controller
             'product_id' => $request->input('product_id'),
             'location_id' => $request->input('location_id'),
             'type' => $request->input('type'),
+            'related_document_type' => $this->resolveRelatedDocumentTypeAlias($request->input('related_document_type')),
         ];
 
         $fileName = 'movements_report_' . now()->format('Y_m_d_His') . '.xlsx';
@@ -179,6 +198,7 @@ class ReportExportController extends Controller
             'product_id' => $request->input('product_id'),
             'location_id' => $request->input('location_id'),
             'type' => $request->input('type'),
+            'related_document_type' => $this->resolveRelatedDocumentTypeAlias($request->input('related_document_type')),
         ];
 
         // Get movements data
@@ -203,6 +223,10 @@ class ReportExportController extends Controller
 
         if ($filters['type']) {
             $query->where('type', $filters['type']);
+        }
+
+        if ($filters['related_document_type']) {
+            $query->where('related_document_type', $filters['related_document_type']);
         }
 
         $movements = $query->orderBy('movement_date', 'desc')->orderBy('created_at', 'desc')->get();

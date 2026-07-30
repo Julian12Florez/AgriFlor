@@ -42,6 +42,28 @@ class InventoryController extends Controller
     }
 
     /**
+     * Alias legible -> FQCN de documento relacionado, para el filtro por
+     * ORIGEN de `movements()`/`movementsReport()` (parámetro
+     * `related_document_type`). El cliente pide 'adjustment' en vez del
+     * nombre de clase PHP completo ('App\Models\Adjustment'); un alias que no
+     * está en el mapa se ignora (no aplica ningún filtro) en vez de fallar,
+     * porque un valor desconocido en un filtro de listado no debería tumbar la
+     * petición completa.
+     *
+     * Hoy solo soporta 'adjustment', que es el caso reportado: filtrar por
+     * "Ajuste" en los informes de movimientos enviaba `type=adjustment` —un
+     * valor que NO existe en el enum de `inventory_movements.type`— y siempre
+     * daba 0 resultados aunque hubiera ajustes aprobados.
+     */
+    private function resolveRelatedDocumentTypeAlias(string $alias): ?string
+    {
+        return match ($alias) {
+            'adjustment' => self::ADJUSTMENT_DOCUMENT_TYPE,
+            default => null,
+        };
+    }
+
+    /**
      * Convert unit symbol to full name
      * Uses base_units table to get the full name
      */
@@ -184,6 +206,19 @@ class InventoryController extends Controller
         // Filter by type
         if ($request->has('type')) {
             $query->where('type', $request->type);
+        }
+
+        // Filtro por ORIGEN del movimiento (ver resolveRelatedDocumentTypeAlias):
+        // NO confundir con `type`. `inventory_movements.type` es un enum
+        // (entry/exit/transfer/application) que NUNCA incluye 'adjustment', así
+        // que `?type=adjustment` siempre da 0 resultados aunque existan ajustes
+        // aprobados — es justo el filtro roto que este parámetro reemplaza.
+        if ($request->filled('related_document_type')) {
+            $documentClass = $this->resolveRelatedDocumentTypeAlias($request->input('related_document_type'));
+
+            if ($documentClass !== null) {
+                $query->where('related_document_type', $documentClass);
+            }
         }
 
         // Filter by product
@@ -886,6 +921,7 @@ class InventoryController extends Controller
             $locationId = $request->get('location_id');
             $productId = $request->get('product_id');
             $type = $request->get('type');
+            $relatedDocumentType = $request->get('related_document_type');
 
             // Base query
             $query = DB::table('inventory_movements')
@@ -926,6 +962,15 @@ class InventoryController extends Controller
 
             if ($type) {
                 $query->where('inventory_movements.type', $type);
+            }
+
+            // Ver movements(): mismo filtro por ORIGEN, distinto de `type`.
+            if ($relatedDocumentType) {
+                $documentClass = $this->resolveRelatedDocumentTypeAlias($relatedDocumentType);
+
+                if ($documentClass !== null) {
+                    $query->where('inventory_movements.related_document_type', $documentClass);
+                }
             }
 
             // Get movements ordered by date
