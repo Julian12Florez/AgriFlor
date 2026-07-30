@@ -503,8 +503,10 @@ export const inventoryApi = {
   getConsumptionReport: (params?: Record<string, any>) =>
     api.get<ApiResponse<any>>('/inventory/consumption/report', params),
 
-  adjust: (data: any) =>
-    api.post<ApiResponse<any>>('/inventory/adjustments', data),
+  // NOTA: `adjust()` (POST /inventory/adjustments) se eliminó junto con su ruta en el
+  // backend: no tenía ningún llamador y escribía inventario sin FIFO, sin conversión de
+  // unidades y sin documento relacionado (sus entradas se contaban como compras en el
+  // informe mensual). Los ajustes se registran con adjustmentsApi.create().
 
   // Kardex endpoints
   getKardex: (params?: Record<string, any>) =>

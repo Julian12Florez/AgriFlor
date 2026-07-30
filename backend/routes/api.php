@@ -325,10 +325,14 @@ Route::middleware('auth:api')->group(function () {
     Route::get('inventory/product/{productId}/details', [InventoryController::class, 'byProduct']);
     Route::get('inventory/{productId}', [InventoryController::class, 'show']);
 
-    // INVENTORY - Adjustments (Admin, Warehouse only)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('inventory/adjustments', [InventoryController::class, 'adjustment']);
-    });
+    // NOTA: aquí vivía POST inventory/adjustments (InventoryController::adjustment),
+    // eliminada al entrar el módulo de solicitudes de ajuste. Era un atajo sin
+    // ningún llamador en el frontend y peligroso: escribía siempre sobre un lote
+    // ficticio 'MANUAL' (sin FIFO ni conversión de unidades), aceptaba
+    // `type=adjustment` —que NO existe en el enum de inventory_movements— y dejaba
+    // `related_document_type` en NULL, con lo que sus entradas se contaban como
+    // COMPRAS en el inventario mensual. Todo ajuste pasa ahora por
+    // /api/adjustments, con solicitud + aprobación y trazabilidad.
 
     // ----------------------------------------
     // ADJUSTMENTS (módulo de solicitudes de ajuste de inventario)
