@@ -1327,8 +1327,10 @@ class AdjustmentTest extends TestCase
 
         $batch = Inventory::where('location_id', $fixtures['destination']->id)->first();
         $this->assertNotNull($batch);
-        // Sin batch_number en la solicitud, el lote queda trazable al documento.
-        $this->assertSame('AJU-' . substr($adjustment->id, 0, 8), $batch->batch_number);
+        // Sin batch_number en la solicitud, el lote queda trazable al documento:
+        // usa adjustment_number (único por fila, ver test de colisión más abajo),
+        // no un fragmento del id.
+        $this->assertSame($adjustment->adjustment_number, $batch->batch_number);
         $this->assertEqualsWithDelta(10, (float) $batch->quantity, 0.01);
         $this->assertSame('kg', $batch->unit);
         $this->assertEqualsWithDelta(5, (float) $batch->unit_price, 0.01);
@@ -1360,6 +1362,58 @@ class AdjustmentTest extends TestCase
         $this->assertSame($admin->id, $adjustment->approved_by);
         $this->assertNotNull($adjustment->approved_at);
         $this->assertEqualsWithDelta(10, (float) $adjustment->quantity_base, 0.01);
+    }
+
+    /**
+     * Antes del fix, el lote autogenerado usaba 'AJU-' . substr($id, 0, 8):
+     * HasUuids genera UUIDs ordenados por tiempo, cuyos primeros 8 hex tienen
+     * granularidad de ~1 segundo, así que dos ajustes de entrada creados en el
+     * mismo segundo compartían el mismo lote automático y fundían sus
+     * existencias en una sola fila de `inventory` (medido en producción: 3
+     * ajustes de entrada → un solo lote AJU-a26150f2, 35 kg, en vez de 3 lotes
+     * separados). Se fuerza aquí el mismo prefijo de 8 hex en el id para no
+     * depender de la suerte del reloj de la prueba: adjustment_number (columna
+     * UNIQUE) no puede colisionar pase lo que pase con el id.
+     */
+    public function test_approve_two_entries_with_colliding_id_prefix_use_distinct_auto_batches(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $makeWithId = function (string $id, float $quantity) use ($fixtures) {
+            return Adjustment::forceCreate(array_merge($this->baseAdjustmentAttributes($fixtures), [
+                'id' => $id,
+                'adjustment_number' => Adjustment::generateAdjustmentNumber(),
+                'type' => 'entry',
+                'destination_location_id' => $fixtures['destination']->id,
+                'unit_price' => 5,
+                'quantity' => $quantity,
+                'status' => 'pending',
+                'responsible_user' => $fixtures['requester']->id,
+            ]));
+        };
+
+        $first = $makeWithId('a26150f2-0000-4000-8000-000000000001', 10);
+        $second = $makeWithId('a26150f2-0000-4000-8000-000000000002', 20);
+
+        $this->approve($admin, $first)->assertStatus(200);
+        $this->approve($admin, $second)->assertStatus(200);
+
+        $batches = Inventory::where('location_id', $fixtures['destination']->id)->get();
+
+        // DOS filas separadas, no fundidas en una sola de 30.
+        $this->assertCount(2, $batches);
+
+        $batchOfFirst = $batches->first(fn ($batch) => abs((float) $batch->quantity - 10) < 0.01);
+        $batchOfSecond = $batches->first(fn ($batch) => abs((float) $batch->quantity - 20) < 0.01);
+        $this->assertNotNull($batchOfFirst);
+        $this->assertNotNull($batchOfSecond);
+        $this->assertNotSame($batchOfFirst->batch_number, $batchOfSecond->batch_number);
+
+        // El lote generado es el número de ajuste (único por fila), no un
+        // fragmento del id.
+        $this->assertSame($first->adjustment_number, $batchOfFirst->batch_number);
+        $this->assertSame($second->adjustment_number, $batchOfSecond->batch_number);
     }
 
     public function test_approve_exit_delta_reduces_stock_fifo(): void

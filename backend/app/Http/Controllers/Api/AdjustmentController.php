@@ -969,7 +969,19 @@ class AdjustmentController extends Controller
             $locationId,
             $deltaBase,
             $unitPriceInBase,
-            $adjustment->batch_number ?: 'AJU-' . substr($adjustment->id, 0, 8),
+            // Sin batch_number en la solicitud, el lote autogenerado usa
+            // adjustment_number (columna UNIQUE, formato AJU-YYYYMMDD-XXXX):
+            // antes se usaba 'AJU-' . substr(id, 0, 8), pero HasUuids genera
+            // UUIDs ordenados por tiempo cuyos primeros 8 hex tienen
+            // granularidad de ~1 segundo, así que dos ajustes de entrada
+            // creados en el mismo segundo compartían el mismo lote y fundían
+            // sus existencias en una sola fila de `inventory` (medido: 3
+            // ajustes → un solo lote AJU-a26150f2, 35 kg). adjustment_number
+            // no puede colisionar entre ajustes (índice UNIQUE de la tabla),
+            // así que usarlo aquí es seguro. No renombra lotes YA creados con
+            // el esquema anterior: solo cambia el valor por defecto para
+            // ajustes nuevos.
+            $adjustment->batch_number ?: $adjustment->adjustment_number,
             $expirationDate
         );
 
