@@ -1154,12 +1154,15 @@ class ReceptionController extends Controller
             $output = ProductOutput::find($reception->source_id);
             $userId = auth()->id();
 
-            // Crear lote final para registrar lo que se reciba en este cierre
+            // Crear lote final para registrar lo que se reciba en este cierre.
+            // El cierre ocurre hoy, así que su fecha es hoy; se guarda en una
+            // variable para que el lote y sus movimientos no puedan divergir.
+            $receptionDate = now()->toDateString();
             $batchNumber = ($reception->receptionBatches()->max('batch_number') ?? 0) + 1;
             $batch = ReceptionBatch::create([
                 'reception_id' => $reception->id,
                 'batch_number' => $batchNumber,
-                'reception_date' => now()->toDateString(),
+                'reception_date' => $receptionDate,
                 'received_by' => $userId,
                 'observations' => 'Cierre de salida con lo disponible (remanente descartado)',
             ]);
@@ -1212,7 +1215,8 @@ class ReceptionController extends Controller
                             ],
                             $item,
                             $batchNumber,
-                            $userId
+                            $userId,
+                            $receptionDate
                         );
 
                         $totalRecibidoAhora += $toReceiveInUnit;
@@ -1705,6 +1709,12 @@ class ReceptionController extends Controller
      * Process complete inventory movements for a reception
      * Handles both purchases (entry only) and outputs (exit + entry)
      * Updates inventory table and creates audit trail
+     *
+     * $movementDate es la fecha REAL del hecho económico: la reception_date del
+     * lote que se está recibiendo. Se resuelve UNA sola vez aquí y se propaga a
+     * todos los registros que genera el lote (salida en origen, entrada en
+     * destino, aplicación de consumo) para que ninguno quede fechado con la
+     * fecha de registro ni con una fecha distinta a su pata gemela.
      */
     private function processInventoryMovements(
         Reception $reception,
@@ -1722,6 +1732,9 @@ class ReceptionController extends Controller
             ]);
             return;
         }
+
+        // Único punto donde se decide la fecha: de aquí en adelante es obligatoria.
+        $movementDate = $movementDate ?: now()->toDateString();
 
         $sourceType = $reception->source_type;
         $productId = $itemData['product_id'];
@@ -1773,14 +1786,17 @@ class ReceptionController extends Controller
                 $unitPrice,
                 $userId,
                 $batchNumber,
-                $sourceBatchNumber,
-                $movementDate
+                $movementDate,
+                $sourceBatchNumber
             );
 
             // 2. Create ENTRY movement in destination ONLY if NOT consumption
             // Consumption type means the product is used/consumed, not transferred
             if ($outputTypeCode !== 'consumption') {
                 // For transfer, technical_order, free_request: create entry in destination
+                // La entrada lleva la MISMA fecha que la salida: si difieren, el
+                // informe mensual del origen (que lee esta entrada para armar la
+                // columna "Enviado a finca X") descuadra contra su propio stock.
                 $this->createEntryMovement(
                     $reception,
                     $productId,
@@ -1791,7 +1807,8 @@ class ReceptionController extends Controller
                     $unitPrice,
                     $userId,
                     $batchNumber,
-                    $itemData['condition']
+                    $itemData['condition'],
+                    $movementDate
                 );
 
                 \Log::info('Output transfer: inventory moved from origin to destination', [
@@ -1837,7 +1854,8 @@ class ReceptionController extends Controller
                             'origin_location_id' => $reception->origin_location_id,
                             'farm_lot_id' => $farmLot->id,
                             'product_output_id' => $output->id,
-                            'application_date' => now()->toDateString(),
+                            // Fecha del consumo real, no la del registro en el sistema.
+                            'application_date' => $movementDate,
                             'applied_by' => $userId,
                             'status' => 'approved',
                             'application_type' => 'consumo_salida',
@@ -1890,6 +1908,10 @@ class ReceptionController extends Controller
 
     /**
      * Create ENTRY inventory movement and update inventory table
+     *
+     * $movementDate es OBLIGATORIO a propósito: cuando tenía valor por defecto,
+     * un call site que lo olvidaba fechaba el movimiento con now() en silencio y
+     * corrompía el informe mensual. Sin default, el olvido revienta al instante.
      */
     private function createEntryMovement(
         Reception $reception,
@@ -1902,7 +1924,7 @@ class ReceptionController extends Controller
         string $userId,
         int $batchNumber,
         string $condition,
-        ?string $movementDate = null
+        string $movementDate
     ): void {
         $locationId = $reception->destination_location_id;
         $totalPrice = $quantity * $unitPrice;
@@ -1919,7 +1941,7 @@ class ReceptionController extends Controller
             'location_id' => $locationId,
             'quantity' => $quantity,
             'unit' => $unit,
-            'movement_date' => $movementDate ?: now()->toDateString(),
+            'movement_date' => $movementDate,
             'expiration_date' => $expirationDate,
             'unit_price' => $unitPrice,
             'total_price' => $totalPrice,
@@ -1955,6 +1977,10 @@ class ReceptionController extends Controller
     /**
      * Create EXIT inventory movement and update inventory table
      * For exits, we use FIFO to reduce from existing batches
+     *
+     * $movementDate es OBLIGATORIO por el mismo motivo que en createEntryMovement,
+     * y va antes de $inventoryBatchNumber para no dejar un parámetro requerido
+     * detrás de uno opcional.
      */
     private function createExitMovement(
         Reception $reception,
@@ -1965,8 +1991,8 @@ class ReceptionController extends Controller
         float $unitPrice,
         string $userId,
         int $batchNumber,
-        ?string $inventoryBatchNumber = null,
-        ?string $movementDate = null
+        string $movementDate,
+        ?string $inventoryBatchNumber = null
     ): void {
         $locationId = $reception->origin_location_id;
         $totalPrice = $quantity * $unitPrice;
@@ -1979,7 +2005,7 @@ class ReceptionController extends Controller
             'location_id' => $locationId,
             'quantity' => $quantity,
             'unit' => $unit,
-            'movement_date' => $movementDate ?: now()->toDateString(),
+            'movement_date' => $movementDate,
             'expiration_date' => null,
             'unit_price' => $unitPrice,
             'total_price' => $totalPrice,
