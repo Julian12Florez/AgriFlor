@@ -31,6 +31,11 @@ const Outputs: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  // Paginación en servidor: la API tiene 290 salidas reales y solo entrega 15 por página por
+  // defecto. Antes se pedía sin per_page y se paginaba en cliente sobre esos 15, dejando 275
+  // salidas inalcanzables. `page`/`pageSize` viajan a la API y el total real viene de `meta.total`.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>();
   const [selectedOriginLocationId, setSelectedOriginLocationId] = useState<string | undefined>();
   const [selectedDestinationLocationId, setSelectedDestinationLocationId] = useState<string | undefined>();
@@ -43,14 +48,16 @@ const Outputs: React.FC = () => {
   // Ref to prevent double submissions (synchronous check)
   const isSubmittingRef = useRef(false);
 
-  // Fetch outputs from backend
+  // Fetch outputs from backend (paginado en servidor, ver declaración de page/pageSize arriba)
   const { data: outputsData, isLoading: outputsLoading } = useQuery({
-    queryKey: ['outputs', searchText, statusFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD')],
+    queryKey: ['outputs', searchText, statusFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD'), page, pageSize],
     queryFn: () => outputsApi.list({
       search: searchText || undefined,
       status: statusFilter || undefined,
       start_date: dateRange?.[0]?.format('YYYY-MM-DD'),
       end_date: dateRange?.[1]?.format('YYYY-MM-DD'),
+      page,
+      per_page: pageSize,
     }),
   });
 
@@ -85,6 +92,7 @@ const Outputs: React.FC = () => {
   });
 
   const outputs = outputsData?.data || [];
+  const totalOutputs = outputsData?.meta?.total || 0;
   const availableLocations = locationsData?.data || [];
 
   // Aislamiento por ubicación: el responsable solo puede elegir como ORIGEN de la salida
@@ -513,12 +521,9 @@ const Outputs: React.FC = () => {
     }
   };
 
-  // La búsqueda y el estado se resuelven en el backend (por producto, código, finca, etc.).
-  // No se filtra por texto en cliente para no ocultar resultados que matchean por producto/finca.
-  const filteredOutputs = outputs.filter((output: any) => {
-    const matchesStatus = !statusFilter || output.status === statusFilter;
-    return matchesStatus;
-  });
+  // La búsqueda, el estado y las fechas se resuelven en el backend (por producto, código, finca,
+  // etc.) y la tabla pagina también en el servidor (ver `page`/`pageSize`), así que `outputs` ya
+  // viene filtrado y recortado a la página actual: no hace falta re-filtrar en cliente.
 
   const mobileColumns: ColumnsType<ProductOutput> = [
     {
@@ -658,12 +663,9 @@ const Outputs: React.FC = () => {
           {getStatusText(status)}
         </Tag>
       ),
-      filters: [
-        { text: 'Disponible para Recepción', value: 'pending' },
-        { text: 'Recepción Iniciada', value: 'partial' },
-        { text: 'Completada', value: 'completed' },
-      ],
-      onFilter: (value, record) => record.status === value,
+      // El filtro de estado se hace en el servidor (ver Select "Filtrar por estado" arriba de la
+      // tabla), que sí conoce las 290 salidas. Un `onFilter` de columna aquí solo vería la página
+      // actual y sería inconsistente con la paginación real del servidor.
     },
     {
       title: 'Acciones',
@@ -1446,7 +1448,7 @@ const Outputs: React.FC = () => {
                 placeholder="Buscar por N° salida, producto, código o finca..."
                 allowClear
                 value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                onChange={(e) => { setSearchText(e.target.value); setPage(1); }}
               />
             </Col>
             <Col xs={24} sm={12} md={8}>
@@ -1455,7 +1457,7 @@ const Outputs: React.FC = () => {
                 allowClear
                 style={{ width: '100%' }}
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(value) => { setStatusFilter(value); setPage(1); }}
               >
                 <Option value="pending">Pendiente</Option>
                 <Option value="partial">Parcial</Option>
@@ -1468,7 +1470,7 @@ const Outputs: React.FC = () => {
                 format="DD/MM/YYYY"
                 placeholder={['Fecha desde', 'Fecha hasta']}
                 value={dateRange as any}
-                onChange={(v) => setDateRange(v as any)}
+                onChange={(v) => { setDateRange(v as any); setPage(1); }}
               />
             </Col>
           </Row>
@@ -1477,14 +1479,19 @@ const Outputs: React.FC = () => {
         <ResponsiveTable
           mobileColumns={mobileColumns}
           desktopColumns={desktopColumns}
-          dataSource={filteredOutputs}
+          dataSource={outputs}
           rowKey="id"
           loading={outputsLoading}
           expandedRowRender={expandedRowRender}
           entityName="salidas"
           pagination={{
-            total: filteredOutputs.length,
-            pageSize: 10,
+            current: page,
+            pageSize,
+            total: totalOutputs,
+            onChange: (newPage, newPageSize) => {
+              setPage(newPage);
+              setPageSize(newPageSize);
+            },
           }}
         />
       </Card>
