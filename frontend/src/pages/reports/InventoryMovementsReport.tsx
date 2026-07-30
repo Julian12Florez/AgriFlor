@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { inventoryApi, productsApi, locationsApi, reportExportsApi } from '../../services/api';
 import usePermissions from '../../hooks/usePermissions';
 import dayjs, { Dayjs } from 'dayjs';
+import { buildMovementTypeParams, matchesMovementTypeFilter } from '../../utils/movementFilters';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
@@ -35,6 +36,7 @@ interface Movement {
   observations: string;
   movement_date: string;
   created_at: string;
+  related_document_type?: string | null;
 }
 
 const InventoryMovementsReport: React.FC = () => {
@@ -72,7 +74,7 @@ const InventoryMovementsReport: React.FC = () => {
 
       if (locationId) params.location_id = locationId;
       if (productId) params.product_id = productId;
-      if (type) params.type = type;
+      Object.assign(params, buildMovementTypeParams(type));
 
       return inventoryApi.getMovements(params);
     },
@@ -110,7 +112,7 @@ const InventoryMovementsReport: React.FC = () => {
 
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
-      if (type) params.type = type;
+      Object.assign(params, buildMovementTypeParams(type));
 
       await reportExportsApi.exportMovementsExcel(params);
       message.success('Reporte exportado exitosamente a Excel');
@@ -133,7 +135,7 @@ const InventoryMovementsReport: React.FC = () => {
 
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
-      if (type) params.type = type;
+      Object.assign(params, buildMovementTypeParams(type));
 
       await reportExportsApi.exportMovementsPdf(params);
       message.success('Reporte exportado exitosamente a PDF');
@@ -237,7 +239,7 @@ const InventoryMovementsReport: React.FC = () => {
         { text: 'Aplicación', value: 'application' },
         { text: 'Ajuste', value: 'adjustment' },
       ],
-      onFilter: (value, record) => record.type === value,
+      onFilter: (value, record) => matchesMovementTypeFilter(String(value), record),
     },
     {
       title: 'Producto',

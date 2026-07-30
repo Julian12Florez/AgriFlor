@@ -13,6 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi, productsApi, locationsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
+import { buildMovementTypeParams } from '../../utils/movementFilters';
 import {
   LineChart,
   Line,
@@ -113,7 +114,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
 
       if (locationId) params.location_id = locationId;
       if (productId) params.product_id = productId;
-      if (type) params.type = type;
+      Object.assign(params, buildMovementTypeParams(type));
 
       return inventoryApi.getMovementsReport(params);
     },

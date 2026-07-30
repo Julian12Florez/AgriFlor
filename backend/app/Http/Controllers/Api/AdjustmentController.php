@@ -23,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class AdjustmentController extends Controller
 {
@@ -230,6 +231,8 @@ class AdjustmentController extends Controller
 
                 return $this->alreadyProcessedResponse();
             }
+
+            $this->assertMovementDateNotClosed($adjustment);
 
             $userId = $request->user()->id;
             $deltaBase = $this->resolveDeltaBase($adjustment);
@@ -742,6 +745,36 @@ class AdjustmentController extends Controller
     // ------------------------------------------------------------------
 
     /**
+     * Re-chequeo AUTORITATIVO del cierre contable al aprobar (ver
+     * StoreAdjustmentRequest::validateMovementDateNotClosed, que ya lo valida
+     * al CREAR la solicitud): la aprobación es la que aplica el stock, y una
+     * solicitud creada ANTES de que Contabilidad moviera la fecha de cierre
+     * hacia adelante no debe poder colarse solo porque ya pasó la validación
+     * de creación. Corre dentro de la misma transacción que el resto de
+     * approve(): lanzar AdjustmentException aquí hace rollback (stock intacto)
+     * y responde 422, igual que cualquier otro fallo de negocio de este método.
+     */
+    private function assertMovementDateNotClosed(Adjustment $adjustment): void
+    {
+        $movementDate = $adjustment->movement_date;
+
+        if ($movementDate === null) {
+            return;
+        }
+
+        $closedUntil = Carbon::parse((string) config('adjustments.closed_period_until'))->startOfDay();
+
+        if ($movementDate->copy()->startOfDay()->lte($closedUntil)) {
+            throw new AdjustmentException(sprintf(
+                'La fecha de movimiento (%s) cae en un periodo ya cerrado y conciliado con Contabilidad ' .
+                '(hasta el %s inclusive): no se puede aprobar. Solicite la excepción a Contabilidad antes de continuar.',
+                $movementDate->format('d/m/Y'),
+                $closedUntil->format('d/m/Y')
+            ));
+        }
+    }
+
+    /**
      * Cantidad (en unidad base) que la aprobación debe mover, siempre positiva.
      */
     private function resolveDeltaBase(Adjustment $adjustment): float
@@ -936,7 +969,19 @@ class AdjustmentController extends Controller
             $locationId,
             $deltaBase,
             $unitPriceInBase,
-            $adjustment->batch_number ?: 'AJU-' . substr($adjustment->id, 0, 8),
+            // Sin batch_number en la solicitud, el lote autogenerado usa
+            // adjustment_number (columna UNIQUE, formato AJU-YYYYMMDD-XXXX):
+            // antes se usaba 'AJU-' . substr(id, 0, 8), pero HasUuids genera
+            // UUIDs ordenados por tiempo cuyos primeros 8 hex tienen
+            // granularidad de ~1 segundo, así que dos ajustes de entrada
+            // creados en el mismo segundo compartían el mismo lote y fundían
+            // sus existencias en una sola fila de `inventory` (medido: 3
+            // ajustes → un solo lote AJU-a26150f2, 35 kg). adjustment_number
+            // no puede colisionar entre ajustes (índice UNIQUE de la tabla),
+            // así que usarlo aquí es seguro. No renombra lotes YA creados con
+            // el esquema anterior: solo cambia el valor por defecto para
+            // ajustes nuevos.
+            $adjustment->batch_number ?: $adjustment->adjustment_number,
             $expirationDate
         );
 

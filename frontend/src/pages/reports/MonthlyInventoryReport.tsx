@@ -40,6 +40,7 @@ interface ProductRow {
   total_shipped: number;
   transfers_out: number;
   returns: number;
+  shipments_in: number;
   increases: number;
   decreases: number;
   total_movements: number;
@@ -203,6 +204,8 @@ const MonthlyInventoryReport: React.FC = () => {
         render: (v: number) => v ? <span style={{ color: '#52c41a', fontWeight: 500 }}>{fmt(v)}</span> : '-' },
       { title: 'Remanente', dataIndex: 'returns', key: 'rem', width: 100, align: 'right' as const,
         render: (v: number) => v ? <span style={{ color: '#e65100', fontWeight: 500 }}>{fmt(v)}</span> : '-' },
+      { title: 'Envíos Recibidos', dataIndex: 'shipments_in', key: 'ship_in', width: 120, align: 'right' as const,
+        render: (v: number) => v ? <span style={{ color: '#1976D2', fontWeight: 500 }}>{fmt(v)}</span> : '-' },
       { title: 'Aumentos', dataIndex: 'increases', key: 'inc', width: 90, align: 'right' as const,
         render: (v: number) => v ? <span style={{ color: '#1976D2' }}>{fmt(v)}</span> : '-' },
       { title: 'Disminuc.', dataIndex: 'decreases', key: 'dec', width: 90, align: 'right' as const,

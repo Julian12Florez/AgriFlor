@@ -31,6 +31,11 @@ const Outputs: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
+  // Paginación en servidor: la API tiene 290 salidas reales y solo entrega 15 por página por
+  // defecto. Antes se pedía sin per_page y se paginaba en cliente sobre esos 15, dejando 275
+  // salidas inalcanzables. `page`/`pageSize` viajan a la API y el total real viene de `meta.total`.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [selectedLocationId, setSelectedLocationId] = useState<string | undefined>();
   const [selectedOriginLocationId, setSelectedOriginLocationId] = useState<string | undefined>();
   const [selectedDestinationLocationId, setSelectedDestinationLocationId] = useState<string | undefined>();
@@ -43,14 +48,16 @@ const Outputs: React.FC = () => {
   // Ref to prevent double submissions (synchronous check)
   const isSubmittingRef = useRef(false);
 
-  // Fetch outputs from backend
+  // Fetch outputs from backend (paginado en servidor, ver declaración de page/pageSize arriba)
   const { data: outputsData, isLoading: outputsLoading } = useQuery({
-    queryKey: ['outputs', searchText, statusFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD')],
+    queryKey: ['outputs', searchText, statusFilter, dateRange?.[0]?.format('YYYY-MM-DD'), dateRange?.[1]?.format('YYYY-MM-DD'), page, pageSize],
     queryFn: () => outputsApi.list({
       search: searchText || undefined,
       status: statusFilter || undefined,
       start_date: dateRange?.[0]?.format('YYYY-MM-DD'),
       end_date: dateRange?.[1]?.format('YYYY-MM-DD'),
+      page,
+      per_page: pageSize,
     }),
   });
 
@@ -85,6 +92,7 @@ const Outputs: React.FC = () => {
   });
 
   const outputs = outputsData?.data || [];
+  const totalOutputs = outputsData?.meta?.total || 0;
   const availableLocations = locationsData?.data || [];
 
   // Aislamiento por ubicación: el responsable solo puede elegir como ORIGEN de la salida
@@ -206,6 +214,16 @@ const Outputs: React.FC = () => {
     return icons[status as keyof typeof icons] || <ClockCircleOutlined />;
   };
 
+  // La columna "Destino" y el detalle expandido comparten esta lógica. Antes pintaban
+  // `record.farmName`, un campo que la API nunca envía (era del mock). El API siempre entrega
+  // `destinationLocation` (a dónde se fue realmente el producto, incluso para "consumo" donde
+  // destino == origen: ahí lo que informa es la finca) y, solo cuando el tipo de salida requiere
+  // lotes (hoy solo "consumo"), `farmLots` con los lotes donde se aplicó.
+  const getOutputDestinationInfo = (record: ProductOutput) => ({
+    locationName: record.destinationLocation?.name || 'Sin ubicación',
+    lotNames: (record.farmLots || []).map((lot) => lot.name),
+  });
+
   const getEquivalenceText = (productId: string, quantity: number, unit: string) => {
     const product = availableProducts.find((p: any) => p.id === productId);
     if (!product || !product.packaging_units || quantity <= 0) {
@@ -294,8 +312,12 @@ const Outputs: React.FC = () => {
         realProductId: p.productId,
         brandId: p.brandId,
         inventoryId: inventoryItem?.inventory_id,
-        maxQuantity: inventoryItem?.base_quantity || inventoryItem?.quantity,
+        // maxQuantity = DISPONIBLE (físico − comprometido por otras salidas
+        // pendientes), no el físico completo: es lo que el backend acepta (C-3).
+        maxQuantity: inventoryItem?.available_quantity ?? inventoryItem?.base_quantity ?? inventoryItem?.quantity,
         baseQuantity: inventoryItem?.base_quantity || inventoryItem?.quantity,
+        committedQuantity: inventoryItem?.committed_quantity || 0,
+        availableQuantity: inventoryItem?.available_quantity ?? inventoryItem?.base_quantity ?? inventoryItem?.quantity,
         baseUnit: inventoryItem?.base_unit || inventoryItem?.unit,
         quantityRequested: p.quantityRequested,
         quantityDelivered: p.quantityDelivered,
@@ -306,14 +328,16 @@ const Outputs: React.FC = () => {
 
     form.setFieldsValue({
       outputTypeId: record.outputType?.id,
-      orderNumber: record.orderNumber,
+      orderNumber: record.technicalOrderId || record.technicalOrder?.id,
       outputDate: dayjs(record.outputDate),
       originLocationId: record.originLocation?.id,
       destinationLocationId: record.destinationLocation?.id,
       farmLotIds: farmLotIds,
       responsibleUser: record.responsibleUserDetails ? {
         value: record.responsibleUser,
-        label: `${record.responsibleUserDetails.name} - ${getRoleLabel(record.responsibleUserDetails.role || 'Usuario')}`
+        // La API solo envía {id, name, email} en responsibleUserDetails (sin "role"); el rol se
+        // busca en la lista de usuarios ya cargada, igual que en las opciones del Select de abajo.
+        label: `${record.responsibleUserDetails.name} - ${getRoleLabel(availableUsers.find((u: any) => u.id === record.responsibleUser)?.role || 'Usuario')}`
       } : record.responsibleUser,
       observations: record.observations,
       products: mappedProducts
@@ -501,12 +525,9 @@ const Outputs: React.FC = () => {
     }
   };
 
-  // La búsqueda y el estado se resuelven en el backend (por producto, código, finca, etc.).
-  // No se filtra por texto en cliente para no ocultar resultados que matchean por producto/finca.
-  const filteredOutputs = outputs.filter((output: any) => {
-    const matchesStatus = !statusFilter || output.status === statusFilter;
-    return matchesStatus;
-  });
+  // La búsqueda, el estado y las fechas se resuelven en el backend (por producto, código, finca,
+  // etc.) y la tabla pagina también en el servidor (ver `page`/`pageSize`), así que `outputs` ya
+  // viene filtrado y recortado a la página actual: no hace falta re-filtrar en cliente.
 
   const mobileColumns: ColumnsType<ProductOutput> = [
     {
@@ -574,26 +595,36 @@ const Outputs: React.FC = () => {
             <ExportOutlined style={{ marginRight: 8, color: '#1890ff' }} />
             {record.outputNumber}
           </div>
-          <div style={{ color: '#666', fontSize: 12 }}>
-            {record.orderNumber} - {record.orderName}
-          </div>
+          {record.technicalOrder?.orderNumber && (
+            <div style={{ color: '#666', fontSize: 12 }}>
+              {record.technicalOrder.orderNumber}
+            </div>
+          )}
         </div>
       ),
     },
     {
       title: 'Destino',
       key: 'destination',
-      render: (_, record) => (
-        <div>
-          <div style={{ fontWeight: 500, fontSize: 14 }}>
-            <EnvironmentOutlined style={{ marginRight: 4 }} />
-            {record.farmName}
+      render: (_, record) => {
+        const { locationName, lotNames } = getOutputDestinationInfo(record);
+        return (
+          <div>
+            <div style={{ fontWeight: 500, fontSize: 14 }}>
+              <EnvironmentOutlined style={{ marginRight: 4 }} />
+              {locationName}
+            </div>
+            {lotNames.length > 0 && (
+              <div style={{ color: '#666', fontSize: 12 }}>
+                Lote{lotNames.length > 1 ? 's' : ''}: {lotNames.join(', ')}
+              </div>
+            )}
+            <div style={{ color: '#999', fontSize: 12 }}>
+              {dayjs(record.outputDate).format('DD/MM/YYYY')}
+            </div>
           </div>
-          <div style={{ color: '#666', fontSize: 12 }}>
-            {dayjs(record.outputDate).format('DD/MM/YYYY')}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       title: 'Productos',
@@ -636,12 +667,9 @@ const Outputs: React.FC = () => {
           {getStatusText(status)}
         </Tag>
       ),
-      filters: [
-        { text: 'Disponible para Recepción', value: 'pending' },
-        { text: 'Recepción Iniciada', value: 'partial' },
-        { text: 'Completada', value: 'completed' },
-      ],
-      onFilter: (value, record) => record.status === value,
+      // El filtro de estado se hace en el servidor (ver Select "Filtrar por estado" arriba de la
+      // tabla), que sí conoce las 290 salidas. Un `onFilter` de columna aquí solo vería la página
+      // actual y sería inconsistente con la paginación real del servidor.
     },
     {
       title: 'Acciones',
@@ -673,34 +701,42 @@ const Outputs: React.FC = () => {
     },
   ];
 
-  const expandedRowRender = (record: ProductOutput) => (
-    <Descriptions size="small" column={1}>
-      <Descriptions.Item label="Orden técnica">{record.orderNumber} - {record.orderName}</Descriptions.Item>
-      <Descriptions.Item label="Destino">{record.farmName}</Descriptions.Item>
-      <Descriptions.Item label="Fecha de salida">
-        {dayjs(record.outputDate).format('DD/MM/YYYY')}
-      </Descriptions.Item>
-      <Descriptions.Item label="Responsable">
-        {record.responsibleUserDetails?.name || record.responsibleUser || 'Sin asignar'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Productos">
-        {record.products.map((product, index) => (
-          <div key={index} style={{ marginBottom: 4 }}>
-            <strong>{product.productName}</strong> - {product.brandName}
-            <br />
-            <span style={{ color: '#666', fontSize: 12 }}>
-              Solicitado: {product.quantityRequested} {product.unit} |
-              Entregado: {product.quantityDelivered} {product.unit}
-              {product.batchNumber && ` | Lote: ${product.batchNumber}`}
-            </span>
-          </div>
-        ))}
-      </Descriptions.Item>
-      {record.observations && (
-        <Descriptions.Item label="Observaciones">{record.observations}</Descriptions.Item>
-      )}
-    </Descriptions>
-  );
+  const expandedRowRender = (record: ProductOutput) => {
+    const { locationName, lotNames } = getOutputDestinationInfo(record);
+    return (
+      <Descriptions size="small" column={1}>
+        {record.technicalOrder?.orderNumber && (
+          <Descriptions.Item label="Orden técnica">{record.technicalOrder.orderNumber}</Descriptions.Item>
+        )}
+        <Descriptions.Item label="Destino">{locationName}</Descriptions.Item>
+        {lotNames.length > 0 && (
+          <Descriptions.Item label="Lotes de finca">{lotNames.join(', ')}</Descriptions.Item>
+        )}
+        <Descriptions.Item label="Fecha de salida">
+          {dayjs(record.outputDate).format('DD/MM/YYYY')}
+        </Descriptions.Item>
+        <Descriptions.Item label="Responsable">
+          {record.responsibleUserDetails?.name || record.responsibleUser || 'Sin asignar'}
+        </Descriptions.Item>
+        <Descriptions.Item label="Productos">
+          {record.products.map((product, index) => (
+            <div key={index} style={{ marginBottom: 4 }}>
+              <strong>{product.productName}</strong> - {product.brandName}
+              <br />
+              <span style={{ color: '#666', fontSize: 12 }}>
+                Solicitado: {product.quantityRequested} {product.unit} |
+                Entregado: {product.quantityDelivered} {product.unit}
+                {product.batchNumber && ` | Lote: ${product.batchNumber}`}
+              </span>
+            </div>
+          ))}
+        </Descriptions.Item>
+        {record.observations && (
+          <Descriptions.Item label="Observaciones">{record.observations}</Descriptions.Item>
+        )}
+      </Descriptions>
+    );
+  };
 
   const renderFormContent = () => (
     <Form
@@ -941,8 +977,12 @@ const Outputs: React.FC = () => {
                                   unit: item.unit,
                                   batchNumber: item.batch_number,
                                   inventoryId: item.inventory_id,
-                                  maxQuantity: item.base_quantity || item.quantity,
+                                  // maxQuantity = DISPONIBLE (físico − comprometido), no el
+                                  // físico completo: es lo que el backend acepta (C-3).
+                                  maxQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                   baseQuantity: item.base_quantity || item.quantity,
+                                  committedQuantity: item.committed_quantity || 0,
+                                  availableQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                   baseUnit: item.base_unit || item.unit,
                                   expirationDate: item.expiration_date
                                 };
@@ -964,6 +1004,22 @@ const Outputs: React.FC = () => {
                               </Option>
                             ))}
                           </Select>
+                        </Form.Item>
+                        <Form.Item dependencies={[[name, 'productId']]} noStyle>
+                          {({ getFieldValue }) => {
+                            const products = getFieldValue('products') || [];
+                            const currentProduct = products[name];
+                            if (!currentProduct?.productId) return null;
+                            return (
+                              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                                Físico: {(currentProduct.baseQuantity || 0).toFixed(2)} {currentProduct.baseUnit}
+                                {currentProduct.committedQuantity > 0 && (
+                                  <> · Comprometido: {currentProduct.committedQuantity.toFixed(2)} {currentProduct.baseUnit} (otras salidas pendientes)</>
+                                )}
+                                {' '}· Disponible: {(currentProduct.availableQuantity ?? currentProduct.baseQuantity ?? 0).toFixed(2)} {currentProduct.baseUnit}
+                              </Typography.Text>
+                            );
+                          }}
                         </Form.Item>
                         <Form.Item
                           {...restField}
@@ -1144,8 +1200,12 @@ const Outputs: React.FC = () => {
                                 unit: item.unit,
                                 batchNumber: item.batch_number,
                                 inventoryId: item.inventory_id,
-                                maxQuantity: item.base_quantity || item.quantity,
+                                // maxQuantity = DISPONIBLE (físico − comprometido), no el
+                                // físico completo: es lo que el backend acepta (C-3).
+                                maxQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                 baseQuantity: item.base_quantity || item.quantity,
+                                committedQuantity: item.committed_quantity || 0,
+                                availableQuantity: item.available_quantity ?? item.base_quantity ?? item.quantity,
                                 baseUnit: item.base_unit || item.unit,
                                 expirationDate: item.expiration_date
                               };
@@ -1167,6 +1227,22 @@ const Outputs: React.FC = () => {
                             </Option>
                           ))}
                         </Select>
+                      </Form.Item>
+                      <Form.Item dependencies={[[name, 'productId']]} noStyle>
+                        {({ getFieldValue }) => {
+                          const products = getFieldValue('products') || [];
+                          const currentProduct = products[name];
+                          if (!currentProduct?.productId) return null;
+                          return (
+                            <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                              Físico: {(currentProduct.baseQuantity || 0).toFixed(2)} {currentProduct.baseUnit}
+                              {currentProduct.committedQuantity > 0 && (
+                                <> · Comprometido: {currentProduct.committedQuantity.toFixed(2)} {currentProduct.baseUnit} (otras salidas pendientes)</>
+                              )}
+                              {' '}· Disponible: {(currentProduct.availableQuantity ?? currentProduct.baseQuantity ?? 0).toFixed(2)} {currentProduct.baseUnit}
+                            </Typography.Text>
+                          );
+                        }}
                       </Form.Item>
                       <Form.Item
                         {...restField}
@@ -1416,7 +1492,7 @@ const Outputs: React.FC = () => {
                 placeholder="Buscar por N° salida, producto, código o finca..."
                 allowClear
                 value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
+                onChange={(e) => { setSearchText(e.target.value); setPage(1); }}
               />
             </Col>
             <Col xs={24} sm={12} md={8}>
@@ -1425,7 +1501,7 @@ const Outputs: React.FC = () => {
                 allowClear
                 style={{ width: '100%' }}
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(value) => { setStatusFilter(value); setPage(1); }}
               >
                 <Option value="pending">Pendiente</Option>
                 <Option value="partial">Parcial</Option>
@@ -1438,7 +1514,7 @@ const Outputs: React.FC = () => {
                 format="DD/MM/YYYY"
                 placeholder={['Fecha desde', 'Fecha hasta']}
                 value={dateRange as any}
-                onChange={(v) => setDateRange(v as any)}
+                onChange={(v) => { setDateRange(v as any); setPage(1); }}
               />
             </Col>
           </Row>
@@ -1447,14 +1523,19 @@ const Outputs: React.FC = () => {
         <ResponsiveTable
           mobileColumns={mobileColumns}
           desktopColumns={desktopColumns}
-          dataSource={filteredOutputs}
+          dataSource={outputs}
           rowKey="id"
           loading={outputsLoading}
           expandedRowRender={expandedRowRender}
           entityName="salidas"
           pagination={{
-            total: filteredOutputs.length,
-            pageSize: 10,
+            current: page,
+            pageSize,
+            total: totalOutputs,
+            onChange: (newPage, newPageSize) => {
+              setPage(newPage);
+              setPageSize(newPageSize);
+            },
           }}
         />
       </Card>

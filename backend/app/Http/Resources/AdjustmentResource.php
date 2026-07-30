@@ -48,6 +48,13 @@ class AdjustmentResource extends JsonResource
             'product_code' => $this->whenLoaded('product', function () {
                 return $this->product?->product_code;
             }),
+            // Unidad de `quantity_base` (ver AdjustmentController::toBase /
+            // InventoryService::baseUnitOf): el frontend la necesita para
+            // rotular el DELTA REAL aplicado en modo absoluto sin adivinar —
+            // `unit` es la de CAPTURA (p. ej. "Bulto") y puede no coincidir.
+            'product_base_unit' => $this->whenLoaded('product', function () {
+                return $this->product?->base_unit ?: 'unidades';
+            }),
             'brand_name' => $this->whenLoaded('brand', function () {
                 return $this->brand?->name;
             }),

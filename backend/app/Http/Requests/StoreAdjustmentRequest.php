@@ -40,7 +40,12 @@ class StoreAdjustmentRequest extends FormRequest
             'destination_location_id' => ['nullable', 'uuid', 'exists:locations,id'],
             'batch_number' => ['nullable', 'string', 'max:255'],
             'unit_price' => ['nullable', 'numeric', 'min:0'],
-            'movement_date' => ['required', 'date'],
+            // 'before_or_equal:today' prohíbe fecha futura. El límite inferior
+            // (periodo contable cerrado) NO puede expresarse como regla estática:
+            // depende de config('adjustments.closed_period_until'), que se puede
+            // mover cuando Contabilidad cierre un mes nuevo. Se valida en
+            // validateMovementDateNotClosed().
+            'movement_date' => ['required', 'date', 'before_or_equal:today'],
         ];
     }
 
@@ -77,6 +82,7 @@ class StoreAdjustmentRequest extends FormRequest
             'unit_price.min' => 'El precio unitario no puede ser negativo.',
             'movement_date.required' => 'La fecha de movimiento es requerida.',
             'movement_date.date' => 'La fecha de movimiento no es válida.',
+            'movement_date.before_or_equal' => 'La fecha de movimiento no puede ser una fecha futura.',
         ];
     }
 
@@ -88,6 +94,7 @@ class StoreAdjustmentRequest extends FormRequest
             $this->validateQuantityForMode($validator);
             $this->validateUnitBelongsToProduct($validator);
             $this->validateReasonDirection($validator);
+            $this->validateMovementDateNotClosed($validator);
         });
     }
 
@@ -336,6 +343,52 @@ class StoreAdjustmentRequest extends FormRequest
                 'reason_id',
                 'El motivo seleccionado no aplica para el tipo de ajuste indicado.'
             );
+        }
+    }
+
+    /**
+     * Rechaza un `movement_date` dentro de un periodo ya conciliado con
+     * Contabilidad (config('adjustments.closed_period_until'), ver
+     * config/adjustments.php para cómo moverla).
+     *
+     * Sin esta cota, un ajuste con fecha retroactiva descuadra el informe
+     * mensual de un mes que YA se entregó a Contabilidad sin que se note:
+     * medido con un ajuste fechado el 15 de mayo de 2026, el informe de mayo
+     * pasó de `increases 0 → 111` y la columna `variation` NO se movió (porque
+     * el mes ya cerrado no forma parte de ningún reporte que alguien vuelva a
+     * mirar), dejando el descuadre invisible.
+     *
+     * Este es el chequeo de CREACIÓN. La aprobación (que es la que aplica el
+     * stock) repite el mismo chequeo de forma autoritativa en
+     * AdjustmentController::assertMovementDateNotClosed(), porque el cierre
+     * pudo moverse ENTRE que se creó la solicitud y se aprobó.
+     */
+    protected function validateMovementDateNotClosed(Validator $validator): void
+    {
+        $movementDate = $this->input('movement_date');
+
+        if (!is_string($movementDate) || $movementDate === '') {
+            // Ya reportado por movement_date.required/date.
+            return;
+        }
+
+        try {
+            $date = new \DateTimeImmutable($movementDate);
+        } catch (\Throwable $e) {
+            // Ya reportado por movement_date.date.
+            return;
+        }
+
+        $closedUntil = new \DateTimeImmutable((string) config('adjustments.closed_period_until'));
+
+        if ($date <= $closedUntil) {
+            $validator->errors()->add('movement_date', sprintf(
+                'La fecha de movimiento (%s) cae en un periodo ya cerrado y conciliado con Contabilidad ' .
+                '(hasta el %s inclusive). Si de verdad necesita registrar un ajuste en ese periodo, ' .
+                'solicite la excepción a Contabilidad antes de continuar.',
+                $date->format('d/m/Y'),
+                $closedUntil->format('d/m/Y')
+            ));
         }
     }
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Row, Col, DatePicker, Button, Select, message, Spin, Descriptions, Alert, Statistic } from 'antd';
+import { Card, Row, Col, DatePicker, Button, Select, message, Spin, Descriptions, Alert, Statistic, Tooltip } from 'antd';
 import {
   FileTextOutlined,
   FileExcelOutlined,
@@ -7,6 +7,7 @@ import {
   ReloadOutlined,
   FilterOutlined,
   PrinterOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -473,45 +474,81 @@ const InventoryKardex: React.FC = () => {
           )}
 
           {/* Summary Cards */}
-          {summary && (
-            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-              <Col xs={12} sm={6}>
-                <Card>
-                  <Statistic
-                    title="Total Movimientos"
-                    value={summary.total_movements}
+          {summary && (() => {
+            const stockFisico = summary.current_stock;
+            const saldoContable = summary.current_balance;
+            const diferencia = Math.round((saldoContable - stockFisico) * 100) / 100;
+            const hayDiferencia = Math.abs(diferencia) > 0.01;
+
+            return (
+              <>
+                <Row gutter={[16, 16]} style={{ marginBottom: hayDiferencia ? 16 : 16 }}>
+                  <Col xs={12} sm={6}>
+                    <Card>
+                      <Statistic
+                        title="Total Movimientos"
+                        value={summary.total_movements}
+                      />
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <Card>
+                      <Statistic
+                        title={`Total Entradas (${productInfo?.base_unit || ''})`}
+                        value={summary.total_entries}
+                        valueStyle={{ color: '#3f8600' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <Card>
+                      <Statistic
+                        title={`Total Salidas (${productInfo?.base_unit || ''})`}
+                        value={summary.total_exits}
+                        valueStyle={{ color: '#cf1322' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <Card>
+                      <Statistic
+                        title={
+                          <Tooltip title="Lo que hay físicamente en los lotes de esta ubicación y se puede despachar.">
+                            Stock Actual (físico) <InfoCircleOutlined style={{ color: '#999' }} />
+                          </Tooltip>
+                        }
+                        value={stockFisico}
+                        valueStyle={{ color: '#1890ff' }}
+                      />
+                    </Card>
+                  </Col>
+                  <Col xs={12} sm={6}>
+                    <Card>
+                      <Statistic
+                        title={
+                          <Tooltip title="El saldo que resulta de sumar y restar los movimientos del kardex (entradas, salidas, traslados, ajustes contables).">
+                            Saldo contable (libro) <InfoCircleOutlined style={{ color: '#999' }} />
+                          </Tooltip>
+                        }
+                        value={saldoContable}
+                        valueStyle={{ color: '#722ed1' }}
+                      />
+                    </Card>
+                  </Col>
+                </Row>
+
+                {hayDiferencia && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message={`El saldo contable y el stock físico no coinciden (diferencia: ${diferencia.toFixed(2)} ${productInfo?.base_unit || ''})`}
+                    description="Esta diferencia corresponde a movimientos contables (por ejemplo, correcciones de cierre) que se registraron en el kardex sin crear un lote físico. No es un error de cálculo: se resuelve con un conteo físico. Mientras tanto, lo que se puede despachar es el Stock Actual (físico)."
                   />
-                </Card>
-              </Col>
-              <Col xs={12} sm={6}>
-                <Card>
-                  <Statistic
-                    title={`Total Entradas (${productInfo?.base_unit || ''})`}
-                    value={summary.total_entries}
-                    valueStyle={{ color: '#3f8600' }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={12} sm={6}>
-                <Card>
-                  <Statistic
-                    title={`Total Salidas (${productInfo?.base_unit || ''})`}
-                    value={summary.total_exits}
-                    valueStyle={{ color: '#cf1322' }}
-                  />
-                </Card>
-              </Col>
-              <Col xs={12} sm={6}>
-                <Card>
-                  <Statistic
-                    title={`Stock Actual (${productInfo?.base_unit || ''})`}
-                    value={summary.current_stock}
-                    valueStyle={{ color: '#1890ff' }}
-                  />
-                </Card>
-              </Col>
-            </Row>
-          )}
+                )}
+              </>
+            );
+          })()}
 
           {/* Kardex Table */}
           <Card title={`Kardex (${kardex.length} movimientos)`}>

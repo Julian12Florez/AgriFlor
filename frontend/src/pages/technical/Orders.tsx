@@ -310,23 +310,33 @@ const Orders: React.FC = () => {
     },
     {
       title: 'Fincas',
-      dataIndex: 'farmNames',
-      key: 'farmNames',
-      render: (farmNames: string[]) => (
-        <div>
-          {farmNames.slice(0, 2).map((name, index) => (
-            <div key={index} style={{ fontSize: 12, marginBottom: 2 }}>
-              <EnvironmentOutlined style={{ marginRight: 4, color: '#2196F3' }} />
-              {name}
-            </div>
-          ))}
-          {farmNames.length > 2 && (
-            <div style={{ color: '#999', fontSize: 12 }}>
-              +{farmNames.length - 2} más...
-            </div>
-          )}
-        </div>
-      ),
+      // El backend (TechnicalOrderResource) envía "farms" (objetos {id,name,...}), nunca
+      // "farmNames"; ese campo era del mock. Hoy no hay órdenes técnicas en producción, así que
+      // esto no se había manifestado, pero con la primera orden real `farms` puede venir ausente
+      // (relación no cargada) o vacío, de ahí la guarda.
+      dataIndex: 'farms',
+      key: 'farms',
+      render: (farms: TechnicalOrder['farms']) => {
+        const farmList = farms || [];
+        return (
+          <div>
+            {farmList.slice(0, 2).map((farm, index) => (
+              <div key={farm.id ?? index} style={{ fontSize: 12, marginBottom: 2 }}>
+                <EnvironmentOutlined style={{ marginRight: 4, color: '#2196F3' }} />
+                {farm.name}
+              </div>
+            ))}
+            {farmList.length > 2 && (
+              <div style={{ color: '#999', fontSize: 12 }}>
+                +{farmList.length - 2} más...
+              </div>
+            )}
+            {farmList.length === 0 && (
+              <div style={{ color: '#999', fontSize: 12 }}>Sin fincas asignadas</div>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Receta/Productos',
@@ -419,12 +429,16 @@ const Orders: React.FC = () => {
         {new Date(record.scheduledDate).toLocaleDateString('es-CO')}
       </Descriptions.Item>
       <Descriptions.Item label="Fincas asignadas">
-        {record.farmNames.map((name, index) => (
-          <div key={index} style={{ marginBottom: 4 }}>
-            <EnvironmentOutlined style={{ marginRight: 4, color: '#2196F3' }} />
-            {name}
-          </div>
-        ))}
+        {record.farms && record.farms.length > 0 ? (
+          record.farms.map((farm, index) => (
+            <div key={farm.id ?? index} style={{ marginBottom: 4 }}>
+              <EnvironmentOutlined style={{ marginRight: 4, color: '#2196F3' }} />
+              {farm.name}
+            </div>
+          ))
+        ) : (
+          <span style={{ color: '#999' }}>Sin fincas asignadas</span>
+        )}
       </Descriptions.Item>
       <Descriptions.Item label="Receta base">
         {record.recipeName || 'Sin receta base'}

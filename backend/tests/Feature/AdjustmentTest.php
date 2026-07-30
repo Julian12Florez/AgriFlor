@@ -1115,6 +1115,87 @@ class AdjustmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // PR-A / AJ-2: cotas de movement_date (fecha futura prohibida, periodo
+    // contable cerrado protegido). Ver config/adjustments.php.
+    // ------------------------------------------------------------------
+
+    /**
+     * Medido: se aceptaba una fecha futura (2027-03-15) sin ninguna cota.
+     */
+    public function test_store_rejects_future_movement_date(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, [
+            'movement_date' => now()->addYear()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('movement_date');
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    /**
+     * Medido: un ajuste fechado el 15 de mayo de 2026 (mes ya conciliado con
+     * Siigo) pasó el informe de mayo de `increases 0 → 111` sin mover
+     * `variation` -- el descuadre quedó invisible. La fecha de cierre exacta
+     * (`closed_period_until`, incluida) también debe rechazarse.
+     */
+    public function test_store_rejects_movement_date_within_closed_accounting_period(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, [
+            'movement_date' => config('adjustments.closed_period_until'),
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('movement_date');
+        $this->assertStringContainsString('cerrado', implode(' ', $response->json('errors.movement_date')));
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    public function test_store_accepts_movement_date_right_after_closed_period(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $dayAfterClose = date('Y-m-d', strtotime(config('adjustments.closed_period_until') . ' +1 day'));
+
+        $payload = $this->validEntryPayload($fixtures, ['movement_date' => $dayAfterClose]);
+
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload)
+            ->assertStatus(201);
+    }
+
+    /**
+     * La aprobación es la que aplica el stock, así que repite el chequeo del
+     * cierre de forma autoritativa: una solicitud creada con una fecha que
+     * ERA válida en su momento (p. ej. antes de que Contabilidad moviera el
+     * cierre hacia adelante) no puede colarse solo porque ya pasó la
+     * validación de creación. Se crea directamente (sin pasar por el
+     * endpoint, igual que makePendingAdjustment) para simular ese escenario
+     * sin depender de mover la config a mitad de la prueba.
+     */
+    public function test_approve_rejects_when_movement_date_falls_in_closed_period(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'movement_date' => config('adjustments.closed_period_until'),
+        ]);
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(422);
+        $this->assertStringContainsString('cerrado', $response->json('message'));
+
+        $this->assertSame(0, Inventory::count());
+        $this->assertCount(0, $this->movementsOf($adjustment));
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    // ------------------------------------------------------------------
     // Task 6: approve() — la aprobación aplica el stock (solo admin)
     // ------------------------------------------------------------------
 
@@ -1246,8 +1327,10 @@ class AdjustmentTest extends TestCase
 
         $batch = Inventory::where('location_id', $fixtures['destination']->id)->first();
         $this->assertNotNull($batch);
-        // Sin batch_number en la solicitud, el lote queda trazable al documento.
-        $this->assertSame('AJU-' . substr($adjustment->id, 0, 8), $batch->batch_number);
+        // Sin batch_number en la solicitud, el lote queda trazable al documento:
+        // usa adjustment_number (único por fila, ver test de colisión más abajo),
+        // no un fragmento del id.
+        $this->assertSame($adjustment->adjustment_number, $batch->batch_number);
         $this->assertEqualsWithDelta(10, (float) $batch->quantity, 0.01);
         $this->assertSame('kg', $batch->unit);
         $this->assertEqualsWithDelta(5, (float) $batch->unit_price, 0.01);
@@ -1279,6 +1362,58 @@ class AdjustmentTest extends TestCase
         $this->assertSame($admin->id, $adjustment->approved_by);
         $this->assertNotNull($adjustment->approved_at);
         $this->assertEqualsWithDelta(10, (float) $adjustment->quantity_base, 0.01);
+    }
+
+    /**
+     * Antes del fix, el lote autogenerado usaba 'AJU-' . substr($id, 0, 8):
+     * HasUuids genera UUIDs ordenados por tiempo, cuyos primeros 8 hex tienen
+     * granularidad de ~1 segundo, así que dos ajustes de entrada creados en el
+     * mismo segundo compartían el mismo lote automático y fundían sus
+     * existencias en una sola fila de `inventory` (medido en producción: 3
+     * ajustes de entrada → un solo lote AJU-a26150f2, 35 kg, en vez de 3 lotes
+     * separados). Se fuerza aquí el mismo prefijo de 8 hex en el id para no
+     * depender de la suerte del reloj de la prueba: adjustment_number (columna
+     * UNIQUE) no puede colisionar pase lo que pase con el id.
+     */
+    public function test_approve_two_entries_with_colliding_id_prefix_use_distinct_auto_batches(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $makeWithId = function (string $id, float $quantity) use ($fixtures) {
+            return Adjustment::forceCreate(array_merge($this->baseAdjustmentAttributes($fixtures), [
+                'id' => $id,
+                'adjustment_number' => Adjustment::generateAdjustmentNumber(),
+                'type' => 'entry',
+                'destination_location_id' => $fixtures['destination']->id,
+                'unit_price' => 5,
+                'quantity' => $quantity,
+                'status' => 'pending',
+                'responsible_user' => $fixtures['requester']->id,
+            ]));
+        };
+
+        $first = $makeWithId('a26150f2-0000-4000-8000-000000000001', 10);
+        $second = $makeWithId('a26150f2-0000-4000-8000-000000000002', 20);
+
+        $this->approve($admin, $first)->assertStatus(200);
+        $this->approve($admin, $second)->assertStatus(200);
+
+        $batches = Inventory::where('location_id', $fixtures['destination']->id)->get();
+
+        // DOS filas separadas, no fundidas en una sola de 30.
+        $this->assertCount(2, $batches);
+
+        $batchOfFirst = $batches->first(fn ($batch) => abs((float) $batch->quantity - 10) < 0.01);
+        $batchOfSecond = $batches->first(fn ($batch) => abs((float) $batch->quantity - 20) < 0.01);
+        $this->assertNotNull($batchOfFirst);
+        $this->assertNotNull($batchOfSecond);
+        $this->assertNotSame($batchOfFirst->batch_number, $batchOfSecond->batch_number);
+
+        // El lote generado es el número de ajuste (único por fila), no un
+        // fragmento del id.
+        $this->assertSame($first->adjustment_number, $batchOfFirst->batch_number);
+        $this->assertSame($second->adjustment_number, $batchOfSecond->batch_number);
     }
 
     public function test_approve_exit_delta_reduces_stock_fifo(): void

@@ -338,6 +338,7 @@ export interface Adjustment {
   reason_name?: string;
   product_name?: string;
   product_code?: string;
+  product_base_unit?: string;
   brand_name?: string;
   origin_location_name?: string;
   destination_location_name?: string;
