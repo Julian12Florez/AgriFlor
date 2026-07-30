@@ -293,6 +293,29 @@ class OutputReceptionMovementDateTest extends TestCase
         return $movements->first();
     }
 
+    /** Inventario Mensual de una ubicación para el mes de la fecha del lote. */
+    private function monthlyReport(array $fixtures, string $locationId): TestResponse
+    {
+        return $this->actingAs($fixtures['admin'], 'api')->getJson(
+            '/api/inventory/monthly-report'
+            . '?month=' . intval(substr(self::RECEPTION_DATE, 5, 2))
+            . '&year=' . intval(substr(self::RECEPTION_DATE, 0, 4))
+            . '&location_id=' . $locationId
+        );
+    }
+
+    /** Fila del informe correspondiente al producto de los fixtures. */
+    private function reportRowFor(TestResponse $response, string $productId): array
+    {
+        foreach ($response->json('data.products') ?? [] as $row) {
+            if ($row['product_id'] === $productId) {
+                return $row;
+            }
+        }
+
+        $this->fail("El producto {$productId} no aparece en el informe mensual.");
+    }
+
     // ------------------------------------------------------------------
     // 1. TRASLADO: las dos patas llevan la MISMA fecha (el bug de PR-1)
     // ------------------------------------------------------------------
@@ -422,5 +445,81 @@ class OutputReceptionMovementDateTest extends TestCase
                 "El movimiento '{$type}' del segundo lote debe llevar la fecha del segundo lote."
             );
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 5. EL INVARIANTE DE NEGOCIO: el traslado cuadra en el mes del lote
+    // ------------------------------------------------------------------
+
+    /**
+     * Esta es la prueba que justifica PR-1, y la que hay que romper para volver
+     * a introducir el bug.
+     *
+     * `monthlyReport` calcula la columna "Enviado a finca X" del ORIGEN leyendo el
+     * `movement_date` de la ENTRADA en el DESTINO, emparejada por
+     * `related_document_id` (InventoryController, paso 3), mientras el stock del
+     * origen sale del `exit`. Si las dos patas caen en meses distintos, el envío
+     * no aparece en el mes del descuento y `variation` —la celda que el cliente
+     * concilia contra Siigo— deja de ser cero.
+     *
+     * Se asevera sobre `variation` y `final_stock`, no sobre la columna concreta
+     * en la que hoy cae la entrada del destino: el objetivo es que el informe
+     * CUADRE, y así la prueba sigue siendo válida si se reetiquetan columnas.
+     */
+    public function test_backdated_transfer_balances_the_monthly_report_on_both_sides(): void
+    {
+        $fixtures = $this->createFixtures();
+        $this->seedOpeningStock($fixtures, $fixtures['bodega']->id, 500);
+        $context = $this->makeOutputReception($fixtures, $fixtures['transferType'], 140);
+
+        $this->receiveBatch($fixtures, $context['reception'], self::RECEPTION_DATE, 140)
+            ->assertStatus(201);
+
+        // --- ORIGEN: el envío se cuenta en el mes del lote y el mes cuadra ---
+        $origin = $this->reportRowFor(
+            $this->monthlyReport($fixtures, $fixtures['bodega']->id)->assertStatus(200),
+            $fixtures['product']->id
+        );
+
+        $this->assertEqualsWithDelta(500, $origin['initial_stock'], 0.01);
+        $this->assertEqualsWithDelta(
+            140,
+            $origin['total_shipped'],
+            0.01,
+            'El envío debe contarse en el mes de la fecha del lote, no en el mes en que se registró.'
+        );
+        $this->assertEqualsWithDelta(
+            140,
+            $origin['farm_shipments'][$fixtures['finca']->id] ?? 0,
+            0.01,
+            'El envío debe quedar atribuido a la finca de destino.'
+        );
+        $this->assertEqualsWithDelta(360, $origin['final_stock'], 0.01);
+        $this->assertEqualsWithDelta(
+            0,
+            $origin['variation'],
+            0.01,
+            'Variación del origen debe ser cero: es la celda que el cliente concilia contra contabilidad.'
+        );
+
+        // --- DESTINO: la entrada aparece en el mismo mes y el mes cuadra ---
+        $destination = $this->reportRowFor(
+            $this->monthlyReport($fixtures, $fixtures['finca']->id)->assertStatus(200),
+            $fixtures['product']->id
+        );
+
+        $this->assertEqualsWithDelta(0, $destination['initial_stock'], 0.01);
+        $this->assertEqualsWithDelta(
+            140,
+            $destination['final_stock'],
+            0.01,
+            'La entrada debe aparecer en el destino dentro del mes de la fecha del lote.'
+        );
+        $this->assertEqualsWithDelta(
+            0,
+            $destination['variation'],
+            0.01,
+            'Variación del destino debe ser cero.'
+        );
     }
 }
