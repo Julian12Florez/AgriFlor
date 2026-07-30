@@ -23,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class AdjustmentController extends Controller
 {
@@ -230,6 +231,8 @@ class AdjustmentController extends Controller
 
                 return $this->alreadyProcessedResponse();
             }
+
+            $this->assertMovementDateNotClosed($adjustment);
 
             $userId = $request->user()->id;
             $deltaBase = $this->resolveDeltaBase($adjustment);
@@ -740,6 +743,36 @@ class AdjustmentController extends Controller
     // Todos los métodos de esta sección corren dentro de la transacción de
     // approve(), y toda cantidad que manejan está en UNIDAD BASE del producto.
     // ------------------------------------------------------------------
+
+    /**
+     * Re-chequeo AUTORITATIVO del cierre contable al aprobar (ver
+     * StoreAdjustmentRequest::validateMovementDateNotClosed, que ya lo valida
+     * al CREAR la solicitud): la aprobación es la que aplica el stock, y una
+     * solicitud creada ANTES de que Contabilidad moviera la fecha de cierre
+     * hacia adelante no debe poder colarse solo porque ya pasó la validación
+     * de creación. Corre dentro de la misma transacción que el resto de
+     * approve(): lanzar AdjustmentException aquí hace rollback (stock intacto)
+     * y responde 422, igual que cualquier otro fallo de negocio de este método.
+     */
+    private function assertMovementDateNotClosed(Adjustment $adjustment): void
+    {
+        $movementDate = $adjustment->movement_date;
+
+        if ($movementDate === null) {
+            return;
+        }
+
+        $closedUntil = Carbon::parse((string) config('adjustments.closed_period_until'))->startOfDay();
+
+        if ($movementDate->copy()->startOfDay()->lte($closedUntil)) {
+            throw new AdjustmentException(sprintf(
+                'La fecha de movimiento (%s) cae en un periodo ya cerrado y conciliado con Contabilidad ' .
+                '(hasta el %s inclusive): no se puede aprobar. Solicite la excepción a Contabilidad antes de continuar.',
+                $movementDate->format('d/m/Y'),
+                $closedUntil->format('d/m/Y')
+            ));
+        }
+    }
 
     /**
      * Cantidad (en unidad base) que la aprobación debe mover, siempre positiva.

@@ -51,6 +51,19 @@ class MonthlyReportRemanenteClassificationTest extends TestCase
     private const OPENING_DATE = '2026-02-10';
 
     /**
+     * Este archivo prueba la clasificación del inventario mensual (PR-2), no
+     * el cierre contable de PR-A/AJ-2: se aleja `closed_period_until` de las
+     * fechas históricas (abril/febrero de 2026) usadas aquí para que ese
+     * chequeo — que sí corre en approve() — no interfiera.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['adjustments.closed_period_until' => '2000-01-01']);
+    }
+
+    /**
      * Catálogo mínimo: un admin, un producto con unidad base 'kg', una BODEGA,
      * una FINCA, y los output_types relevantes (remanente y traslado).
      */

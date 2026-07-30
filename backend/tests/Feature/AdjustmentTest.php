@@ -1115,6 +1115,87 @@ class AdjustmentTest extends TestCase
     }
 
     // ------------------------------------------------------------------
+    // PR-A / AJ-2: cotas de movement_date (fecha futura prohibida, periodo
+    // contable cerrado protegido). Ver config/adjustments.php.
+    // ------------------------------------------------------------------
+
+    /**
+     * Medido: se aceptaba una fecha futura (2027-03-15) sin ninguna cota.
+     */
+    public function test_store_rejects_future_movement_date(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, [
+            'movement_date' => now()->addYear()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('movement_date');
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    /**
+     * Medido: un ajuste fechado el 15 de mayo de 2026 (mes ya conciliado con
+     * Siigo) pasó el informe de mayo de `increases 0 → 111` sin mover
+     * `variation` -- el descuadre quedó invisible. La fecha de cierre exacta
+     * (`closed_period_until`, incluida) también debe rechazarse.
+     */
+    public function test_store_rejects_movement_date_within_closed_accounting_period(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $payload = $this->validEntryPayload($fixtures, [
+            'movement_date' => config('adjustments.closed_period_until'),
+        ]);
+
+        $response = $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload);
+
+        $response->assertStatus(422)->assertJsonValidationErrors('movement_date');
+        $this->assertStringContainsString('cerrado', implode(' ', $response->json('errors.movement_date')));
+        $this->assertDatabaseCount('adjustments', 0);
+    }
+
+    public function test_store_accepts_movement_date_right_after_closed_period(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $dayAfterClose = date('Y-m-d', strtotime(config('adjustments.closed_period_until') . ' +1 day'));
+
+        $payload = $this->validEntryPayload($fixtures, ['movement_date' => $dayAfterClose]);
+
+        $this->actingAs($fixtures['requester'], 'api')
+            ->postJson('/api/adjustments', $payload)
+            ->assertStatus(201);
+    }
+
+    /**
+     * La aprobación es la que aplica el stock, así que repite el chequeo del
+     * cierre de forma autoritativa: una solicitud creada con una fecha que
+     * ERA válida en su momento (p. ej. antes de que Contabilidad moviera el
+     * cierre hacia adelante) no puede colarse solo porque ya pasó la
+     * validación de creación. Se crea directamente (sin pasar por el
+     * endpoint, igual que makePendingAdjustment) para simular ese escenario
+     * sin depender de mover la config a mitad de la prueba.
+     */
+    public function test_approve_rejects_when_movement_date_falls_in_closed_period(): void
+    {
+        $fixtures = $this->createCatalogFixtures();
+        $admin = $this->createUserWithRole('admin');
+
+        $adjustment = $this->makePendingAdjustment($fixtures, [
+            'movement_date' => config('adjustments.closed_period_until'),
+        ]);
+
+        $response = $this->approve($admin, $adjustment)->assertStatus(422);
+        $this->assertStringContainsString('cerrado', $response->json('message'));
+
+        $this->assertSame(0, Inventory::count());
+        $this->assertCount(0, $this->movementsOf($adjustment));
+        $this->assertSame('pending', $adjustment->refresh()->status);
+    }
+
+    // ------------------------------------------------------------------
     // Task 6: approve() — la aprobación aplica el stock (solo admin)
     // ------------------------------------------------------------------
 

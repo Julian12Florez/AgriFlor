@@ -46,6 +46,21 @@ class AdjustmentReportsConsistencyTest extends TestCase
     private const OPENING_DATE = '2026-01-20';
 
     /**
+     * Este archivo prueba la CLASIFICACIÓN de movimientos en los informes, no
+     * el cierre contable de PR-A/AJ-2 (que tiene sus propias pruebas en
+     * AdjustmentTest.php): se mueve `closed_period_until` bien atrás de
+     * OPENING_DATE/ADJUSTMENT_DATE (ambas de 2026) para que ese chequeo, que
+     * SÍ corre en store()/approve(), nunca interfiera con fechas históricas
+     * usadas aquí para ejercitar el mes del informe.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['adjustments.closed_period_until' => '2000-01-01']);
+    }
+
+    /**
      * Catálogo mínimo para armar ajustes y leer informes: un admin (único rol
      * que puede aprobar), un producto con unidad base 'kg', una BODEGA y una
      * FINCA. El tipo de cada ubicación importa: el inventario mensual arma la
