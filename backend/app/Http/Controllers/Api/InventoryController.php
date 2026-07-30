@@ -24,6 +24,16 @@ class InventoryController extends Controller
      */
     private const ADJUSTMENT_DOCUMENT_TYPE = 'App\Models\Adjustment';
 
+    /**
+     * Tipo de documento con el que se guardan los movimientos que genera una
+     * recepción (de compra O de salida): el nombre de clase completo, NUNCA el
+     * alias del morph map (mismo motivo que ADJUSTMENT_DOCUMENT_TYPE, ver
+     * AdjustmentController:57-68). Se usa para distinguir, por el DOCUMENTO y
+     * no por el texto de observations, las entradas que nacen de recepcionar
+     * una SALIDA (remanentes, traslados) de las que nacen de una compra real.
+     */
+    private const RECEPTION_DOCUMENT_TYPE = 'App\Models\Reception';
+
     private InventoryService $inventoryService;
 
     public function __construct(InventoryService $inventoryService)
@@ -1437,9 +1447,34 @@ class InventoryController extends Controller
                 ->values()
                 ->all();
 
-            // Remanente devuelto a la ubicación seleccionada (output_type 'remanente' con
-            // destino = esa ubicación). Hoy puede estar en 0 hasta que se registren.
-            $remanenteByProduct = $this->outputQtyByDestination($warehouseId, 'remanente', $startDate, $endDate);
+            // Recepciones de un documento de SALIDA (remanentes, traslados recepcionados,
+            // etc.), separadas por output_type. Se precarga UNA SOLA VEZ, con los dos
+            // joins receptions→product_outputs→output_types, para no repetirlos ~220
+            // veces (una por producto) dentro del bucle de abajo.
+            $outputReceptionIds = $this->outputSourcedReceptionIds();
+
+            // Remanente devuelto a la ubicación seleccionada: se deriva del KARDEX
+            // (entrada en esta ubicación cuya recepción viene de una salida tipo
+            // 'remanente'), NO de product_outputs.output_date, para que cuadre contra
+            // 'variation' (que se calcula sobre movimientos, no sobre la fecha del
+            // documento de origen).
+            $returnsByProduct = $this->sumEntriesByReceptionIds(
+                $warehouseId,
+                $startDate,
+                $endDate,
+                $outputReceptionIds['remanente']
+            );
+
+            // Envíos recibidos: entradas nacidas de recepcionar una salida que NO es
+            // remanente (traslados, órdenes técnicas, solicitudes libres recepcionadas
+            // en esta ubicación). Columna nueva para que, al excluirse de "Compras",
+            // sigan explicadas por alguna columna del informe.
+            $shipmentsInByProduct = $this->sumEntriesByReceptionIds(
+                $warehouseId,
+                $startDate,
+                $endDate,
+                $outputReceptionIds['other']
+            );
 
             foreach ($products as $product) {
                 // 1. Initial stock at start of month — SOLO la bodega del reporte
@@ -1459,16 +1494,23 @@ class InventoryController extends Controller
                 //    contra 'reception'/'purchase' y nunca casaba, por lo que las compras
                 //    recibidas caían en "Variación" en vez de "Compras".
                 //    Se filtra por bodega para no contar envíos a finca como compras.
-                $purchases = InventoryMovement::where('product_id', $product->id)
-                    ->where('type', 'entry')
-                    ->where('location_id', $warehouseId)
-                    ->whereBetween('movement_date', [$startDate, $endDate])
-                    ->where(function ($q) {
-                        $q->where('related_document_type', 'like', '%Reception')
-                            ->orWhere('related_document_type', 'like', '%Purchase')
-                            ->orWhereNull('related_document_type');
-                    })
-                    ->sum('quantity');
+                //    PR-2: además se excluyen las entradas cuya recepción viene de una
+                //    SALIDA (source_type = 'output'): remanentes y traslados recibidos,
+                //    que van a "Remanente"/"Envíos recibidos", no a "Compras". Se
+                //    identifica por el documento (receptions.source_type), nunca por el
+                //    texto de observations (que dice "Transferencia" incluso para un
+                //    remanente: ver ReceptionController::createEntryMovement).
+                $purchases = $this->excludingOutputSourcedReceptions(
+                    InventoryMovement::where('product_id', $product->id)
+                        ->where('type', 'entry')
+                        ->where('location_id', $warehouseId)
+                        ->whereBetween('movement_date', [$startDate, $endDate])
+                        ->where(function ($q) {
+                            $q->where('related_document_type', 'like', '%Reception')
+                                ->orWhere('related_document_type', 'like', '%Purchase')
+                                ->orWhereNull('related_document_type');
+                        })
+                )->sum('quantity');
 
                 // 3. Envíos a cada finca DESDE la ubicación seleccionada (entradas en la
                 //    finca emparejadas con un exit en la ubicación origen). Se excluye la
@@ -1516,9 +1558,16 @@ class InventoryController extends Controller
                 );
                 $totalShipped += $transfersOut;
 
-                // 4. Remanente devuelto a la ubicación (documentos de salida tipo
-                //    'remanente' con destino = la ubicación seleccionada).
-                $returns = (float) ($remanenteByProduct[$product->id] ?? 0);
+                // 4. Remanente devuelto a la ubicación: entradas de kardex cuya
+                //    recepción viene de una salida tipo 'remanente' (ver precarga
+                //    $returnsByProduct arriba).
+                $returns = (float) ($returnsByProduct[$product->id] ?? 0);
+
+                // 4b. Envíos recibidos: entradas de kardex cuya recepción viene de una
+                //     salida que NO es remanente (traslados, órdenes técnicas, etc.
+                //     recepcionados en esta ubicación). Antes de PR-2 estas entradas
+                //     caían en "Compras"; ahora quedan explicadas por esta columna.
+                $shipmentsIn = (float) ($shipmentsInByProduct[$product->id] ?? 0);
 
                 // 5. Final stock at end of month — SOLO la bodega del reporte (cierre histórico)
                 $finalStock = InventoryMovement::where('product_id', $product->id)
@@ -1564,13 +1613,13 @@ class InventoryController extends Controller
                     ['%disminuc%', '%ajuste%negativ%']
                 )->sum('quantity');
 
-                // Total movements = purchases + increases - shipped - decreases + returns
-                $totalMov = round((float)$purchases + (float)$increases - (float)$totalShipped - (float)$decreases + (float)$returns, 2);
+                // Total movements = purchases + shipments_in + increases - shipped - decreases + returns
+                $totalMov = round((float)$purchases + (float)$shipmentsIn + (float)$increases - (float)$totalShipped - (float)$decreases + (float)$returns, 2);
                 // Variation = final - initial - totalMov (should be 0 if everything balances)
                 $variation = round((float)$finalStock - (float)$initialStock - $totalMov, 2);
 
                 // Only include products that have any activity or stock
-                if ($initialStock != 0 || $purchases > 0 || $totalShipped > 0 || $returns > 0 || $finalStock != 0 || $increases > 0 || $decreases > 0 || $currentStock != 0) {
+                if ($initialStock != 0 || $purchases > 0 || $totalShipped > 0 || $returns > 0 || $shipmentsIn > 0 || $finalStock != 0 || $increases > 0 || $decreases > 0 || $currentStock != 0) {
                     $result[] = [
                         'product_id' => $product->id,
                         'product_code' => $product->product_code,
@@ -1586,6 +1635,9 @@ class InventoryController extends Controller
                         // auditar la diferencia contra la matriz de fincas.
                         'transfers_out' => round((float) $transfersOut, 2),
                         'returns' => round((float) $returns, 2),
+                        // Envíos recibidos (traslados/órdenes recepcionados que NO son
+                        // remanente): antes de PR-2 caían en "Compras".
+                        'shipments_in' => round((float) $shipmentsIn, 2),
                         'increases' => round((float) $increases, 2),
                         'decreases' => round((float) $decreases, 2),
                         'total_movements' => $totalMov,
@@ -1932,22 +1984,93 @@ class InventoryController extends Controller
     }
 
     /**
-     * Suma de cantidad entregada por producto, desde salidas de un tipo dado
-     * (output_type code) con DESTINO en una ubicación, en el rango de fechas.
-     * Usado por el inventario mensual para el remanente devuelto a la bodega/ubicación.
+     * Excluye de la consulta las entradas cuya recepción (related_document_id)
+     * proviene de un documento de SALIDA (receptions.source_type = 'output'):
+     * remanentes, traslados recepcionados, órdenes técnicas, etc.
+     *
+     * Se identifica por el DOCUMENTO, nunca por el texto de `observations`: la
+     * entrada de un remanente dice literalmente "... - Transferencia" (ver
+     * ReceptionController::createEntryMovement), así que clasificar por texto
+     * lo confundiría con un traslado real.
+     *
+     * Un único join contra `receptions` (por su clave primaria): a diferencia
+     * de {@see outputSourcedReceptionIds()}, esta consulta NO necesita saber el
+     * output_type (cualquier salida recepcionada se excluye de "Compras"), así
+     * que no arrastra los joins a product_outputs/output_types dentro del
+     * bucle de productos del informe mensual.
      */
-    private function outputQtyByDestination(string $destLocationId, string $typeCode, $start, $end): array
+    private function excludingOutputSourcedReceptions($query)
     {
-        return \App\Models\OutputProduct::query()
-            ->selectRaw('output_products.product_id, SUM(output_products.quantity_delivered) as q')
-            ->join('product_outputs', 'product_outputs.id', '=', 'output_products.output_id')
+        return $query->whereNotExists(function ($exists) {
+            $exists->selectRaw('1')
+                ->from('receptions')
+                ->whereColumn('receptions.id', 'inventory_movements.related_document_id')
+                ->where('receptions.source_type', 'output');
+        });
+    }
+
+    /**
+     * IDs de receptions.id (= inventory_movements.related_document_id) que
+     * nacen de recepcionar un documento de SALIDA, separados según si el
+     * output_type es 'remanente' o cualquier otro (traslado, orden técnica,
+     * solicitud libre).
+     *
+     * Requiere 2 joins (receptions → product_outputs → output_types), así que
+     * se calcula UNA SOLA VEZ por llamada al informe mensual (ver uso en
+     * monthlyReport) en vez de repetirlos dentro del bucle de ~220 productos,
+     * que es lo que degradaba un barrido de 20 ubicaciones × 3 meses a más de
+     * 300 s.
+     *
+     * @return array{remanente: array<int, string>, other: array<int, string>}
+     */
+    private function outputSourcedReceptionIds(): array
+    {
+        $rows = DB::table('receptions')
+            ->join('product_outputs', 'product_outputs.id', '=', 'receptions.source_id')
             ->join('output_types', 'output_types.id', '=', 'product_outputs.output_type_id')
-            ->where('output_types.code', $typeCode)
-            ->where('product_outputs.destination_location_id', $destLocationId)
-            ->where('product_outputs.status', '!=', 'cancelled')
-            ->whereBetween('product_outputs.output_date', [$start, $end])
-            ->groupBy('output_products.product_id')
-            ->pluck('q', 'output_products.product_id')
+            ->where('receptions.source_type', 'output')
+            ->select('receptions.id', 'output_types.code')
+            ->get();
+
+        $remanente = [];
+        $other = [];
+
+        foreach ($rows as $row) {
+            if ($row->code === 'remanente') {
+                $remanente[] = $row->id;
+            } else {
+                $other[] = $row->id;
+            }
+        }
+
+        return ['remanente' => $remanente, 'other' => $other];
+    }
+
+    /**
+     * Suma, por producto, las entradas de kardex en la ubicación y rango dados
+     * cuyo related_document_id está en la lista de recepciones dada.
+     *
+     * Se usa para las columnas "Remanente" y "Envíos recibidos" del inventario
+     * mensual, derivadas del KARDEX (movement_date) y no de
+     * product_outputs.output_date: es lo que hace que cuadren contra
+     * 'variation', que se calcula sobre movimientos.
+     *
+     * @param  array<int, string>  $receptionIds
+     * @return array<string, float>
+     */
+    private function sumEntriesByReceptionIds(string $locationId, $start, $end, array $receptionIds): array
+    {
+        if (empty($receptionIds)) {
+            return [];
+        }
+
+        return InventoryMovement::where('location_id', $locationId)
+            ->where('type', 'entry')
+            ->whereBetween('movement_date', [$start, $end])
+            ->whereIn('related_document_id', $receptionIds)
+            ->selectRaw('product_id, SUM(quantity) as q')
+            ->groupBy('product_id')
+            ->pluck('q', 'product_id')
             ->toArray();
     }
 
