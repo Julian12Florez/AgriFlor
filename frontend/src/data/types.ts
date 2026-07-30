@@ -91,12 +91,22 @@ export interface OrderProduct {
   observations?: string;
 }
 
+export interface TechnicalOrderFarm {
+  id: string;
+  name: string;
+  type?: string;
+  municipality?: string;
+  status?: string;
+}
+
 export interface TechnicalOrder {
   id: string;
   orderNumber: string;
   scheduledDate: Date;
   farmIds: string[];
-  farmNames: string[];
+  // El backend (TechnicalOrderResource) expone "farms" (objetos {id,name,...}), nunca
+  // "farmNames" (string[]); ese campo era del mock y no lo envía la API real.
+  farms?: TechnicalOrderFarm[];
   status: 'draft' | 'approved' | 'in_progress' | 'completed' | 'cancelled';
   recipeId?: string;
   recipeName?: string;
