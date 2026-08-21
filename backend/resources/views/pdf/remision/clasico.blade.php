@@ -189,10 +189,11 @@
             <tr>
                 <th style="width: 5%;">#</th>
                 <th style="width: 13%;">Codigo</th>
-                <th style="width: 32%;">Producto</th>
+                <th style="width: 29%;">Producto</th>
                 <th style="width: 15%;">Marca</th>
                 <th style="width: 10%;" class="r">Cantidad</th>
-                <th style="width: 11%;">Unidad</th>
+                {{-- 14%: la unidad se imprime con nombre completo ("Kilogramo", "Centimetro"). --}}
+                <th style="width: 14%;">Unidad</th>
                 <th style="width: 14%;">Lote</th>
             </tr>
         </thead>

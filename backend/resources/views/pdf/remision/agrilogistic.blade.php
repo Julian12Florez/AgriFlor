@@ -360,10 +360,11 @@
             <tr>
                 <th style="width: 5%;">#</th>
                 <th style="width: 13%;">CODIGO</th>
-                <th style="width: 32%;">PRODUCTO</th>
+                <th style="width: 29%;">PRODUCTO</th>
                 <th style="width: 15%;">MARCA</th>
                 <th style="width: 10%;" class="r">CANT.</th>
-                <th style="width: 11%;">UNIDAD</th>
+                {{-- 14%: la unidad se imprime con nombre completo ("Kilogramo", "Centimetro"). --}}
+                <th style="width: 14%;">UNIDAD</th>
                 <th style="width: 14%;">LOTE</th>
             </tr>
         </thead>

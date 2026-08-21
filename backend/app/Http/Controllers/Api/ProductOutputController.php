@@ -16,6 +16,7 @@ use App\Models\Reception;
 use App\Services\CommittedStockService;
 use App\Services\InventoryService;
 use App\Support\CompanyInfo;
+use App\Support\UnitName;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -342,12 +343,14 @@ class ProductOutputController extends Controller
             ],
             // `cantidad` va como float (no como texto ya formateado) para que la
             // plantilla decida los decimales y el separador según su diseño.
+            // `unidad`, en cambio, sí llega resuelta: el nombre largo se decide
+            // en `UnitName` para que las cuatro plantillas impriman lo mismo.
             'items' => $output->outputProducts->map(fn (OutputProduct $item) => [
                 'codigo' => $item->product?->product_code,
                 'producto' => $item->product?->name,
                 'marca' => $item->brand?->name,
                 'cantidad' => (float) $item->quantity_delivered,
-                'unidad' => $item->unit,
+                'unidad' => UnitName::full($item->unit),
                 'lote' => $item->batch_number,
             ])->values()->all(),
             'lotes' => $output->farmLots->pluck('name')->values()->all(),

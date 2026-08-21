@@ -404,11 +404,12 @@
                 <thead>
                     <tr>
                         <th style="width: 4%">#</th>
-                        <th style="width: 20%">Producto</th>
-                        <th style="width: 10%">Marca</th>
+                        <th style="width: 17%">Producto</th>
+                        <th style="width: 9%">Marca</th>
                         <th style="width: 7%">Cant.</th>
-                        <th style="width: 10%">Unid. Empaque</th>
-                        <th style="width: 15%">Equivalencia Total</th>
+                        {{-- Ensanchada: las unidades base se imprimen con nombre completo ("Kilogramo"). --}}
+                        <th style="width: 12%">Unid. Empaque</th>
+                        <th style="width: 17%">Equivalencia Total</th>
                         <th style="width: 9%">Precio Unit.</th>
                         <th style="width: 5%">IVA</th>
                         <th style="width: 10%">Total</th>
@@ -424,17 +425,19 @@
                             <td>{{ $item->product->name }}</td>
                             <td>{{ $item->brand->name }}</td>
                             <td class="text-right">{{ number_format($item->quantity, 0, ',', '.') }}</td>
-                            <td class="text-center">{{ $item->packagingUnit->name ?? $item->product->base_unit ?? 'N/A' }}</td>
+                            {{-- La unidad de empaque ya tiene nombre propio ("Caja", "Bulto");
+                                 sólo las unidades base vienen abreviadas y pasan por UnitName. --}}
+                            <td class="text-center">{{ $item->packagingUnit->name ?? \App\Support\UnitName::full($item->product->base_unit) ?? 'N/A' }}</td>
                             <td class="text-center">
                                 @if($item->packagingUnit && $item->quantity_in_base_units)
                                     <span class="equivalence-text">
                                         {{ number_format($item->quantity, 0, ',', '.') }} {{ $item->packagingUnit->name }}
-                                        &times; {{ $item->packagingUnit->base_quantity }} {{ $item->packagingUnit->base_unit }}
-                                        = {{ number_format($item->quantity_in_base_units, 0, ',', '.') }} {{ $item->packagingUnit->base_unit }}
+                                        &times; {{ $item->packagingUnit->base_quantity }} {{ \App\Support\UnitName::full($item->packagingUnit->base_unit) }}
+                                        = {{ number_format($item->quantity_in_base_units, 0, ',', '.') }} {{ \App\Support\UnitName::full($item->packagingUnit->base_unit) }}
                                     </span>
                                 @else
                                     <span class="equivalence-text">
-                                        {{ number_format($item->quantity, 0, ',', '.') }} {{ $item->product->base_unit ?? 'und' }}
+                                        {{ number_format($item->quantity, 0, ',', '.') }} {{ \App\Support\UnitName::full($item->product->base_unit) ?? 'Unidad' }}
                                     </span>
                                 @endif
                             </td>
