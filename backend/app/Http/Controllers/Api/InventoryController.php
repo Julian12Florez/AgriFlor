@@ -1521,6 +1521,23 @@ class InventoryController extends Controller
                 $outputReceptionIds['other']
             );
 
+            // Salidas de CONSUMO DIRECTO (orden técnica / consumo): el producto sale de
+            // esta ubicación hacia una finca y se aplica al cultivo, así que el destino
+            // NO tiene entrada de kardex que emparejar (ver
+            // OutputType::DIRECT_CONSUMPTION_CODES). El paso 3 arma la matriz de envíos
+            // leyendo la ENTRADA en la finca, de modo que sin esta precarga lo enviado
+            // por orden técnica no lo explicaría ninguna columna y caería entero en
+            // "Variación" — la celda que el cliente concilia contra contabilidad.
+            // Se atribuye por el DOCUMENTO (receptions.destination_location_id).
+            $directConsumptionByProduct = $this->directConsumptionExitsByDestination(
+                $warehouseId,
+                $startDate,
+                $endDate
+            );
+
+            // Índice O(1) para saber si un destino es una finca listada en la matriz.
+            $farmIdIndex = array_flip($farms->pluck('id')->all());
+
             foreach ($products as $product) {
                 // 1. Initial stock at start of month — SOLO la bodega del reporte
                 //    (antes sumaba TODAS las ubicaciones, inflando el valor de la bodega).
@@ -1602,6 +1619,32 @@ class InventoryController extends Controller
                     $this->shippedDocumentIds($product->id, $warehouseId, $farms, $startDate, $endDate, $originExitDocIds)
                 );
                 $totalShipped += $transfersOut;
+
+                // 3c. Envíos de CONSUMO DIRECTO (orden técnica / consumo): salieron de
+                //     esta ubicación hacia una finca donde se aplicaron al cultivo, así
+                //     que no dejan entrada de kardex en el destino y el paso 3 no los ve.
+                //     Se atribuyen a la finca del documento para que sigan apareciendo en
+                //     "Enviado a finca X" y la "Variación" del origen siga siendo 0.
+                //     Los envíos históricos que SÍ acreditaron la finca quedan excluidos
+                //     en la consulta (tienen entrada emparejada), así que no se cuentan
+                //     dos veces. Si el destino no es una finca de la matriz, la salida se
+                //     suma a "transfers_out", que existe justo para eso.
+                foreach (($directConsumptionByProduct[$product->id] ?? []) as $destinationId => $directQuantity) {
+                    if ($destinationId === $warehouseId || $directQuantity <= 0) {
+                        continue;
+                    }
+
+                    $totalShipped += $directQuantity;
+
+                    if (isset($farmIdIndex[$destinationId])) {
+                        $farmShipments[$destinationId] = round(
+                            (float) ($farmShipments[$destinationId] ?? 0) + $directQuantity,
+                            2
+                        );
+                    } else {
+                        $transfersOut += $directQuantity;
+                    }
+                }
 
                 // 4. Remanente devuelto a la ubicación: entradas de kardex cuya
                 //    recepción viene de una salida tipo 'remanente' (ver precarga
@@ -2089,6 +2132,62 @@ class InventoryController extends Controller
         }
 
         return ['remanente' => $remanente, 'other' => $other];
+    }
+
+    /**
+     * Suma, por producto y por ubicación de DESTINO, las salidas de kardex de la
+     * ubicación del informe que corresponden a una salida de CONSUMO DIRECTO
+     * (ver {@see \App\Models\OutputType::DIRECT_CONSUMPTION_CODES}).
+     *
+     * Existe porque estas salidas no tienen pata de entrada: el producto se aplica
+     * al cultivo en la finca, que nunca lo custodia. La matriz de envíos del
+     * inventario mensual (paso 3) se arma leyendo la ENTRADA en el destino, así que
+     * sin esta consulta una orden técnica dejaría su salida sin explicar y la
+     * "Variación" del origen —la celda que se concilia contra contabilidad— dejaría
+     * de ser 0 por el total enviado a fincas (medido: ~150.000 unidades al mes).
+     *
+     * El destino se toma del DOCUMENTO (receptions.destination_location_id), nunca
+     * del kardex del destino, que por diseño ya no tiene nada.
+     *
+     * Se excluyen los documentos que SÍ acreditaron stock al destino (el histórico
+     * anterior a este cambio, que tiene su entrada emparejada): esos ya los cuenta
+     * el paso 3 y contarlos aquí los duplicaría.
+     *
+     * @return array<string, array<string, float>>  [product_id][destination_location_id] => cantidad
+     */
+    private function directConsumptionExitsByDestination(string $warehouseId, $start, $end): array
+    {
+        $rows = DB::table('inventory_movements as m')
+            ->join('receptions as r', function ($join) {
+                $join->on('r.id', '=', 'm.related_document_id')
+                    ->where('r.source_type', '=', 'output');
+            })
+            ->join('product_outputs as po', 'po.id', '=', 'r.source_id')
+            ->join('output_types as ot', 'ot.id', '=', 'po.output_type_id')
+            ->where('m.location_id', $warehouseId)
+            ->where('m.type', 'exit')
+            ->where('m.related_document_type', self::RECEPTION_DOCUMENT_TYPE)
+            ->whereBetween('m.movement_date', [$start, $end])
+            ->whereIn('ot.code', \App\Models\OutputType::DIRECT_CONSUMPTION_CODES)
+            ->whereNotExists(function ($exists) {
+                $exists->selectRaw('1')
+                    ->from('inventory_movements as e')
+                    ->whereColumn('e.related_document_id', 'm.related_document_id')
+                    ->whereColumn('e.product_id', 'm.product_id')
+                    ->whereColumn('e.location_id', 'r.destination_location_id')
+                    ->where('e.type', 'entry');
+            })
+            ->groupBy('m.product_id', 'r.destination_location_id')
+            ->selectRaw('m.product_id as product_id, r.destination_location_id as destination_id, SUM(m.quantity) as q')
+            ->get();
+
+        $map = [];
+
+        foreach ($rows as $row) {
+            $map[$row->product_id][$row->destination_id] = (float) $row->q;
+        }
+
+        return $map;
     }
 
     /**

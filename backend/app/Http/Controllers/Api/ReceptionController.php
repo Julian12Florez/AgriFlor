@@ -16,6 +16,7 @@ use App\Models\Purchase;
 use App\Models\ProductOutput;
 use App\Models\PurchaseItem;
 use App\Models\OutputProduct;
+use App\Models\OutputType;
 use App\Models\InventoryMovement;
 use App\Models\Inventory;
 use App\Models\Product;
@@ -1790,10 +1791,15 @@ class ReceptionController extends Controller
                 $sourceBatchNumber
             );
 
-            // 2. Create ENTRY movement in destination ONLY if NOT consumption
-            // Consumption type means the product is used/consumed, not transferred
-            if ($outputTypeCode !== 'consumption') {
-                // For transfer, technical_order, free_request: create entry in destination
+            // 2. La ENTRADA en el destino solo se crea si el destino REALMENTE
+            //    custodia el producto. Los códigos de consumo directo
+            //    (OutputType::DIRECT_CONSUMPTION_CODES: hoy 'consumption' y
+            //    'technical_order') se aplican en campo: la finca no guarda nada,
+            //    así que acreditarle stock le inventa existencias que nadie
+            //    descarga nunca. La lista vive en el modelo, no aquí.
+            if (!OutputType::esConsumoDirecto($outputTypeCode)) {
+                // Traslado real ('transfer', 'remanente', 'free_request'): el
+                // destino recibe y custodia, así que se le acredita stock.
                 // La entrada lleva la MISMA fecha que la salida: si difieren, el
                 // informe mensual del origen (que lee esta entrada para armar la
                 // columna "Enviado a finca X") descuadra contra su propio stock.
@@ -1818,8 +1824,10 @@ class ReceptionController extends Controller
                     'quantity' => $quantityReceived,
                 ]);
             } else {
-                // For consumption: only exit from origin, no entry in destination
-                // AND create Application record for traceability
+                // Consumo directo: solo sale del origen, el destino NO recibe stock.
+                // La trazabilidad hacia la finca la dan el movimiento `exit` (ligado a
+                // la recepción, que apunta a la finca de destino) y, cuando la salida
+                // trae lotes de cultivo, la Application automática de más abajo.
 
                 // Get the first farm lot (or create application per lot if needed)
                 $farmLot = $output?->farmLots?->first();
@@ -1886,6 +1894,23 @@ class ReceptionController extends Controller
                             'quantity' => $quantityReceived,
                         ]);
                     }
+                } else {
+                    // Sin lote de cultivo NO hay Application posible:
+                    // `applications.farm_lot_id` es NOT NULL con FK. Es el caso
+                    // normal de las órdenes técnicas (output_types.requires_lots = 0
+                    // y, en producción, 327 de 327 salidas llegan sin lote), así que
+                    // no es un error: la descarga de bodega y la trazabilidad por
+                    // documento se hacen igual. Se registra para que la ausencia de
+                    // aplicaciones sea explicable y no parezca un fallo silencioso.
+                    \Log::info('Consumo directo sin lote de cultivo: no se crea Application', [
+                        'output_type' => $outputTypeCode,
+                        'output_id' => $output?->id,
+                        'output_number' => $output?->output_number,
+                        'reception_id' => $reception->id,
+                        'destination' => $reception->destination_location_id,
+                        'product_id' => $productId,
+                        'quantity' => $quantityReceived,
+                    ]);
                 }
 
                 \Log::info('Output consumption: inventory consumed (no entry in destination)', [
