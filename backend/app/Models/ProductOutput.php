@@ -21,6 +21,7 @@ class ProductOutput extends Model implements AuditableContract
 
     protected $fillable = [
         'output_number',
+        'company_id',
         'output_type_id',
         'technical_order_id',
         'output_date',
@@ -80,6 +81,15 @@ class ProductOutput extends Model implements AuditableContract
     }
 
     // Relationships
+
+    /**
+     * Empresa emisora del documento (membrete de la remisión).
+     * Nullable en BD: las salidas anteriores al módulo de empresas no la tienen.
+     */
+    public function company()
+    {
+        return $this->belongsTo(Company::class, 'company_id');
+    }
 
     public function technicalOrder()
     {

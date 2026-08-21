@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\ApplicationController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BrandController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CompanyController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\LocationController;
@@ -139,6 +140,23 @@ Route::middleware('auth:api')->group(function () {
         Route::delete('brands/{brand}', [BrandController::class, 'destroy']);
     });
 
+    // COMPANIES - Read (All authenticated)
+    // La lectura NO puede restringirse a admin: `company_id` es obligatorio al
+    // crear compras y salidas, así que compras/bodega/finca necesitan poder
+    // poblar el selector de empresa emisora. La administración (crear/editar/
+    // logo) sí queda solo para admin, más abajo.
+    Route::get('companies', [CompanyController::class, 'index']);
+    Route::get('companies/{company}/logo', [CompanyController::class, 'showLogo']);
+    Route::get('companies/{company}', [CompanyController::class, 'show']);
+
+    // COMPANIES - Write (Admin)
+    Route::middleware('role:admin')->group(function () {
+        Route::post('companies', [CompanyController::class, 'store']);
+        Route::put('companies/{company}', [CompanyController::class, 'update']);
+        Route::post('companies/{company}/logo', [CompanyController::class, 'uploadLogo']);
+        Route::delete('companies/{company}/logo', [CompanyController::class, 'deleteLogo']);
+    });
+
     // CATEGORIES - Read (All authenticated)
     Route::get('categories', [CategoryController::class, 'index']);
     Route::get('categories/{category}', [CategoryController::class, 'show']);
@@ -270,6 +288,7 @@ Route::middleware('auth:api')->group(function () {
     Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
         Route::post('product-outputs/validate-inventory', [ProductOutputController::class, 'validateInventory']);
         Route::get('product-outputs', [ProductOutputController::class, 'index']);
+        Route::get('product-outputs/{id}/remision-pdf', [ProductOutputController::class, 'exportRemisionPdf']);
         Route::get('product-outputs/{id}', [ProductOutputController::class, 'show']);
     });
 

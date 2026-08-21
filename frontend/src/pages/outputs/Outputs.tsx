@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, InputNumber, Badge, Descriptions, Divider, List, Typography, Drawer } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ExportOutlined, EnvironmentOutlined, CheckCircleOutlined, ClockCircleOutlined, InboxOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ExportOutlined, EnvironmentOutlined, CheckCircleOutlined, ClockCircleOutlined, InboxOutlined, MinusCircleOutlined, PlusCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi, handleApiError } from '../../services/api';
+import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi, companiesApi, handleApiError } from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
 
 // Roles restringidos a su(s) ubicación(es): supervisor (encargado de finca) y farm
@@ -43,6 +43,9 @@ const Outputs: React.FC = () => {
   const [productsForOutputs, setProductsForOutputs] = useState<any[]>([]);
   const [availableFarmLots, setAvailableFarmLots] = useState<any[]>([]);
   const [isReadOnly, setIsReadOnly] = useState(false);
+  // Id de la salida cuya remisión se está descargando: permite mostrar el spinner
+  // solo en la fila pulsada y no en todos los botones de la tabla.
+  const [downloadingRemisionId, setDownloadingRemisionId] = useState<string | null>(null);
   const [form] = Form.useForm();
 
   // Ref to prevent double submissions (synchronous check)
@@ -91,6 +94,12 @@ const Outputs: React.FC = () => {
     queryFn: () => outputTypesApi.list({ status: 'active' }),
   });
 
+  // Empresas emisoras: pueblan el selector "Empresa" del formulario de salida.
+  const { data: companiesData } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => companiesApi.list(),
+  });
+
   const outputs = outputsData?.data || [];
   const totalOutputs = outputsData?.meta?.total || 0;
   const availableLocations = locationsData?.data || [];
@@ -110,6 +119,18 @@ const Outputs: React.FC = () => {
     if (outputTypesData.data && Array.isArray(outputTypesData.data.data)) return outputTypesData.data.data;
     return [];
   }, [outputTypesData]);
+
+  // Solo se puede emitir con empresas activas; las inactivas se dejan fuera del selector.
+  const availableCompanies = React.useMemo(
+    () => (companiesData?.data || []).filter((c) => c.status === 'active'),
+    [companiesData]
+  );
+
+  // Empresa marcada por defecto: se preselecciona al crear para que nadie tenga que elegirla.
+  const defaultCompanyId = React.useMemo(
+    () => availableCompanies.find((c) => c.isDefault)?.id,
+    [availableCompanies]
+  );
 
   // Mutation for creating outputs
   const createOutputMutation = useMutation({
@@ -175,6 +196,15 @@ const Outputs: React.FC = () => {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Preselección de la empresa por defecto al CREAR. Va en un efecto (y no solo en el
+  // onClick de "Nueva Salida") porque el catálogo de empresas puede llegar después de
+  // que el modal ya esté abierto; si el usuario ya eligió otra, no se pisa.
+  useEffect(() => {
+    if (!isModalVisible || editingOutput || !defaultCompanyId) return;
+    if (form.getFieldValue('companyId')) return;
+    form.setFieldValue('companyId', defaultCompanyId);
+  }, [isModalVisible, editingOutput, defaultCompanyId, form]);
 
   const getRoleLabel = (role: string): string => {
     const labels: Record<string, string> = {
@@ -327,6 +357,7 @@ const Outputs: React.FC = () => {
     });
 
     form.setFieldsValue({
+      companyId: record.companyId || undefined,
       outputTypeId: record.outputType?.id,
       orderNumber: record.technicalOrderId || record.technicalOrder?.id,
       outputDate: dayjs(record.outputDate),
@@ -360,6 +391,20 @@ const Outputs: React.FC = () => {
 
   const handleDelete = (id: string) => {
     deleteOutputMutation.mutate(id);
+  };
+
+  // Descarga la remisión en PDF (REMISION-{outputNumber}.pdf) con el membrete de la
+  // empresa emisora de la salida.
+  const handlePrintRemision = async (record: ProductOutput) => {
+    setDownloadingRemisionId(record.id);
+    try {
+      await outputsApi.downloadRemision(record.id, record.outputNumber);
+      message.success(`Remisión ${record.outputNumber} descargada`);
+    } catch (error: any) {
+      handleApiError(error, 'Error al generar la remisión');
+    } finally {
+      setDownloadingRemisionId(null);
+    }
   };
 
   const handleOrderChange = (orderId: string) => {
@@ -490,6 +535,7 @@ const Outputs: React.FC = () => {
 
     // Format data for backend API (snake_case)
     const outputData = {
+      company_id: values.companyId,
       output_type_id: values.outputTypeId,
       output_date: values.outputDate.format('YYYY-MM-DD'),
       origin_location_id: values.originLocationId,
@@ -562,7 +608,7 @@ const Outputs: React.FC = () => {
     {
       title: 'Acciones',
       key: 'actions',
-      width: 100,
+      width: 120,
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
@@ -571,6 +617,14 @@ const Outputs: React.FC = () => {
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
             size="small"
+          />
+          <Button
+            type="link"
+            icon={<PrinterOutlined />}
+            onClick={() => handlePrintRemision(record)}
+            loading={downloadingRemisionId === record.id}
+            size="small"
+            title="Imprimir remisión"
           />
           <Popconfirm
             title="¿Eliminar?"
@@ -675,7 +729,7 @@ const Outputs: React.FC = () => {
       title: 'Acciones',
       key: 'actions',
       fixed: 'right' as const,
-      width: 150,
+      width: 280,
       render: (_, record) => (
         <Space size="middle">
           <Button
@@ -684,6 +738,14 @@ const Outputs: React.FC = () => {
             onClick={() => handleEdit(record)}
           >
             Editar
+          </Button>
+          <Button
+            type="link"
+            icon={<PrinterOutlined />}
+            onClick={() => handlePrintRemision(record)}
+            loading={downloadingRemisionId === record.id}
+          >
+            Remisión
           </Button>
           <Popconfirm
             title="¿Está seguro de eliminar esta salida?"
@@ -708,6 +770,11 @@ const Outputs: React.FC = () => {
         {record.technicalOrder?.orderNumber && (
           <Descriptions.Item label="Orden técnica">{record.technicalOrder.orderNumber}</Descriptions.Item>
         )}
+        <Descriptions.Item label="Empresa">
+          {record.companyName
+            || availableCompanies.find((c) => c.id === record.companyId)?.name
+            || 'Sin empresa'}
+        </Descriptions.Item>
         <Descriptions.Item label="Destino">{locationName}</Descriptions.Item>
         {lotNames.length > 0 && (
           <Descriptions.Item label="Lotes de finca">{lotNames.join(', ')}</Descriptions.Item>
@@ -752,6 +819,28 @@ const Outputs: React.FC = () => {
           </Tag>
         </div>
       )}
+      <Row gutter={isMobile ? [0, 16] : 16}>
+        <Col xs={24} sm={24} md={12}>
+          <Form.Item
+            name="companyId"
+            label="Empresa"
+            rules={[{ required: true, message: 'La empresa emisora es requerida' }]}
+            tooltip="Empresa que emite la salida y firma la remisión"
+          >
+            <Select
+              placeholder="Seleccione la empresa"
+              loading={!companiesData}
+              showSearch
+              optionFilterProp="label"
+              options={availableCompanies.map((company) => ({
+                value: company.id,
+                label: company.isDefault ? `${company.name} (por defecto)` : company.name,
+              }))}
+            />
+          </Form.Item>
+        </Col>
+      </Row>
+
       <Row gutter={isMobile ? [0, 16] : 16}>
         <Col xs={24} sm={24} md={12}>
           <Form.Item
@@ -1477,6 +1566,10 @@ const Outputs: React.FC = () => {
             setProductsForOutputs([]);
             setAvailableFarmLots([]);
             form.resetFields();
+            // Empresa emisora preseleccionada (la marcada por defecto).
+            if (defaultCompanyId) {
+              form.setFieldValue('companyId', defaultCompanyId);
+            }
             setIsModalVisible(true);
           }}
         >

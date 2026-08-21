@@ -36,6 +36,7 @@ import InventoryAudit from './pages/reports/InventoryAudit';
 import StockReport from './pages/reports/StockReport';
 import ConsumptionReport from './pages/reports/ConsumptionReport';
 import Users from './pages/admin/Users';
+import Companies from './pages/admin/Companies';
 import AuditLog from './pages/admin/AuditLog';
 import Workers from './pages/liquidation/Workers';
 import Tasks from './pages/liquidation/Tasks';
@@ -321,6 +322,15 @@ const App: React.FC = () => {
                 <ProtectedRoute module="admin" showAccessDenied>
                   <MainLayout>
                     <Users />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              {/* Empresas emisoras - solo admin puede crear/editar (el backend
+                  restringe la escritura con `role:admin`) */}
+              <Route path="/admin/companies" element={
+                <ProtectedRoute allowedRoles={['admin']} showAccessDenied>
+                  <MainLayout>
+                    <Companies />
                   </MainLayout>
                 </ProtectedRoute>
               } />

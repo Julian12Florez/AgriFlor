@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use App\Support\CompanyInfo;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class PurchaseController extends Controller
@@ -37,7 +38,11 @@ class PurchaseController extends Controller
                 'creator',
                 'receiver',
                 'attachments.uploader',
-                'reception'
+                'reception',
+                // Sin esto el Resource resuelve companyName a null y el listado
+                // mostraria "Sin empresa" en cuanto una empresa se desactive
+                // (el catalogo del front solo trae las activas).
+                'company'
             ]);
 
         // Filter by status
@@ -123,6 +128,7 @@ class PurchaseController extends Controller
             // Create the purchase
             $purchase = Purchase::create([
                 'order_number' => $data['order_number'],
+                'company_id' => $data['company_id'],
                 'supplier_id' => $data['supplier_id'],
                 'origin_location_id' => $data['origin_location_id'] ?? null,
                 'destination_location_id' => $data['destination_location_id'],
@@ -220,7 +226,8 @@ class PurchaseController extends Controller
             'purchaseItems.packagingUnit',
             'creator',
             'receiver',
-            'attachments.uploader'
+            'attachments.uploader',
+            'company'
         ])->findOrFail($id);
 
         return response()->json([
@@ -270,6 +277,13 @@ class PurchaseController extends Controller
             }
             if (isset($data['observations'])) {
                 $updateData['observations'] = $data['observations'];
+            }
+            // La empresa emisora se valida en UpdatePurchaseRequest pero hay que
+            // copiarla aquí explícitamente: este método arma $updateData campo por
+            // campo, así que lo que no se copie se descarta en silencio y el PDF
+            // seguiría saliendo con la razón social anterior.
+            if (isset($data['company_id'])) {
+                $updateData['company_id'] = $data['company_id'];
             }
 
             // Update items if provided
@@ -447,6 +461,7 @@ class PurchaseController extends Controller
     public function exportPdf(string $id)
     {
         $purchase = Purchase::with([
+            'company',
             'supplier.contacts',
             'originLocation',
             'destinationLocation',
@@ -464,11 +479,12 @@ class PurchaseController extends Controller
 
         $data = [
             'purchase' => $purchase,
-            'companyName' => config('app.company_name', 'AGRILOGISTIC URRAO SAS.'),
-            'companyAddress' => config('app.company_address', ''),
-            'companyPhone' => config('app.company_phone', ''),
-            'companyEmail' => config('app.company_email', ''),
-            'companyNit' => config('app.company_nit', ''),
+            // Membrete de la empresa emisora de ESTA orden. Antes salía fijo de
+            // config('app.company_*'); ahora el grupo factura con tres razones
+            // sociales y cada orden debe salir a nombre de la que corresponda.
+            // Las órdenes históricas (company_id NULL) caen a la configuración
+            // de siempre dentro de CompanyInfo::resolve().
+            'company' => CompanyInfo::resolve($purchase->company),
             'isMixedIva' => $isMixedIva,
             'singleIvaPercentage' => $singleIvaPercentage,
         ];

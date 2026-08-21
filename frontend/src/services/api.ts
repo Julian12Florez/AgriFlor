@@ -1,4 +1,4 @@
-import type { ApiResponse, PaginatedResponse, Adjustment, AdjustmentReason } from '../types/index';
+import type { ApiResponse, PaginatedResponse, Adjustment, AdjustmentReason, Company, CompanyPayload } from '../types/index';
 import type { FormInstance, MessageInstance } from 'antd';
 
 // API Configuration
@@ -42,6 +42,7 @@ const FIELD_NAME_MAP: Record<string, string> = {
   min_stock: 'minStock',
   product_code: 'productCode',
   category_id: 'categoryId',
+  company_id: 'companyId',
   supplier_id: 'supplierId',
   location_id: 'locationId',
   destination_id: 'destinationId',
@@ -67,6 +68,9 @@ const FIELD_NAME_MAP: Record<string, string> = {
   worker_id: 'workerId',
   task_id: 'taskId',
   parent_id: 'parentId',
+  legal_rep: 'legalRep',
+  tax_regime: 'taxRegime',
+  is_default: 'isDefault',
   conversion_factor: 'conversionFactor',
   password_confirmation: 'passwordConfirmation',
   current_password: 'currentPassword',
@@ -523,6 +527,65 @@ export const outputsApi = {
 
   getApplications: (id: string) =>
     api.get<ApiResponse<any[]>>(`/product-outputs/${id}/applications`),
+
+  /**
+   * Descarga la remisión de la salida en PDF, con el membrete de la empresa
+   * emisora asociada. `numero` es el consecutivo visible (outputNumber); si no
+   * llega se cae al id para que el archivo nunca quede sin nombre.
+   */
+  downloadRemision: (id: string, numero?: string) => {
+    const url = `${API_BASE_URL}/product-outputs/${id}/remision-pdf`;
+    return downloadFile(url, `REMISION-${numero || id}.pdf`);
+  },
+};
+
+// Companies API (empresas emisoras de documentos)
+export const companiesApi = {
+  /**
+   * `all=true` para traer el catálogo completo sin paginar: el selector de
+   * empresa emisora de compras/salidas necesita todas, no las primeras 15.
+   * Se puede sobrescribir pasando `all: false` en `params`.
+   */
+  list: (params?: Record<string, any>) =>
+    api.get<ApiResponse<Company[]>>('/companies', { all: true, ...params }),
+
+  get: (id: string) =>
+    api.get<ApiResponse<Company>>(`/companies/${id}`),
+
+  create: (data: CompanyPayload) =>
+    api.post<ApiResponse<Company>>('/companies', data),
+
+  update: (id: string, data: CompanyPayload) =>
+    api.put<ApiResponse<Company>>(`/companies/${id}`, data),
+
+  uploadLogo: (id: string, file: File) => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    return api.post<ApiResponse<Company>>(`/companies/${id}/logo`, formData, true);
+  },
+
+  deleteLogo: (id: string) =>
+    api.delete<ApiResponse<Company>>(`/companies/${id}/logo`),
+
+  /**
+   * Devuelve un object URL con los bytes del logo para previsualizarlo.
+   * No sirve poner `<img src="/companies/{id}/logo">` directo: el endpoint exige
+   * el header Authorization y una etiqueta <img> nunca lo envía.
+   * Quien lo consuma debe liberarlo con URL.revokeObjectURL().
+   */
+  getLogoObjectUrl: async (id: string): Promise<string> => {
+    const response = await fetch(`${API_BASE_URL}/companies/${id}/logo`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.message || 'No se pudo cargar el logo de la empresa');
+    }
+
+    return window.URL.createObjectURL(await response.blob());
+  },
 };
 
 // Products API

@@ -21,6 +21,7 @@ class Purchase extends Model implements AuditableContract
 
     protected $fillable = [
         'order_number',
+        'company_id',
         'supplier_id',
         'origin_location_id',
         'destination_location_id',
@@ -69,6 +70,15 @@ class Purchase extends Model implements AuditableContract
     public function supplier()
     {
         return $this->belongsTo(Supplier::class, 'supplier_id');
+    }
+
+    /**
+     * Empresa emisora del documento (membrete del PDF).
+     * Nullable en BD: las compras anteriores al módulo de empresas no la tienen.
+     */
+    public function company()
+    {
+        return $this->belongsTo(Company::class, 'company_id');
     }
 
     public function originLocation()

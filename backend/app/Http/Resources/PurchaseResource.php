@@ -33,6 +33,10 @@ class PurchaseResource extends JsonResource
             'createdAt' => $this->created_at?->toISOString(),
 
             // Direct fields for easier access
+            // Empresa emisora: sin `companyId` el formulario de edición no podría
+            // preseleccionarla y la volvería a pedir en cada guardado.
+            'companyId' => $this->company_id,
+            'companyName' => $this->whenLoaded('company', fn() => $this->company?->name),
             'supplierId' => $this->supplier_id,
             'supplierName' => $this->supplier?->name ?? null,
             'originLocationId' => $this->origin_location_id,

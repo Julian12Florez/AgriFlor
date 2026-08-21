@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             OutputTypeSeeder::class,     // 9. Output Types (no dependencies)
             ProductSeeder::class,        // 10. Products (depends on brands, packaging_units)
             AdjustmentReasonSeeder::class, // 11. Adjustment Reasons (no dependencies)
+            CompanySeeder::class,        // 12. Companies (no dependencies)
         ]);
     }
 }

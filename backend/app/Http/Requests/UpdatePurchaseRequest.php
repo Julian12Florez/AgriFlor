@@ -22,6 +22,7 @@ class UpdatePurchaseRequest extends FormRequest
                 'string',
                 Rule::unique('purchases', 'order_number')->ignore($purchaseId)
             ],
+            'company_id' => ['sometimes', 'uuid', 'exists:companies,id'],
             'supplier_id' => ['sometimes', 'uuid', 'exists:suppliers,id'],
             'origin_location_id' => ['nullable', 'uuid', 'exists:locations,id', 'different:destination_location_id'],
             'destination_location_id' => ['sometimes', 'uuid', 'exists:locations,id'],

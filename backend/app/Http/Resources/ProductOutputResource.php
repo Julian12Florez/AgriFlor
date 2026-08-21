@@ -17,6 +17,10 @@ class ProductOutputResource extends JsonResource
         return [
             'id' => $this->id,
             'outputNumber' => $this->output_number,
+            // Empresa emisora: sin `companyId` el formulario de edición no podría
+            // preseleccionarla y la volvería a pedir en cada guardado.
+            'companyId' => $this->company_id,
+            'companyName' => $this->whenLoaded('company', fn() => $this->company?->name),
             'technicalOrderId' => $this->technical_order_id,
             'technicalOrder' => $this->when(
                 $this->relationLoaded('technicalOrder') && $this->technicalOrder,

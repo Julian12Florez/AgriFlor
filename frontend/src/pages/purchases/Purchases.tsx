@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { purchasesApi, suppliersApi, productsApi, locationsApi, handleApiError } from '../../services/api';
+import { purchasesApi, suppliersApi, productsApi, locationsApi, companiesApi, handleApiError } from '../../services/api';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
 const { Text, Title } = Typography;
@@ -30,6 +30,10 @@ interface Supplier {
 interface Purchase {
   id: string;
   orderNumber: string;
+  // Empresa emisora que firma la orden. `companyName` solo viaja cuando la
+  // relación viene cargada (PurchaseResource usa whenLoaded).
+  companyId?: string | null;
+  companyName?: string | null;
   supplierId: string;
   supplierName: string;
   supplier?: Supplier;
@@ -118,6 +122,12 @@ const Purchases: React.FC = () => {
     queryFn: () => locationsApi.list({ per_page: 999 }),
   });
 
+  // Empresas emisoras: pueblan el selector "Empresa" del formulario de compra.
+  const { data: companiesData } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => companiesApi.list(),
+  });
+
   // Create purchase mutation
   const createPurchaseMutation = useMutation({
     mutationFn: (data: any) => purchasesApi.create(data),
@@ -149,6 +159,18 @@ const Purchases: React.FC = () => {
   const products = productsData?.data || [];
   const locations = locationsData?.data || [];
 
+  // Solo se puede emitir con empresas activas; las inactivas se dejan fuera del selector.
+  const availableCompanies = React.useMemo(
+    () => (companiesData?.data || []).filter((c) => c.status === 'active'),
+    [companiesData]
+  );
+
+  // Empresa marcada por defecto: se preselecciona al crear para que nadie tenga que elegirla.
+  const defaultCompanyId = React.useMemo(
+    () => availableCompanies.find((c) => c.isDefault)?.id,
+    [availableCompanies]
+  );
+
   useEffect(() => {
     const checkScreenSize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -158,6 +180,15 @@ const Purchases: React.FC = () => {
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  // Preselección de la empresa por defecto al abrir "Nueva Orden de Compra". Va en un
+  // efecto (y no solo en el onClick) porque el catálogo de empresas puede llegar después
+  // de que el modal ya esté abierto; si el usuario ya eligió otra, no se pisa.
+  useEffect(() => {
+    if (!isNewPurchaseModalVisible || !defaultCompanyId) return;
+    if (form.getFieldValue('companyId')) return;
+    form.setFieldValue('companyId', defaultCompanyId);
+  }, [isNewPurchaseModalVisible, defaultCompanyId, form]);
 
   const getStatusColor = (status: string) => {
     const colors = {
@@ -223,6 +254,7 @@ const Purchases: React.FC = () => {
     // Format data for backend API
     const purchaseData = {
       order_number: `PUR-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`,
+      company_id: values.companyId,
       supplier_id: values.supplierId,
       origin_location_id: values.originLocationId || undefined,
       destination_location_id: values.destinationLocationId,
@@ -507,6 +539,11 @@ const Purchases: React.FC = () => {
                   {getStatusText(selectedPurchase.status)}
                 </Tag>
               </Descriptions.Item>
+              <Descriptions.Item label="Empresa">
+                {selectedPurchase.companyName
+                  || availableCompanies.find((c) => c.id === selectedPurchase.companyId)?.name
+                  || 'Sin empresa'}
+              </Descriptions.Item>
               <Descriptions.Item label="Proveedor">{selectedPurchase.supplierName}</Descriptions.Item>
               <Descriptions.Item label="Ubicación de Entrega">{selectedPurchase.destinationLocationName}</Descriptions.Item>
               <Descriptions.Item label="Fecha de Compra">
@@ -642,7 +679,13 @@ const Purchases: React.FC = () => {
         <Button
           type="primary"
           icon={<PlusOutlined />}
-          onClick={() => setIsNewPurchaseModalVisible(true)}
+          onClick={() => {
+            // Empresa emisora preseleccionada (la marcada por defecto).
+            if (defaultCompanyId) {
+              form.setFieldValue('companyId', defaultCompanyId);
+            }
+            setIsNewPurchaseModalVisible(true);
+          }}
         >
           Nueva Compra
         </Button>
@@ -748,6 +791,28 @@ const Purchases: React.FC = () => {
           layout="vertical"
           onFinish={handleCreatePurchase}
         >
+          <Row gutter={16}>
+            <Col xs={24} sm={12}>
+              <Form.Item
+                name="companyId"
+                label="Empresa"
+                rules={[{ required: true, message: 'La empresa emisora es requerida' }]}
+                tooltip="Empresa que emite la orden de compra"
+              >
+                <Select
+                  placeholder="Seleccione la empresa"
+                  loading={!companiesData}
+                  showSearch
+                  optionFilterProp="label"
+                  options={availableCompanies.map((company) => ({
+                    value: company.id,
+                    label: company.isDefault ? `${company.name} (por defecto)` : company.name,
+                  }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
           <Row gutter={16}>
             <Col xs={24} sm={12}>
               <Form.Item

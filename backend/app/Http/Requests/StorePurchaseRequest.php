@@ -15,6 +15,10 @@ class StorePurchaseRequest extends FormRequest
     {
         return [
             'order_number' => ['required', 'string', 'unique:purchases,order_number'],
+            // Obligatorio aquí aunque la columna sea nullable en BD: lo nuevo
+            // debe declarar su empresa emisora, pero el histórico previo al
+            // módulo de empresas se conserva tal cual.
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'supplier_id' => ['required', 'uuid', 'exists:suppliers,id'],
             'origin_location_id' => ['nullable', 'uuid', 'exists:locations,id', 'different:destination_location_id'],
             'destination_location_id' => ['required', 'uuid', 'exists:locations,id'],
@@ -38,6 +42,9 @@ class StorePurchaseRequest extends FormRequest
         return [
             'order_number.required' => 'El número de orden es requerido',
             'order_number.unique' => 'El número de orden ya existe',
+            'company_id.required' => 'La empresa emisora es requerida',
+            'company_id.uuid' => 'El formato de la empresa no es válido',
+            'company_id.exists' => 'La empresa seleccionada no existe',
             'supplier_id.required' => 'El proveedor es requerido',
             'supplier_id.uuid' => 'El formato del proveedor no es válido',
             'supplier_id.exists' => 'El proveedor seleccionado no existe',

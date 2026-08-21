@@ -15,11 +15,14 @@ use App\Models\ProductOutput;
 use App\Models\Reception;
 use App\Services\CommittedStockService;
 use App\Services\InventoryService;
+use App\Support\CompanyInfo;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\View;
 
 class ProductOutputController extends Controller
 {
@@ -46,7 +49,9 @@ class ProductOutputController extends Controller
                 'outputProducts.product',
                 'outputProducts.brand',
                 'outputType',
-                'farmLots.location'
+                'farmLots.location',
+                // Idem PurchaseController: el Resource usa whenLoaded('company').
+                'company'
             ]);
 
         // Filter by status
@@ -289,13 +294,88 @@ class ProductOutputController extends Controller
             'technicalOrder',
             'responsibleUser',
             'outputType',
-            'farmLots.location'
+            'farmLots.location',
+            'company'
         ])->findOrFail($id);
 
         return response()->json([
             'success' => true,
             'data' => new ProductOutputResource($output)
         ]);
+    }
+
+    /**
+     * Remisión de despacho en PDF.
+     *
+     * Es el papel que viaja con la mercancía y que firma quien la recibe, así
+     * que NO lleva precios ni valores: es un documento de despacho, no una
+     * factura. Quien recibe no tiene por qué conocer los costos.
+     *
+     * La plantilla la elige la empresa emisora (`companies.template`), porque
+     * cada razón social imprime con su propio membrete y diseño.
+     */
+    public function exportRemisionPdf(string $id)
+    {
+        $output = ProductOutput::with([
+            'company',
+            'originLocation',
+            'destinationLocation',
+            'responsibleUser',
+            'outputType',
+            'outputProducts.product',
+            'outputProducts.brand',
+            'farmLots',
+        ])->findOrFail($id);
+
+        $company = CompanyInfo::resolve($output->company);
+
+        $data = [
+            'company' => $company,
+            'doc' => [
+                'numero' => $output->output_number,
+                'fecha' => $output->output_date?->format('d/m/Y'),
+                'tipo' => $output->outputType?->name,
+                'origen' => $output->originLocation?->name,
+                'destino' => $output->destinationLocation?->name,
+                'responsable' => $output->responsibleUser?->name,
+                'observaciones' => $output->observations,
+            ],
+            // `cantidad` va como float (no como texto ya formateado) para que la
+            // plantilla decida los decimales y el separador según su diseño.
+            'items' => $output->outputProducts->map(fn (OutputProduct $item) => [
+                'codigo' => $item->product?->product_code,
+                'producto' => $item->product?->name,
+                'marca' => $item->brand?->name,
+                'cantidad' => (float) $item->quantity_delivered,
+                'unidad' => $item->unit,
+                'lote' => $item->batch_number,
+            ])->values()->all(),
+            'lotes' => $output->farmLots->pluck('name')->values()->all(),
+            'firmas' => [
+                'entrega' => $output->responsibleUser?->name,
+                // Lo firma a mano quien recibe en destino: va en blanco a propósito.
+                'recibe' => null,
+            ],
+        ];
+
+        $pdf = Pdf::loadView($this->resolveRemisionView($company['template']), $data);
+        $pdf->setPaper('A4', 'portrait');
+
+        return $pdf->download('REMISION-' . $output->output_number . '.pdf');
+    }
+
+    /**
+     * Plantilla de remisión de la empresa, con respaldo en `clasico`.
+     *
+     * El fallback no es opcional: si alguien deja `template` con un valor
+     * inválido desde la administración de empresas, la remisión debe seguir
+     * imprimiéndose en vez de reventar con "View not found" al despachar.
+     */
+    private function resolveRemisionView(?string $template): string
+    {
+        $candidate = 'pdf.remision.' . ($template ?: 'clasico');
+
+        return View::exists($candidate) ? $candidate : 'pdf.remision.clasico';
     }
 
     /**

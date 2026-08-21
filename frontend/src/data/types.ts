@@ -167,6 +167,10 @@ export interface ProductOutput {
     status: string;
   };
   outputDate: string;
+  // Empresa emisora que firma la remisión. `companyName` solo viaja cuando la
+  // relación viene cargada (ProductOutputResource usa whenLoaded).
+  companyId?: string | null;
+  companyName?: string | null;
   originLocationId: string;
   originLocation?: ProductOutputLocation;
   destinationLocationId: string;

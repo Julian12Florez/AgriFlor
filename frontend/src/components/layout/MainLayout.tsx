@@ -195,13 +195,22 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
     // Administración - module: 'admin' (la Auditoría NO va aquí: ni admin la ve)
     if (hasModuleAccess('admin')) {
+      const adminChildren: any[] = [
+        { key: '/admin/users', label: 'Usuarios' },
+      ];
+
+      // Empresas emisoras: EXCLUSIVO del rol 'admin'. Se filtra por NOMBRE de rol y no
+      // por módulo porque el backend restringe la escritura con `role:admin`; otro rol
+      // con acceso al módulo 'admin' vería la pantalla y comería un 403 al guardar.
+      if (getRoleName() === 'admin') {
+        adminChildren.push({ key: '/admin/companies', label: 'Empresas' });
+      }
+
       items.push({
         key: 'sub6',
         icon: <SettingOutlined />,
         label: 'Administración',
-        children: [
-          { key: '/admin/users', label: 'Usuarios' },
-        ],
+        children: adminChildren,
       });
     }
 

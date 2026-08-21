@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\BaseUnit;
 use App\Models\Brand;
+use App\Models\Company;
 use App\Models\Inventory;
 use App\Models\Location;
 use App\Models\OutputProduct;
@@ -237,6 +238,9 @@ class ProductOutputsForSelectorTest extends TestCase
         $this->makeCommittedOutput($f, 40);
 
         $payload = [
+            // La empresa emisora es obligatoria desde el módulo de empresas
+            // (la siembra la migración 2026_08_22_100100_seed_companies).
+            'company_id' => Company::where('is_default', true)->value('id'),
             'output_type_id' => $f['transferType']->id,
             'output_date' => now()->toDateString(),
             'origin_location_id' => $f['origin']->id,

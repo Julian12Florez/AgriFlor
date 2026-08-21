@@ -68,6 +68,45 @@ export interface Location {
   createdAt: Date;
 }
 
+// Empresa emisora de documentos (compras, salidas, remisiones).
+// El backend NUNCA devuelve el logo en el JSON (son cientos de KB por fila):
+// informa `hasLogo` y sirve la imagen por GET /companies/{id}/logo.
+export interface Company {
+  id: string;
+  name: string;
+  nit: string;
+  address?: string | null;
+  city?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  legalRep?: string | null;
+  taxRegime?: string | null;
+  ciiu?: string | null;
+  template: string;
+  hasLogo: boolean;
+  logoMime?: string | null;
+  isDefault: boolean;
+  status: 'active' | 'inactive';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Payload de creación/edición: el backend valida en snake_case.
+export interface CompanyPayload {
+  name?: string;
+  nit?: string;
+  address?: string | null;
+  city?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  legal_rep?: string | null;
+  tax_regime?: string | null;
+  ciiu?: string | null;
+  template?: string;
+  is_default?: boolean;
+  status?: 'active' | 'inactive';
+}
+
 // Inventory and Movement Types
 export interface InventoryMovement {
   id: string;

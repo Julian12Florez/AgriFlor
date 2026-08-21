@@ -14,6 +14,14 @@ class StoreProductOutputRequest extends FormRequest
     public function rules(): array
     {
         return [
+            // Obligatorio aquí aunque la columna sea nullable en BD: lo nuevo
+            // debe declarar su empresa emisora, pero el histórico previo al
+            // módulo de empresas se conserva tal cual.
+            'company_id' => [
+                'required',
+                'uuid',
+                'exists:companies,id'
+            ],
             'output_type_id' => [
                 'required',
                 'uuid',
@@ -120,6 +128,9 @@ class StoreProductOutputRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'company_id.required' => 'La empresa emisora es requerida',
+            'company_id.uuid' => 'El formato de la empresa no es válido',
+            'company_id.exists' => 'La empresa seleccionada no existe',
             'output_type_id.required' => 'El tipo de salida es requerido',
             'output_type_id.uuid' => 'El formato del tipo de salida no es válido',
             'output_type_id.exists' => 'El tipo de salida seleccionado no existe',

@@ -248,19 +248,26 @@
             <table class="header-table">
                 <tr>
                     <td style="width: 55%;">
-                        <div class="company-name">{{ $companyName }}</div>
+                        @if($company['logoDataUri'])
+                            <img src="{{ $company['logoDataUri'] }}" alt=""
+                                 style="max-height: 70px; max-width: 200px; margin-bottom: 6px;">
+                        @endif
+                        <div class="company-name">{{ $company['name'] }}</div>
                         <div class="company-details">
-                            @if($companyNit)
-                                NIT: {{ $companyNit }}<br>
+                            @if($company['nit'])
+                                NIT: {{ $company['nit'] }}<br>
                             @endif
-                            @if($companyAddress)
-                                {{ $companyAddress }}<br>
+                            @if($company['address'])
+                                {{ $company['address'] }}<br>
                             @endif
-                            @if($companyPhone)
-                                Tel: {{ $companyPhone }}<br>
+                            @if($company['city'])
+                                {{ $company['city'] }}<br>
                             @endif
-                            @if($companyEmail)
-                                Email: {{ $companyEmail }}
+                            @if($company['phone'])
+                                Tel: {{ $company['phone'] }}<br>
+                            @endif
+                            @if($company['email'])
+                                Email: {{ $company['email'] }}
                             @endif
                         </div>
                     </td>
@@ -370,19 +377,21 @@
             <table class="supplier-table">
                 <tr>
                     <td>
+                        {{-- La factura se emite a nombre de la MISMA empresa que
+                             firma la orden; antes era un dato fijo de config. --}}
                         <strong>Empresa:</strong><br>
-                        {{ config('app.billing_company_name', 'AGRILOGISTIC URRAO SAS.') }}<br><br>
+                        {{ $company['name'] }}<br><br>
                         <strong>NIT:</strong><br>
-                        {{ config('app.billing_nit', '901.441.688-7') }}<br><br>
+                        {{ $company['nit'] }}<br><br>
                         <strong>Direccion:</strong><br>
-                        {{ config('app.billing_address', 'PRJ La Dorada Vda El Chuscal') }}<br>
-                        {{ config('app.billing_city', 'URRAO - ANTIOQUIA') }}
+                        {{ $company['address'] }}<br>
+                        {{ $company['city'] }}
                     </td>
                     <td>
                         <strong>E-mail:</strong><br>
-                        {{ config('app.billing_email', 'info@agrilogistic.co') }}<br><br>
+                        {{ $company['email'] }}<br><br>
                         <strong>Telefono:</strong><br>
-                        {{ config('app.billing_phone', '3127150757') }}
+                        {{ $company['phone'] }}
                     </td>
                 </tr>
             </table>
@@ -502,12 +511,12 @@
 
         <!-- Footer -->
         <div class="footer">
-            <p>Documento generado automaticamente por {{ $companyName }} el {{ now()->format('d/m/Y H:i') }}</p>
-            @if($companyPhone || $companyEmail)
+            <p>Documento generado automaticamente por {{ $company['name'] }} el {{ now()->format('d/m/Y H:i') }}</p>
+            @if($company['phone'] || $company['email'])
                 <p>Para consultas:
-                    @if($companyPhone) {{ $companyPhone }} @endif
-                    @if($companyPhone && $companyEmail) - @endif
-                    @if($companyEmail) {{ $companyEmail }} @endif
+                    @if($company['phone']) {{ $company['phone'] }} @endif
+                    @if($company['phone'] && $company['email']) - @endif
+                    @if($company['email']) {{ $company['email'] }} @endif
                 </p>
             @endif
         </div>

@@ -16,6 +16,11 @@ class UpdateProductOutputRequest extends FormRequest
         $outputId = $this->route('id');
 
         return [
+            'company_id' => [
+                'sometimes',
+                'uuid',
+                'exists:companies,id'
+            ],
             'output_type_id' => [
                 'sometimes',
                 'required',
