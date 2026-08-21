@@ -799,12 +799,17 @@ class ReportExportController extends Controller
 
         $fileName = "inventario_mensual_{$monthName}_{$year}_" . now()->format('His') . '.xlsx';
 
+        // Libro de 2 hojas: MOVIMIENTOS <MES> (la de siempre) + REMANENTES.
+        // warehouse_id lo resuelve monthlyReport (parámetro location_id o la
+        // primera bodega activa); se reenvía para que la hoja REMANENTES mida
+        // las devoluciones sobre la MISMA bodega que la hoja 1.
         return Excel::download(
-            new \App\Exports\MonthlyInventoryExport(
+            new \App\Exports\MonthlyInventoryWorkbookExport(
                 $data['products'],
                 $data['farm_columns'],
                 (string)$month,
-                (string)$year
+                (string)$year,
+                $data['warehouse_id'] ?? null
             ),
             $fileName
         );

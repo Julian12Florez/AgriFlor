@@ -1749,6 +1749,12 @@ class InventoryController extends Controller
                     'month' => $month,
                     'year' => $year,
                     'warehouse' => $locations->firstWhere('id', $warehouseId)?->name ?? 'N/A',
+                    // Id de la bodega efectivamente usada (location_id del
+                    // request o la primera bodega activa). Lo consume el export
+                    // a Excel para que la hoja REMANENTES mida las devoluciones
+                    // sobre la MISMA bodega que esta respuesta, sin tener que
+                    // replicar aquí la regla de resolución.
+                    'warehouse_id' => $warehouseId,
                     'farm_columns' => $farmColumns,
                     'products' => $result,
                     'summary' => [
