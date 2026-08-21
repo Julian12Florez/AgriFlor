@@ -53,6 +53,15 @@ Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::post('forgot-password', [AuthController::class, 'forgotPassword']);
     Route::post('reset-password', [AuthController::class, 'resetPassword']);
+
+    // NOTA: 'refresh' vive fuera del middleware auth:api a propósito. El guard JWT
+    // (JWTGuard::user() -> JWT::check()) traga la TokenExpiredException y devuelve
+    // false en cuanto el token expiró, así que auth:api respondería 401 ANTES de que
+    // el controlador llegue a ejecutar JWTAuth::refresh() (que sí sabe aceptar un
+    // token ya expirado, pero todavía dentro de la ventana de JWT_REFRESH_TTL).
+    // El propio AuthController::refresh() valida el token (firma + ventana de refresh)
+    // con JWTAuth::refresh(), así que sigue siendo seguro sin el middleware.
+    Route::post('refresh', [AuthController::class, 'refresh']);
 });
 
 // ============================================
@@ -66,7 +75,6 @@ Route::middleware('auth:api')->group(function () {
     // ----------------------------------------
     Route::prefix('auth')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
-        Route::post('refresh', [AuthController::class, 'refresh']);
         Route::get('me', [AuthController::class, 'me']);
         Route::post('change-password', [AuthController::class, 'changePassword']);
     });

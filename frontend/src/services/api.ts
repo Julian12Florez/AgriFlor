@@ -101,8 +101,27 @@ export function showSuccess(content: string) {
 // Token management
 let authToken: string | null = localStorage.getItem('auth_token');
 
+/**
+ * Decodes the `exp` claim (seconds since epoch) of a JWT without verifying its
+ * signature - only used client-side to know when to proactively refresh.
+ */
+function decodeTokenExpiry(token: string): number | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const base64 = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const json = JSON.parse(decodeURIComponent(escape(atob(base64))));
+    return typeof json.exp === 'number' ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+let tokenExpiresAt: number | null = authToken ? decodeTokenExpiry(authToken) : null;
+
 export const setAuthToken = (token: string | null) => {
   authToken = token;
+  tokenExpiresAt = token ? decodeTokenExpiry(token) : null;
   if (token) {
     localStorage.setItem('auth_token', token);
   } else {
@@ -111,6 +130,84 @@ export const setAuthToken = (token: string | null) => {
 };
 
 export const getAuthToken = () => authToken;
+
+// ─────────────────────────────────────────────────────────────────
+// Session keep-alive: refresca el token JWT antes de que expire (o
+// justo al recibir un 401), para que una sesión activa nunca se
+// caiga en medio de una tarea aunque el token dure "solo" 4 horas.
+// ─────────────────────────────────────────────────────────────────
+
+// Actividad del usuario (mouse, teclado, scroll, tacto, volver a la pestaña)
+let lastActivityAt = Date.now();
+if (typeof window !== 'undefined') {
+  const markActivity = () => { lastActivityAt = Date.now(); };
+  (['mousedown', 'keydown', 'scroll', 'touchstart', 'visibilitychange'] as const).forEach((evt) => {
+    window.addEventListener(evt, markActivity, { passive: true });
+  });
+}
+
+const ACTIVITY_WINDOW_MS = 15 * 60 * 1000; // se considera "activo" si interactuó en los últimos 15 min
+const PROACTIVE_REFRESH_THRESHOLD_MS = 10 * 60 * 1000; // refresca si faltan <10 min para expirar
+const PROACTIVE_CHECK_INTERVAL_MS = 60 * 1000; // revisa cada minuto
+
+// Promesa compartida: si varias peticiones reciben 401 a la vez, solo se dispara
+// UN refresh y todas esperan el mismo resultado (evita N refreshes concurrentes).
+let refreshPromise: Promise<string | null> | null = null;
+
+async function refreshAuthToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const tokenBeingRefreshed = authToken;
+    if (!tokenBeingRefreshed) return null;
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${tokenBeingRefreshed}`,
+        },
+      });
+
+      if (!response.ok) {
+        return null;
+      }
+
+      const data = await response.json().catch(() => null);
+      const newToken = data?.data?.token;
+      if (!newToken) return null;
+
+      setAuthToken(newToken);
+      return newToken;
+    } catch {
+      return null;
+    }
+  })();
+
+  try {
+    return await refreshPromise;
+  } finally {
+    refreshPromise = null;
+  }
+}
+
+function maybeProactiveRefresh() {
+  if (!authToken || !tokenExpiresAt) return;
+
+  const now = Date.now();
+  const msUntilExpiry = tokenExpiresAt - now;
+  const userIsActive = now - lastActivityAt < ACTIVITY_WINDOW_MS;
+
+  if (msUntilExpiry > 0 && msUntilExpiry < PROACTIVE_REFRESH_THRESHOLD_MS && userIsActive) {
+    refreshAuthToken();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  setInterval(maybeProactiveRefresh, PROACTIVE_CHECK_INTERVAL_MS);
+}
 
 // Main API Class
 class ApiService {
@@ -128,7 +225,8 @@ class ApiService {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit = {},
+    isRetry = false
   ): Promise<T> {
     const url = `${this.baseURL}${endpoint}`;
     const isPublic = ApiService.PUBLIC_ENDPOINTS.includes(endpoint);
@@ -149,6 +247,16 @@ class ApiService {
 
       // Handle 401 Unauthorized - don't redirect if already on public pages
       if (response.status === 401 && !isPublic) {
+        // Intenta UN refresco silencioso y reintenta la petición original antes de
+        // desloguear. `endpoint !== '/auth/refresh'` evita recursión: si el propio
+        // refresh devuelve 401 (token fuera de la ventana de refresh), no se reintenta.
+        if (!isRetry && endpoint !== '/auth/refresh') {
+          const newToken = await refreshAuthToken();
+          if (newToken) {
+            return this.request<T>(endpoint, options, true);
+          }
+        }
+
         setAuthToken(null);
         const path = window.location.pathname;
         if (path !== '/login' && !path.startsWith('/reset-password')) {
