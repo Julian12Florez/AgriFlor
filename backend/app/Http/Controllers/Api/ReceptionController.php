@@ -1793,13 +1793,18 @@ class ReceptionController extends Controller
 
             // 2. La ENTRADA en el destino solo se crea si el destino REALMENTE
             //    custodia el producto. Los códigos de consumo directo
-            //    (OutputType::DIRECT_CONSUMPTION_CODES: hoy 'consumption' y
-            //    'technical_order') se aplican en campo: la finca no guarda nada,
-            //    así que acreditarle stock le inventa existencias que nadie
-            //    descarga nunca. La lista vive en el modelo, no aquí.
+            //    (OutputType::DIRECT_CONSUMPTION_CODES: hoy solo 'consumption')
+            //    se aplican en campo el mismo día: la finca no guarda nada, así
+            //    que acreditarle stock le inventa existencias que nadie descarga
+            //    nunca. La lista vive en el modelo, no aquí.
+            //
+            //    'technical_order' salió de esa lista en sep-2026: despacha a la
+            //    finca, no consume. La finca custodia lo recibido hasta que se
+            //    aplica o vuelve como remanente.
             if (!OutputType::esConsumoDirecto($outputTypeCode)) {
-                // Traslado real ('transfer', 'remanente', 'free_request'): el
-                // destino recibe y custodia, así que se le acredita stock.
+                // Traslado real ('technical_order', 'transfer', 'remanente',
+                // 'free_request'): el destino recibe y custodia, así que se le
+                // acredita stock.
                 // La entrada lleva la MISMA fecha que la salida: si difieren, el
                 // informe mensual del origen (que lee esta entrada para armar la
                 // columna "Enviado a finca X") descuadra contra su propio stock.

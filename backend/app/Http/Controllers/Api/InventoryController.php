@@ -1524,7 +1524,7 @@ class InventoryController extends Controller
             // Salidas de CONSUMO DIRECTO (orden técnica / consumo): el producto sale de
             // esta ubicación hacia una finca y se aplica al cultivo, así que el destino
             // NO tiene entrada de kardex que emparejar (ver
-            // OutputType::DIRECT_CONSUMPTION_CODES). El paso 3 arma la matriz de envíos
+            // OutputType::HISTORICAL_NO_ENTRY_CODES). El paso 3 arma la matriz de envíos
             // leyendo la ENTRADA en la finca, de modo que sin esta precarga lo enviado
             // por orden técnica no lo explicaría ninguna columna y caería entero en
             // "Variación" — la celda que el cliente concilia contra contabilidad.
@@ -2143,7 +2143,8 @@ class InventoryController extends Controller
     /**
      * Suma, por producto y por ubicación de DESTINO, las salidas de kardex de la
      * ubicación del informe que corresponden a una salida de CONSUMO DIRECTO
-     * (ver {@see \App\Models\OutputType::DIRECT_CONSUMPTION_CODES}).
+     * (ver {@see \App\Models\OutputType::HISTORICAL_NO_ENTRY_CODES}: lista histórica
+     * congelada, NO la de comportamiento).
      *
      * Existe porque estas salidas no tienen pata de entrada: el producto se aplica
      * al cultivo en la finca, que nunca lo custodia. La matriz de envíos del
@@ -2174,7 +2175,7 @@ class InventoryController extends Controller
             ->where('m.type', 'exit')
             ->where('m.related_document_type', self::RECEPTION_DOCUMENT_TYPE)
             ->whereBetween('m.movement_date', [$start, $end])
-            ->whereIn('ot.code', \App\Models\OutputType::DIRECT_CONSUMPTION_CODES)
+            ->whereIn('ot.code', \App\Models\OutputType::HISTORICAL_NO_ENTRY_CODES)
             ->whereNotExists(function ($exists) {
                 $exists->selectRaw('1')
                     ->from('inventory_movements as e')

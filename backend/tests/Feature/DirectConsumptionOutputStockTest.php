@@ -266,10 +266,19 @@ class DirectConsumptionOutputStockTest extends TestCase
     }
 
     // ------------------------------------------------------------------
-    // 1. ORDEN TÉCNICA: descarga bodega y NO acredita stock a la finca
+    // 1. ORDEN TÉCNICA: descarga bodega y SÍ acredita stock a la finca
     // ------------------------------------------------------------------
 
-    public function test_technical_order_discharges_warehouse_and_does_not_credit_the_farm(): void
+    /**
+     * La orden técnica DESPACHA a la finca; no consume en el acto. Lo que se
+     * manda hoy se aplica durante las semanas siguientes y lo que sobra vuelve
+     * como remanente, así que la finca tiene que custodiarlo.
+     *
+     * Entre el 21-ago-2026 y sep-2026 esta salida no acreditaba nada: la finca
+     * no podía mover producto a sus lotes ni devolver remanentes, y quedaron 184
+     * movimientos sin contrapartida en 16 fincas.
+     */
+    public function test_technical_order_discharges_warehouse_and_credits_the_farm(): void
     {
         $fixtures = $this->createFixtures();
         $this->seedOpeningStock($fixtures, $fixtures['bodega']->id, 500);
@@ -312,28 +321,44 @@ class DirectConsumptionOutputStockTest extends TestCase
             'La existencia física de bodega debe bajar de 500 a 360 (FIFO).'
         );
 
-        // --- FINCA: no recibe NADA. Este es el cambio. ---
+        // --- FINCA: recibe y custodia. Este es el cambio de sep-2026. ---
+        $entries = $this->movementsOf($context['reception'], 'entry');
         $this->assertCount(
-            0,
-            $this->movementsOf($context['reception'], 'entry'),
-            'Una orden técnica NO debe crear entrada en la finca: el producto se aplica al cultivo.'
+            1,
+            $entries,
+            'La orden técnica DEBE crear la entrada en la finca: la finca custodia lo que recibe.'
         );
+
+        $entry = $entries->first();
+        $this->assertSame($fixtures['finca']->id, $entry->location_id);
+        $this->assertEqualsWithDelta(140, (float) $entry->quantity, 0.01);
         $this->assertSame(
-            0,
-            InventoryMovement::where('location_id', $fixtures['finca']->id)->count(),
-            'La finca no debe tener ningún movimiento de kardex.'
+            $exit->movement_date->toDateString(),
+            $entry->movement_date->toDateString(),
+            'Entrada y salida del mismo traslado comparten fecha: si divergen, la columna '
+            . '"Enviado a finca X" del informe mensual deja de cuadrar contra el origen.'
         );
+
         $this->assertEqualsWithDelta(
-            0,
+            140,
             $this->kardexBalance($fixtures, $fixtures['finca']->id),
             0.01,
-            'El kardex de la finca debe quedar en 0: nada de stock fantasma.'
+            'El kardex de la finca debe registrar los 140 recibidos.'
         );
         $this->assertEqualsWithDelta(
-            0,
+            140,
             $this->physicalStock($fixtures, $fixtures['finca']->id),
             0.01,
-            'La finca no debe quedar con existencia física.'
+            'La finca debe quedar con existencia física para poder aplicar o devolver.'
+        );
+
+        // Conservación de la masa: lo que salió de bodega está en la finca.
+        $this->assertEqualsWithDelta(
+            500,
+            $this->kardexBalance($fixtures, $fixtures['bodega']->id)
+                + $this->kardexBalance($fixtures, $fixtures['finca']->id),
+            0.01,
+            'Nada se evapora: bodega + finca debe seguir sumando las 500 iniciales.'
         );
 
         // --- TRAZABILIDAD: el movimiento sigue apuntando a la finca ---
@@ -425,20 +450,22 @@ class DirectConsumptionOutputStockTest extends TestCase
     // ------------------------------------------------------------------
 
     /**
-     * Blinda la lista contra un "arreglo" descuidado: agregar 'transfer',
-     * 'remanente' o 'free_request' a DIRECT_CONSUMPTION_CODES haría que el
-     * destino dejara de recibir producto, y esta prueba lo caza sin necesidad
-     * de montar toda una recepción.
+     * Blinda la lista contra un "arreglo" descuidado: agregar 'technical_order',
+     * 'transfer', 'remanente' o 'free_request' a DIRECT_CONSUMPTION_CODES haría
+     * que el destino dejara de recibir producto, y esta prueba lo caza sin
+     * necesidad de montar toda una recepción.
+     *
+     * 'technical_order' estuvo en esa lista entre el 21-ago y sep-2026 y dejó 184
+     * movimientos sin contrapartida en 16 fincas. No debe volver.
      */
-    public function test_direct_consumption_codes_are_exactly_consumption_and_technical_order(): void
+    public function test_only_consumption_is_direct_consumption(): void
     {
-        $this->assertTrue(OutputType::esConsumoDirecto('technical_order'));
         $this->assertTrue(OutputType::esConsumoDirecto('consumption'));
 
-        foreach (['transfer', 'remanente', 'free_request'] as $code) {
+        foreach (['technical_order', 'transfer', 'remanente', 'free_request'] as $code) {
             $this->assertFalse(
                 OutputType::esConsumoDirecto($code),
-                "'{$code}' mueve producto entre ubicaciones que lo custodian: DEBE acreditar el destino."
+                "'{$code}' entrega producto a una ubicación que lo custodia: DEBE acreditar el destino."
             );
         }
 
@@ -446,8 +473,30 @@ class DirectConsumptionOutputStockTest extends TestCase
         $this->assertFalse(OutputType::esConsumoDirecto(null));
 
         $this->assertSame(
-            ['consumption', 'technical_order'],
+            ['consumption'],
             OutputType::DIRECT_CONSUMPTION_CODES
+        );
+    }
+
+    /**
+     * La lista histórica NO sigue a la de comportamiento: describe un período
+     * cerrado (21-ago → sep-2026) en el que las órdenes técnicas descargaron
+     * bodega sin acreditar la finca. El informe mensual la usa para atribuir esos
+     * movimientos huérfanos a su finca destino; si siguiera a la otra lista,
+     * caerían enteros a la celda "Variación".
+     */
+    public function test_historical_no_entry_codes_stay_frozen(): void
+    {
+        $this->assertSame(
+            ['consumption', 'technical_order'],
+            OutputType::HISTORICAL_NO_ENTRY_CODES,
+            'Lista histórica congelada: no debe seguir a DIRECT_CONSUMPTION_CODES.'
+        );
+
+        $this->assertNotSame(
+            OutputType::DIRECT_CONSUMPTION_CODES,
+            OutputType::HISTORICAL_NO_ENTRY_CODES,
+            'Son dos listas con propósitos distintos: comportamiento vs. informe histórico.'
         );
     }
 
@@ -460,7 +509,7 @@ class DirectConsumptionOutputStockTest extends TestCase
      * fina que ya tenía el consumo: Application + ApplicationProduct fechados el
      * día de la recepción. Y sigue sin acreditar stock a la finca.
      */
-    public function test_technical_order_with_farm_lot_creates_the_application(): void
+    public function test_technical_order_with_farm_lot_credits_the_farm_and_does_not_auto_apply(): void
     {
         $fixtures = $this->createFixtures();
         $this->seedOpeningStock($fixtures, $fixtures['bodega']->id, 200);
@@ -476,21 +525,34 @@ class DirectConsumptionOutputStockTest extends TestCase
 
         $this->receiveBatch($fixtures, $context['reception'], 45)->assertStatus(201);
 
-        $this->assertCount(0, $this->movementsOf($context['reception'], 'entry'));
-
-        $application = Application::where('product_output_id', $context['output']->id)->first();
-        $this->assertNotNull($application, 'Con lote de cultivo, la orden técnica genera Application.');
-        $this->assertSame($fixtures['farmLot']->id, $application->farm_lot_id);
-        $this->assertSame(
-            self::RECEPTION_DATE,
-            $application->application_date->toDateString(),
-            'La aplicación se fecha el día en que se aplicó, no el día del registro.'
+        // Traer lote de cultivo no cambia nada: la finca custodia lo recibido.
+        $this->assertCount(
+            1,
+            $this->movementsOf($context['reception'], 'entry'),
+            'La orden técnica acredita la finca venga o no con lote de cultivo.'
+        );
+        $this->assertEqualsWithDelta(
+            45,
+            $this->physicalStock($fixtures, $fixtures['finca']->id),
+            0.01
         );
 
-        $applicationProduct = ApplicationProduct::where('application_id', $application->id)->first();
-        $this->assertNotNull($applicationProduct);
-        $this->assertSame($fixtures['product']->id, $applicationProduct->product_id);
-        $this->assertEqualsWithDelta(45, (float) $applicationProduct->quantity, 0.01);
+        // Ya NO se auto-aplica al recepcionar. Recibir no es aplicar: dar por
+        // aplicada la totalidad el día de la entrega es la ficción que producía
+        // el descuadre. Aplicar es un acto propio que el usuario registra cuando
+        // de verdad ocurre, y que descarga el stock de la finca.
+        $this->assertSame(
+            0,
+            Application::where('product_output_id', $context['output']->id)->count(),
+            'Recepcionar no aplica: la Application la registra quien aplica, no la recepción.'
+        );
+        $this->assertSame(
+            0,
+            ApplicationProduct::whereIn(
+                'application_id',
+                Application::where('product_output_id', $context['output']->id)->pluck('id')
+            )->count()
+        );
     }
 
     // ------------------------------------------------------------------
@@ -538,7 +600,7 @@ class DirectConsumptionOutputStockTest extends TestCase
             140,
             $row['farm_shipments'][$fixtures['finca']->id] ?? 0,
             0.01,
-            'Y debe quedar atribuido a la finca de destino, aunque la finca no reciba stock.'
+            'Y debe quedar atribuido a la finca de destino.'
         );
         $this->assertEqualsWithDelta(
             0,
@@ -547,10 +609,23 @@ class DirectConsumptionOutputStockTest extends TestCase
             'Variación de la bodega debe ser 0: es la celda que se concilia contra contabilidad.'
         );
 
-        // La finca no aparece con existencias en su propio informe.
-        $this->assertNull(
-            $this->monthlyReportRowFor($fixtures, $fixtures['finca']->id, false),
-            'La finca no debe figurar con stock ni movimientos en el informe mensual.'
+        // La finca SÍ figura ahora en su propio informe, con lo que custodia.
+        $fincaRow = $this->monthlyReportRowFor($fixtures, $fixtures['finca']->id, false);
+        $this->assertNotNull(
+            $fincaRow,
+            'La finca debe figurar en el informe: custodia el producto que recibió.'
+        );
+        $this->assertEqualsWithDelta(
+            140,
+            $fincaRow['final_stock'],
+            0.01,
+            'Y su stock final debe ser lo recibido.'
+        );
+        $this->assertEqualsWithDelta(
+            0,
+            $fincaRow['variation'],
+            0.01,
+            'Sin variación: la entrada explica por completo el saldo de la finca.'
         );
     }
 
