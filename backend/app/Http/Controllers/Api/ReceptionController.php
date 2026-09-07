@@ -2063,6 +2063,45 @@ class ReceptionController extends Controller
      * y va antes de $inventoryBatchNumber para no dejar un parámetro requerido
      * detrás de uno opcional.
      */
+    /**
+     * Impide que una salida deje el kardex en negativo EN CUALQUIER MOMENTO desde
+     * su fecha en adelante, no solo hoy.
+     *
+     * Lanza ValidationException para que salga como 422 con un mensaje que el
+     * bodeguero entienda, y no como un 500.
+     *
+     * @throws \Illuminate\Validation\ValidationException
+     */
+    private function guardarQueNoQuedeNegativo(
+        string $productId,
+        ?string $brandId,
+        string $locationId,
+        string $movementDate,
+        float $quantity,
+        string $unit,
+    ): void {
+        $historico = app(\App\Services\HistoricalStockService::class);
+
+        $cantidadBase = $this->inventoryService->toBaseUnit($quantity, $unit, $productId);
+
+        if ($historico->alcanza($productId, $brandId, $locationId, $movementDate, $cantidadBase)) {
+            return;
+        }
+
+        $disponible = $historico->disponibleALaFecha($productId, $brandId, $locationId, $movementDate);
+
+        throw \Illuminate\Validation\ValidationException::withMessages([
+            'reception_date' => $historico->mensajeDeRechazo(
+                Product::find($productId)?->name ?? 'el producto',
+                Location::find($locationId)?->name ?? 'la ubicación de origen',
+                $movementDate,
+                $cantidadBase,
+                $disponible,
+                Product::find($productId)?->base_unit ?? $unit,
+            ),
+        ]);
+    }
+
     private function createExitMovement(
         Reception $reception,
         string $productId,
@@ -2077,6 +2116,20 @@ class ReceptionController extends Controller
     ): void {
         $locationId = $reception->origin_location_id;
         $totalPrice = $quantity * $unitPrice;
+
+        // GUARDIA HISTÓRICA: una salida retrofechada no baja solo el saldo de su
+        // día, baja el de todos los días siguientes. Validar contra el stock de
+        // HOY dejaba pasar salidas que ponían un mes cerrado en negativo sin que
+        // nada se viera en rojo. Aquí es donde el movimiento se escribe de
+        // verdad, así que es el único punto que no se puede saltar.
+        $this->guardarQueNoQuedeNegativo(
+            $productId,
+            $brandId,
+            $locationId,
+            $movementDate,
+            $quantity,
+            $unit,
+        );
 
         // Create inventory movement
         $movement = InventoryMovement::create([

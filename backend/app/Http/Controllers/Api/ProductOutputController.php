@@ -183,6 +183,37 @@ class ProductOutputController extends Controller
                     $breakdown['blocking']
                 );
 
+                // GUARDIA HISTÓRICA (aviso temprano). El físico de arriba es el de
+                // HOY; con una salida fechada en el pasado eso no basta, porque
+                // insertar la salida baja el saldo de su día Y el de todos los
+                // días siguientes. La validación que NO se puede saltar está donde
+                // se escribe el movimiento (ReceptionController::createExitMovement);
+                // rechazar aquí evita que el usuario digite la salida entera para
+                // enterarse recién al recepcionar.
+                $fechaSalida = $request->input('output_date');
+
+                if ($fechaSalida) {
+                    $historico = app(\App\Services\HistoricalStockService::class);
+
+                    if (!$historico->alcanza($productId, $brandId, $originLocationId, $fechaSalida, $requestedBase)) {
+                        DB::rollBack();
+
+                        $producto = \App\Models\Product::find($productId);
+
+                        return response()->json([
+                            'success' => false,
+                            'message' => $historico->mensajeDeRechazo(
+                                $producto?->name ?? 'el producto',
+                                \App\Models\Location::find($originLocationId)?->name ?? 'la ubicación de origen',
+                                $fechaSalida,
+                                $requestedBase,
+                                $historico->disponibleALaFecha($productId, $brandId, $originLocationId, $fechaSalida),
+                                $producto?->base_unit ?? $unit,
+                            ),
+                        ], 422);
+                    }
+                }
+
                 $availableBase = $physicalBase - $committedBase;
                 if ($availableBase < $requestedBase - 0.01) {
                     DB::rollBack();

@@ -234,6 +234,25 @@ class ProductOutputsForSelectorTest extends TestCase
             'status' => 'good',
         ]);
 
+        // Su contrapartida en el kardex. Sin ella el escenario no existe en la
+        // realidad —en producción hay CERO triples con existencia física sin
+        // respaldo de kardex— y la guardia histórica, que impide dejar un mes
+        // pasado en negativo, rechazaría con razón una salida que aquí se espera
+        // aceptada.
+        \App\Models\InventoryMovement::create([
+            'product_id' => $f['product']->id,
+            'brand_id' => $f['brand']->id,
+            'location_id' => $f['origin']->id,
+            'type' => 'entry',
+            'quantity' => 100,
+            'unit' => 'kg',
+            'unit_price' => 10,
+            'total_price' => 1000,
+            'movement_date' => now()->subMonth()->toDateString(),
+            'responsible_user' => $f['admin']->id,
+            'observations' => 'Apertura del escenario',
+        ]);
+
         // Compromete 40 kg: disponible real = 60 kg.
         $this->makeCommittedOutput($f, 40);
 

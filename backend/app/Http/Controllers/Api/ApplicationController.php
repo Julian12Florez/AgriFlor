@@ -380,6 +380,43 @@ class ApplicationController extends Controller
                         'message' => "Stock insuficiente para el producto {$appProduct->product->name}. Disponible: " . round($availableInBase, 2) . " unidades base, Requerido: " . round($requestedInBase, 2) . " unidades base"
                     ], 400);
                 }
+
+                // GUARDIA HISTÓRICA: la comprobación de arriba mira el stock de HOY.
+                // La aplicación escribe su movimiento con `application_date`, así que
+                // una aplicación retrofechada baja el saldo de ese día y el de todos
+                // los siguientes. Sin esto, se puede dejar la finca en negativo en un
+                // mes ya cerrado teniendo existencia hoy.
+                $historico = app(\App\Services\HistoricalStockService::class);
+                $fechaAplicacion = $application->application_date instanceof \DateTimeInterface
+                    ? $application->application_date->format('Y-m-d')
+                    : (string) $application->application_date;
+
+                if (!$historico->alcanza(
+                    $appProduct->product_id,
+                    $appProduct->brand_id,
+                    $application->origin_location_id,
+                    $fechaAplicacion,
+                    $requestedInBase,
+                )) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => $historico->mensajeDeRechazo(
+                            $appProduct->product->name ?? 'el producto',
+                            \App\Models\Location::find($application->origin_location_id)?->name ?? 'la ubicación',
+                            $fechaAplicacion,
+                            $requestedInBase,
+                            $historico->disponibleALaFecha(
+                                $appProduct->product_id,
+                                $appProduct->brand_id,
+                                $application->origin_location_id,
+                                $fechaAplicacion,
+                            ),
+                            $appProduct->product->base_unit ?? $appProduct->unit,
+                        ),
+                    ], 422);
+                }
             }
 
             // Descontar stock usando FIFO para cada producto (now safe from race conditions)
