@@ -1193,12 +1193,40 @@ const ReceptionPage: React.FC = () => {
               label="Fecha de Recepción"
               rules={[{ required: true, message: 'La fecha es requerida' }]}
               initialValue={dayjs()}
+              extra={
+                fechaDelDocumento(selectedSource)
+                  ? `Documento fechado el ${fechaDelDocumento(selectedSource)!.format('DD/MM/YYYY')}`
+                  : undefined
+              }
             >
               <DatePicker
                 style={{ width: '100%' }}
                 format="DD/MM/YYYY"
                 placeholder="Seleccione la fecha"
               />
+            </Form.Item>
+
+            {/* El kardex se escribe con ESTA fecha. Cruzar de mes cambia el mes
+                al que se carga la mercancía y, con él, el informe que se
+                concilia contra contabilidad. Se avisa, no se bloquea: la
+                mercancía puede llegar de verdad el mes siguiente. */}
+            <Form.Item noStyle shouldUpdate>
+              {({ getFieldValue }) => {
+                const elegida: Dayjs | undefined = getFieldValue('receptionDate');
+                const doc = fechaDelDocumento(selectedSource);
+                if (!elegida || !doc || elegida.format('YYYY-MM') === doc.format('YYYY-MM')) {
+                  return null;
+                }
+                return (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message="La recepción queda en un mes distinto al del documento"
+                    description={`El documento es de ${doc.format('MMMM [de] YYYY')} y la está recibiendo en ${elegida.format('MMMM [de] YYYY')}. El inventario se cargará en ${elegida.format('MMMM')}, no en ${doc.format('MMMM')}.`}
+                  />
+                );
+              }}
             </Form.Item>
           </Col>
           <Col xs={24} sm={12}>
@@ -1523,40 +1551,12 @@ const ReceptionPage: React.FC = () => {
             name="receptionDate"
             label="Fecha de Recepción"
             rules={[{ required: true, message: 'La fecha es requerida' }]}
-            extra={
-              fechaDelDocumento(selectedSource)
-                ? `Documento fechado el ${fechaDelDocumento(selectedSource)!.format('DD/MM/YYYY')}`
-                : undefined
-            }
           >
             <DatePicker
               style={{ width: '100%' }}
               format="DD/MM/YYYY"
               placeholder="Seleccione la fecha"
             />
-          </Form.Item>
-
-          {/* El kardex se escribe con ESTA fecha. Cruzar de mes cambia el mes al
-              que se carga la mercancía y, con él, el informe que se concilia
-              contra contabilidad. Se avisa, no se bloquea: la mercancía puede
-              llegar de verdad el mes siguiente. */}
-          <Form.Item noStyle shouldUpdate>
-            {({ getFieldValue }) => {
-              const elegida: Dayjs | undefined = getFieldValue('receptionDate');
-              const doc = fechaDelDocumento(selectedSource);
-              if (!elegida || !doc || elegida.format('YYYY-MM') === doc.format('YYYY-MM')) {
-                return null;
-              }
-              return (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  message="La recepción queda en un mes distinto al del documento"
-                  description={`El documento es de ${doc.format('MMMM [de] YYYY')} y la está recibiendo en ${elegida.format('MMMM [de] YYYY')}. El inventario se cargará en ${elegida.format('MMMM')}, no en ${doc.format('MMMM')}.`}
-                />
-              );
-            }}
           </Form.Item>
         </Col>
         <Col xs={24} sm={12}>
