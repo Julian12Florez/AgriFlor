@@ -2051,9 +2051,20 @@ class InventoryController extends Controller
             ->where('location_id', $fincaId)
             ->where('type', 'exit')
             ->whereBetween('movement_date', [$start, $end])
-            ->where(function ($q) {
-                $q->whereNull('related_document_type')
-                    ->orWhere('related_document_type', 'not like', '%Reception');
+            // Se excluye SOLO lo que ya cuentan las columnas de remanente y
+            // consumo, no toda salida ligada a una recepción. Excluirlas todas
+            // hacía desaparecer del informe los traslados que salen de la finca
+            // hacia otra ubicación: no los contaba nadie. Y como esas dos
+            // columnas ahora se miden por kardex, la exclusión tiene que mirar
+            // el mismo reloj o se restaría dos veces.
+            ->whereNotExists(function ($exists) {
+                $exists->selectRaw('1')
+                    ->from('receptions')
+                    ->join('product_outputs', 'product_outputs.id', '=', 'receptions.source_id')
+                    ->join('output_types', 'output_types.id', '=', 'product_outputs.output_type_id')
+                    ->whereColumn('receptions.id', 'inventory_movements.related_document_id')
+                    ->where('receptions.source_type', 'output')
+                    ->whereIn('output_types.code', ['remanente', 'consumption']);
             })
             ->sum('quantity');
     }
@@ -2064,16 +2075,22 @@ class InventoryController extends Controller
      */
     private function farmOutputQtyByProduct(string $fincaId, string $typeCode, $start, $end): array
     {
-        return \App\Models\OutputProduct::query()
-            ->selectRaw('output_products.product_id, SUM(output_products.quantity_delivered) as q')
-            ->join('product_outputs', 'product_outputs.id', '=', 'output_products.output_id')
+        return InventoryMovement::query()
+            ->selectRaw('inventory_movements.product_id, SUM(inventory_movements.quantity) as q')
+            ->join('receptions', function ($join) {
+                $join->on('receptions.id', '=', 'inventory_movements.related_document_id')
+                    ->where('receptions.source_type', '=', 'output');
+            })
+            ->join('product_outputs', 'product_outputs.id', '=', 'receptions.source_id')
             ->join('output_types', 'output_types.id', '=', 'product_outputs.output_type_id')
+            ->where('inventory_movements.location_id', $fincaId)
+            ->where('inventory_movements.type', 'exit')
+            ->where('inventory_movements.related_document_type', self::RECEPTION_DOCUMENT_TYPE)
             ->where('output_types.code', $typeCode)
-            ->where('product_outputs.origin_location_id', $fincaId)
             ->where('product_outputs.status', '!=', 'cancelled')
-            ->whereBetween('product_outputs.output_date', [$start, $end])
-            ->groupBy('output_products.product_id')
-            ->pluck('q', 'output_products.product_id')
+            ->whereBetween('inventory_movements.movement_date', [$start, $end])
+            ->groupBy('inventory_movements.product_id')
+            ->pluck('q', 'inventory_movements.product_id')
             ->toArray();
     }
 
