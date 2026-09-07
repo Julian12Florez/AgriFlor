@@ -333,6 +333,19 @@ const ReceptionPage: React.FC = () => {
    * El backend la emite ya plana ('YYYY-MM-DD'); en crudo venía como
    * '...T00:00:00.000000Z' y dayjs la corría un día en Colombia.
    */
+  /**
+   * Nombre del mes en español, sin depender del locale de dayjs.
+   *
+   * El valor que devuelve el DatePicker de Ant Design trae su propio locale, que
+   * no siempre coincide con el global: el aviso salía mezclado — "es de agosto de
+   * 2026 y la está recibiendo en September de 2026".
+   */
+  const MESES = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+  ];
+  const mesEnEspanol = (d: Dayjs): string => MESES[d.month()];
+
   const fechaDelDocumento = (source: any): Dayjs | null => {
     const raw = source?.date;
     if (!raw) return null;
@@ -1223,7 +1236,7 @@ const ReceptionPage: React.FC = () => {
                     showIcon
                     style={{ marginBottom: 16 }}
                     message="La recepción queda en un mes distinto al del documento"
-                    description={`El documento es de ${doc.format('MMMM [de] YYYY')} y la está recibiendo en ${elegida.format('MMMM [de] YYYY')}. El inventario se cargará en ${elegida.format('MMMM')}, no en ${doc.format('MMMM')}.`}
+                    description={`El documento es de ${mesEnEspanol(doc)} de ${doc.year()} y la está recibiendo en ${mesEnEspanol(elegida)} de ${elegida.year()}. El inventario se cargará en ${mesEnEspanol(elegida)}, no en ${mesEnEspanol(doc)}.`}
                   />
                 );
               }}
