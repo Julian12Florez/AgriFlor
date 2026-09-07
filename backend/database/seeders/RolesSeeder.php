@@ -42,8 +42,17 @@ class RolesSeeder extends Seeder
         // Update description if role already exists
         $agronomist->update(['description' => 'Acceso a procesos técnicos, salidas y recepciones']);
 
-        $agronomistPermissions = Permission::whereIn('module', ['technical', 'outputs', 'reception'])
-            ->get();
+        // El agrónomo VE el inventario: programa aplicaciones y necesita saber con
+        // qué cuenta cada finca. Solo 'view_inventory'; ajustar existencias sigue
+        // siendo de bodega y administración.
+        //
+        // Sin este permiso el ticket se "resolvió" una vez subiendo al ingeniero a
+        // admin, lo que de paso le entregó administración de usuarios, aprobación
+        // de ajustes y auditoría. Concederle lo que necesita evita ese atajo.
+        $agronomistPermissions = Permission::where(function ($query) {
+            $query->whereIn('module', ['technical', 'outputs', 'reception'])
+                ->orWhere('name', 'view_inventory');
+        })->get();
         $agronomist->permissions()->sync($agronomistPermissions);
 
         // 3. SUPERVISOR - Reception, Outputs, Inventory (NO reports)
