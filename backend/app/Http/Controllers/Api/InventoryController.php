@@ -2176,13 +2176,20 @@ class InventoryController extends Controller
             ->where('m.related_document_type', self::RECEPTION_DOCUMENT_TYPE)
             ->whereBetween('m.movement_date', [$start, $end])
             ->whereIn('ot.code', \App\Models\OutputType::HISTORICAL_NO_ENTRY_CODES)
-            ->whereNotExists(function ($exists) {
+            // La entrada que descalifica a esta salida tiene que caer DENTRO de la
+            // ventana del informe. Sin esa cota, una entrada fechada en otro mes
+            // descartaba la salida aquí mientras el paso 3 —que sí filtra por mes—
+            // tampoco la veía: el envío desaparecía de los dos lados y caía entero
+            // a "Variación". Medido sobre producción: CALFOS/septiembre pasaba de
+            // enviado 18.000 · variación 0 a enviado 0 · variación −18.000.
+            ->whereNotExists(function ($exists) use ($start, $end) {
                 $exists->selectRaw('1')
                     ->from('inventory_movements as e')
                     ->whereColumn('e.related_document_id', 'm.related_document_id')
                     ->whereColumn('e.product_id', 'm.product_id')
                     ->whereColumn('e.location_id', 'r.destination_location_id')
-                    ->where('e.type', 'entry');
+                    ->where('e.type', 'entry')
+                    ->whereBetween('e.movement_date', [$start, $end]);
             })
             ->groupBy('m.product_id', 'r.destination_location_id')
             ->selectRaw('m.product_id as product_id, r.destination_location_id as destination_id, SUM(m.quantity) as q')

@@ -80,4 +80,34 @@ class UpdatePurchaseRequest extends FormRequest
             'attachments.*.max' => 'Cada archivo no puede exceder 10MB',
         ];
     }
+
+    /**
+     * Rechaza la compra al proveedor que en realidad representa una devolución de
+     * finca. La regla de qué nombre cuenta como tal vive en el modelo Supplier,
+     * no aquí ({@see \App\Models\Supplier::esDevolucionDeFinca}).
+     */
+    public function withValidator($validator): void
+    {
+        $validator->after(function ($validator) {
+            $supplierId = $this->input('supplier_id');
+
+            if (!is_string($supplierId) || $supplierId === '') {
+                return; // Ya lo reporta supplier_id.required / .uuid
+            }
+
+            $nombre = \App\Models\Supplier::whereKey($supplierId)->value('name');
+
+            if (!\App\Models\Supplier::esDevolucionDeFinca($nombre)) {
+                return;
+            }
+
+            $validator->errors()->add('supplier_id', sprintf(
+                'El proveedor "%s" no es un proveedor: representa una devolución de finca. '
+                . 'Registrarla como compra acredita la bodega pero NO descuenta la finca, y el '
+                . 'producto queda contado dos veces. Registre la devolución en '
+                . 'Salidas → Remanente, con la finca como ubicación de origen.',
+                $nombre
+            ));
+        });
+    }
 }
