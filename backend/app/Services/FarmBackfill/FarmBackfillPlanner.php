@@ -348,7 +348,8 @@ final class FarmBackfillPlanner
             return [[], []];
         }
 
-        $capacity = $this->nettingCapacity($entries, $rows);
+        // Fechado a propósito: la capacidad se mide al día del neteo.
+        $deltas = $this->datedDeltas($entries);
         $nettings = [];
         $residuals = [];
         $alreadyNetted = $this->alreadyNettedSourceIds();
@@ -365,12 +366,15 @@ final class FarmBackfillPlanner
             }
 
             $key = $row->product_id . '|' . $row->brand_id . '|' . $farmId;
-            $available = $capacity[$key] ?? 0.0;
+            $fechaNeteo = substr((string) $row->movement_date, 0, 10);
+            $available = $this->balanceAt($deltas, $key, $fechaNeteo);
             $wanted = round((float) $row->quantity, 2);
             $taken = round(min($wanted, max($available, 0.0)), 2);
 
             if ($taken > self::EPSILON) {
-                $capacity[$key] = round($available - $taken, 2);
+                // Se anota con su fecha: los neteos posteriores ven este consumo,
+                // y los anteriores no. Las filas vienen ordenadas por movement_date.
+                $deltas[$key][] = ['d' => $fechaNeteo, 'q' => -$taken];
 
                 $nettings[] = new PlannedMovement(
                     PlannedMovement::KIND_NETTING,
@@ -439,29 +443,67 @@ final class FarmBackfillPlanner
      * @param  \Illuminate\Support\Collection<int, object>  $returnRows
      * @return array<string, float>
      */
-    private function nettingCapacity(array $entries, $returnRows): array
+    /**
+     * Saldos FECHADOS por triple (producto|marca|finca), para poder preguntar
+     * cuánto tenía la finca A UNA FECHA y no solo al final de todo.
+     *
+     * Medir la capacidad del neteo con el saldo TOTAL cerraba un mes en negativo:
+     * Villa / BOROZINCO FOLIAR recibió sus 60 L el 03-sep, pero la devolución que
+     * se le netea está fechada el 28-ago. Con el saldo total la capacidad daba 60
+     * y el neteo pasaba; al corte del 31-ago la finca quedaba en −10,00 L, en el
+     * mes que se concilia contra contabilidad. Con el saldo a la fecha, la
+     * capacidad del 28-ago es 0 y la devolución entera se va a residuo.
+     *
+     * @param  array<int, PlannedMovement>  $entries
+     * @return array<string, array<int, array{d: string, q: float}>>
+     */
+    private function datedDeltas(array $entries): array
     {
-        $capacity = [];
+        $deltas = [];
 
         foreach ($entries as $entry) {
-            $capacity[$entry->tripleKey()] = round(($capacity[$entry->tripleKey()] ?? 0.0) + $entry->quantity, 2);
+            $deltas[$entry->tripleKey()][] = [
+                'd' => substr($entry->movementDate, 0, 10),
+                'q' => $entry->quantity,
+            ];
         }
 
         $ledger = DB::table('inventory_movements')
-            ->select('product_id', 'brand_id', 'location_id')
+            ->select('product_id', 'brand_id', 'location_id', 'movement_date')
             ->selectRaw("SUM(CASE WHEN type = 'entry' THEN quantity ELSE -quantity END) as saldo")
             ->whereIn('location_id', function ($query) {
                 $query->select('id')->from('locations')->where('type', 'farm');
             })
-            ->groupBy('product_id', 'brand_id', 'location_id')
+            ->groupBy('product_id', 'brand_id', 'location_id', 'movement_date')
             ->get();
 
         foreach ($ledger as $row) {
             $key = $row->product_id . '|' . $row->brand_id . '|' . $row->location_id;
-            $capacity[$key] = round(($capacity[$key] ?? 0.0) + (float) $row->saldo, 2);
+            $deltas[$key][] = [
+                'd' => substr((string) $row->movement_date, 0, 10),
+                'q' => (float) $row->saldo,
+            ];
         }
 
-        return $capacity;
+        return $deltas;
+    }
+
+    /**
+     * Saldo del triple contando SOLO lo que ya había ocurrido en `$date`.
+     *
+     * @param  array<string, array<int, array{d: string, q: float}>>  $deltas
+     */
+    private function balanceAt(array $deltas, string $key, string $date): float
+    {
+        $total = 0.0;
+
+        foreach ($deltas[$key] ?? [] as $delta) {
+            if ($delta['d'] <= $date) {
+                $total += $delta['q'];
+            }
+        }
+
+        return round($total, 2);
     }
 
     /**

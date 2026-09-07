@@ -262,21 +262,27 @@ final class FarmBackfillApplier
      * base a la que aún no le corrieron las migraciones; nunca debería hacer
      * falta, y si hace falta se nota porque va acompañado del respaldo vacío.
      */
+    /**
+     * El respaldo es parte del ESQUEMA, no algo que este comando improvise.
+     *
+     * Crearlo aquí en caliente era silencioso y peor de dos formas: en MySQL todo
+     * DDL fuerza un COMMIT implícito, que rompe la transacción de RefreshDatabase
+     * a media prueba; y la tabla nacía con el índice ÚNICO de `inventory`, que en
+     * un respaldo estorba (archivar dos corridas del mismo triple es legítimo).
+     * Si falta, es que falta correr las migraciones: hay que decirlo, no taparlo.
+     */
     private function ensureBackupTable(string $backup, string $source): void
     {
         if (Schema::hasTable($backup) && Schema::hasColumn($backup, 'backed_up_at')) {
             return;
         }
 
-        if (! Schema::hasTable($backup)) {
-            // CREATE TABLE ... LIKE copia columnas, tipos, cotejo e índices y NO
-            // copia las claves foráneas: justo lo que quiere un respaldo.
-            DB::statement("CREATE TABLE `{$backup}` LIKE `{$source}`");
-        }
-
-        if (! Schema::hasColumn($backup, 'backed_up_at')) {
-            DB::statement("ALTER TABLE `{$backup}` ADD COLUMN `backed_up_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP");
-        }
+        throw new RuntimeException(
+            "La tabla de respaldo `{$backup}` no existe o está incompleta. "
+            . 'Corra `php artisan migrate` antes de la reparación: el respaldo se crea en '
+            . 'la migración 2026_09_07_120000_create_inventory_farm_backfill_backup_table, '
+            . 'no en tiempo de ejecución.'
+        );
     }
 
     /**
@@ -625,6 +631,43 @@ final class FarmBackfillApplier
         );
     }
 
+
+    /**
+     * Cierres de mes que el plan toca, más el del mes anterior al primero: son
+     * los cortes contra los que el cliente concilia.
+     *
+     * @return array<int, string>
+     */
+    private function monthEndCutoffs(FarmBackfillPlan $plan): array
+    {
+        $meses = [];
+
+        foreach (array_merge($plan->entries, $plan->nettings) as $movement) {
+            $meses[substr($movement->movementDate, 0, 7)] = true;
+        }
+
+        if ($meses === []) {
+            return [];
+        }
+
+        $ordenados = array_keys($meses);
+        sort($ordenados);
+
+        // El mes anterior al primero: si el plan lo dejó en negativo, el arrastre
+        // envenena el inicial del siguiente.
+        $previo = CarbonImmutable::createFromFormat('Y-m-d', $ordenados[0] . '-01')
+            ->subMonth()
+            ->format('Y-m');
+        array_unshift($ordenados, $previo);
+
+        return array_map(
+            fn (string $mes) => CarbonImmutable::createFromFormat('Y-m-d', $mes . '-01')
+                ->endOfMonth()
+                ->toDateString(),
+            array_values(array_unique($ordenados)),
+        );
+    }
+
     /** @return array<int, string> */
     private function negativeBalances(FarmBackfillPlan $plan): array
     {
@@ -649,6 +692,35 @@ final class FarmBackfillApplier
             ->groupBy('product_id', 'brand_id', 'location_id')
             ->havingRaw('saldo < ?', [-self::TOLERANCE])
             ->get();
+
+        // El saldo TOTAL no basta: un neteo fechado antes de la entrada que lo
+        // financia deja el mes en negativo y se recupera después, así que la suma
+        // sin fecha da el visto bueno mientras el informe mensual muestra el
+        // negativo. Pasó de verdad: Villa / BOROZINCO FOLIAR cerró agosto en
+        // −10,00 L con esta comprobación en verde. Por eso se mira también CADA
+        // CORTE MENSUAL que el plan toca, que es lo que ve el cliente al conciliar.
+        foreach ($this->monthEndCutoffs($plan) as $corte) {
+            $negativosAlCorte = DB::table('inventory_movements')
+                ->select('product_id', 'brand_id', 'location_id')
+                ->selectRaw("SUM(CASE WHEN type = 'entry' THEN quantity ELSE -quantity END) as saldo")
+                ->whereIn('location_id', $farms)
+                ->where('movement_date', '<=', $corte)
+                ->groupBy('product_id', 'brand_id', 'location_id')
+                ->havingRaw('saldo < ?', [-self::TOLERANCE])
+                ->get();
+
+            foreach ($negativosAlCorte as $row) {
+                $failures[] = sprintf(
+                    'El mes cierra en NEGATIVO al %s en el triple %s|%s|%s: %s. '
+                    . 'Es el saldo que vería el informe mensual de esa finca.',
+                    $corte,
+                    $row->product_id,
+                    $row->brand_id,
+                    $row->location_id,
+                    number_format((float) $row->saldo, 2),
+                );
+            }
+        }
 
         foreach ($negativeLedger as $row) {
             $failures[] = sprintf(

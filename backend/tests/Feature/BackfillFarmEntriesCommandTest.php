@@ -394,6 +394,48 @@ class BackfillFarmEntriesCommandTest extends TestCase
     }
 
     /**
+     * El neteo se mide contra el saldo A SU FECHA, no contra el saldo total.
+     *
+     * Caso real de producción: Villa / BOROZINCO FOLIAR recibió sus 60 L el
+     * 03-sep, pero la devolución que se le netea está fechada el 28-ago. Midiendo
+     * el saldo total la capacidad daba 60 y el neteo pasaba; al corte del 31-ago
+     * la finca quedaba en −10,00 L, en un mes que se concilia contra contabilidad.
+     * La comprobación de negativos tampoco lo veía, porque sumaba sin filtro de
+     * fecha y obtenía +50.
+     */
+    public function test_no_netea_contra_una_entrada_posterior_y_el_mes_no_cierra_negativo(): void
+    {
+        // La entrada que financiaría el neteo llega DESPUÉS de la devolución.
+        $this->seedOrphanShipment(60, '2026-09-03');
+        $this->seedFictitiousReturn(10, '2026-08-28', $this->ctx['farm']->id);
+
+        $this->assertSame(0, $this->runCommand());
+
+        $cierreAgosto = (float) InventoryMovement::where('location_id', $this->ctx['farm']->id)
+            ->where('movement_date', '<=', '2026-08-31')
+            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'entry' THEN quantity ELSE -quantity END), 0) as saldo")
+            ->value('saldo');
+
+        $this->assertEqualsWithDelta(
+            0,
+            $cierreAgosto,
+            0.01,
+            'Agosto no puede cerrar en negativo: es el mes que el cliente concilia.'
+        );
+
+        // La devolución entera queda como residuo: no había con qué netearla.
+        $this->assertSame(
+            0,
+            InventoryMovement::where('location_id', $this->ctx['farm']->id)->where('type', 'exit')->count(),
+            'Sin saldo a la fecha del neteo, no se escribe la salida: se reporta como residuo.'
+        );
+
+        // Y la entrada repuesta sigue intacta en septiembre.
+        $this->assertEqualsWithDelta(60, $this->farmLedger(), 0.01);
+        $this->assertEqualsWithDelta(60, $this->farmStock(), 0.01);
+    }
+
+    /**
      * Una devolución sin `origin_location_id` no se adivina: bloquea la corrida
      * real. Es el caso de PUR-2026-402555 en producción.
      */
