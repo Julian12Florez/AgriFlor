@@ -104,7 +104,12 @@ final class FarmBackfillApplier
         $archived = [];
 
         foreach (self::BACKUP_TABLES as $backup => $source) {
-            $this->ensureBackupTable($backup, $source);
+            // Aquí SÍ se crea si falta: este método es DDL por definición y corre
+            // fuera de la transacción. El caso normal es que la tabla no exista
+            // porque una corrida anterior con --force la archivó, y eso es
+            // recuperable, no un error. El guard estricto vive en
+            // ensureBackupTable(), que se usa dentro de la transacción.
+            $this->recreateBackupTable($backup, $source);
 
             if (DB::table($backup)->count() === 0) {
                 continue;
