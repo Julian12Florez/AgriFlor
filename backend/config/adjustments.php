@@ -23,5 +23,21 @@
  * database/migrations/2026_06_16_120000_align_may_to_accounting_siigo.php).
  */
 return [
-    'closed_period_until' => env('ADJUSTMENTS_CLOSED_PERIOD_UNTIL', '2026-05-31'),
+    /*
+     | UN SOLO CORTE PARA TODO EL INVENTARIO
+     |
+     | Este valor apuntaba a su propia variable con default '2026-05-31', mientras
+     | el corte real de la operación es el 2026-07-31 (el re-baseline). Junio y
+     | julio quedaban escribibles desde Ajustes: se pudo crear Y APROBAR un ajuste
+     | fechado el 20-jul, el informe de julio se movió, y la columna "Variación"
+     | —donde se concilia— siguió en 0. La fuga era invisible justo donde se mira.
+     |
+     | Ahora hereda de config/inventory.php. La variable propia sigue existiendo
+     | por si alguna vez hay que abrir Ajustes sin abrir el resto, pero su default
+     | ya no puede quedarse atrás.
+     */
+    'closed_period_until' => env(
+        'ADJUSTMENTS_CLOSED_PERIOD_UNTIL',
+        env('INVENTORY_CLOSED_PERIOD_UNTIL', '2026-07-31')
+    ),
 ];

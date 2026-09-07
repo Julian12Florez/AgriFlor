@@ -158,7 +158,20 @@ class ApplicationController extends Controller
             $validator = Validator::make($request->all(), [
                 'origin_location_id' => 'required|uuid|exists:locations,id',
                 'farm_lot_id' => 'required|uuid|exists:farm_lots,id',
-                'application_date' => 'required|date',
+                // El candado de periodo faltaba por completo aquí, y esta es la
+                // puerta MÁS ANCHA: la línea que escribe el kardex hace
+                // movement_date = application_date, así que desde la pantalla se
+                // podía escribir dentro de mayo, el mes ya alineado con Siigo.
+                // También se corta el futuro: un dedazo de año mete producto que
+                // no aparece en el informe del mes.
+                'application_date' => [
+                    'required',
+                    'date',
+                    'after_or_equal:' . \Carbon\CarbonImmutable::parse(
+                        config('inventory.closed_period_until')
+                    )->addDay()->toDateString(),
+                    'before_or_equal:today',
+                ],
                 'application_type' => 'nullable|string|max:100',
                 'observations' => 'nullable|string',
                 'products' => 'required|array|min:1',
@@ -178,6 +191,10 @@ class ApplicationController extends Controller
                 'farm_lot_id.exists' => 'El lote de finca no existe',
                 'application_date.required' => 'La fecha de aplicación es requerida',
                 'application_date.date' => 'La fecha de aplicación debe ser una fecha válida',
+                'application_date.after_or_equal' => 'La fecha de aplicación cae dentro del periodo '
+                    . 'contable cerrado (hasta el ' . config('inventory.closed_period_until') . '), '
+                    . 'que ya se concilió con Contabilidad. Use una fecha posterior.',
+                'application_date.before_or_equal' => 'La fecha de aplicación no puede ser futura.',
                 'products.required' => 'Debe agregar al menos un producto',
                 'products.*.product_id.required' => 'El producto es requerido',
                 'products.*.product_id.exists' => 'El producto no existe',

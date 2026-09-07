@@ -346,8 +346,11 @@ const ReceptionPage: React.FC = () => {
   ];
   const mesEnEspanol = (d: Dayjs): string => MESES[d.month()];
 
-  const fechaDelDocumento = (source: any): Dayjs | null => {
-    const raw = source?.date;
+  const fechaDelDocumento = (origen: any): Dayjs | null => {
+    // Sirve para las dos pantallas: una fuente disponible trae `date`; una
+    // recepción ya abierta trae `shipment_date`, que es la misma fecha del
+    // documento copiada al crearla.
+    const raw = origen?.date ?? origen?.shipment_date;
     if (!raw) return null;
     const d = dayjs(String(raw).slice(0, 10));
     return d.isValid() ? d : null;
@@ -391,7 +394,11 @@ const ReceptionPage: React.FC = () => {
 
     // Preparar formulario para nueva recepción parcial
     batchForm.setFieldsValue({
-      receptionDate: dayjs(),
+      // Igual que la primera recepción: se siembra con la fecha del documento.
+      // Arrancar en hoy partía el mes en silencio — el lote 1 quedaba en agosto y
+      // el lote 2 en septiembre, sin error, sin negativo y sin nada en rojo que
+      // lo delatara.
+      receptionDate: fechaSembrada(selectedReception),
       receivedBy: '',
       observations: '',
       items: selectedReception.items?.map((item: any) => ({
@@ -1564,12 +1571,38 @@ const ReceptionPage: React.FC = () => {
             name="receptionDate"
             label="Fecha de Recepción"
             rules={[{ required: true, message: 'La fecha es requerida' }]}
+            extra={
+              fechaDelDocumento(selectedReception)
+                ? `Documento fechado el ${fechaDelDocumento(selectedReception)!.format('DD/MM/YYYY')}`
+                : undefined
+            }
           >
             <DatePicker
               style={{ width: '100%' }}
               format="DD/MM/YYYY"
               placeholder="Seleccione la fecha"
             />
+          </Form.Item>
+
+          {/* El mismo aviso que la primera recepción: recibir en tandas es
+              justamente donde el mes se parte sin que nadie lo note. */}
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const elegida: Dayjs | undefined = getFieldValue('receptionDate');
+              const doc = fechaDelDocumento(selectedReception);
+              if (!elegida || !doc || elegida.format('YYYY-MM') === doc.format('YYYY-MM')) {
+                return null;
+              }
+              return (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="Esta tanda queda en un mes distinto al del documento"
+                  description={`El documento es de ${mesEnEspanol(doc)} de ${doc.year()} y la está recibiendo en ${mesEnEspanol(elegida)} de ${elegida.year()}. Lo de esta tanda se cargará en ${mesEnEspanol(elegida)}, no en ${mesEnEspanol(doc)}.`}
+                />
+              );
+            }}
           </Form.Item>
         </Col>
         <Col xs={24} sm={12}>

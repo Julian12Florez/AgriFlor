@@ -17,7 +17,7 @@ class StoreReceptionBatchRequest extends FormRequest
     {
         return [
             'reception_id' => ['required', 'uuid', 'exists:receptions,id'],
-            'reception_date' => ['required', 'date'],
+            'reception_date' => ['required', 'date', 'before_or_equal:today'],
             'received_by' => ['required', 'uuid', 'exists:users,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.reception_item_id' => ['nullable', 'uuid'],
@@ -41,6 +41,7 @@ class StoreReceptionBatchRequest extends FormRequest
             'reception_id.exists' => 'La recepción no existe',
             'reception_date.required' => 'La fecha de recepción es requerida',
             'reception_date.date' => 'La fecha de recepción debe ser una fecha válida',
+            'reception_date.before_or_equal' => 'La fecha de recepción no puede ser futura.',
             'received_by.required' => 'El responsable de recepción es requerido',
             'received_by.uuid' => 'El formato del ID del responsable no es válido',
             'received_by.exists' => 'El usuario responsable no existe',

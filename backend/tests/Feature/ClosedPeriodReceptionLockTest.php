@@ -109,4 +109,60 @@ class ClosedPeriodReceptionLockTest extends TestCase
             . 'hoy, con la fecha de hoy.'
         );
     }
+
+    /**
+     * Los dos cortes tienen que ser el mismo. El de Ajustes iba por su cuenta con
+     * default 2026-05-31 mientras el real era 2026-07-31: junio y julio quedaban
+     * escribibles desde Ajustes, y como la columna "Variación" seguía en 0, la
+     * fuga era invisible justo donde se concilia.
+     */
+    public function test_ajustes_e_inventario_comparten_el_mismo_corte(): void
+    {
+        $this->assertSame(
+            config('inventory.closed_period_until'),
+            config('adjustments.closed_period_until'),
+            'Dos cortes distintos = una puerta abierta en el módulo que menos se mira.'
+        );
+    }
+
+    /**
+     * `after:` compara TIMESTAMPS, no días: '2026-07-31T23:59:59' se colaba
+     * mientras '2026-07-31' se rechazaba. El corte es inclusivo por día.
+     */
+    public function test_el_ultimo_instante_del_dia_del_corte_tampoco_pasa(): void
+    {
+        $primerDiaAbierto = \Carbon\CarbonImmutable::parse(config('inventory.closed_period_until'))
+            ->addDay()->toDateString();
+
+        $reglas = ['reception_date' => ['required', 'date', 'after_or_equal:' . $primerDiaAbierto]];
+
+        foreach (['2026-07-31', '2026-07-31T23:59:59', '2026-07-15'] as $fecha) {
+            $this->assertTrue(
+                \Illuminate\Support\Facades\Validator::make(['reception_date' => $fecha], $reglas)->fails(),
+                "'{$fecha}' está dentro del periodo cerrado y debe rechazarse."
+            );
+        }
+
+        $this->assertFalse(
+            \Illuminate\Support\Facades\Validator::make(['reception_date' => '2026-08-01'], $reglas)->fails(),
+            'El primer día abierto sí debe pasar.'
+        );
+    }
+
+    /**
+     * Sin tope de futuro, un dedazo de año mete la mercancía al estante pero la
+     * deja FUERA del informe del mes: aparece en `inventory` y no en el kardex
+     * hasta hoy. Se midieron 15,00 kg desaparecidos así en un ensayo.
+     */
+    public function test_no_se_acepta_una_fecha_futura(): void
+    {
+        $reglas = ['reception_date' => ['required', 'date', 'before_or_equal:today']];
+
+        foreach (['2035-01-15', '2030-06-15', '2027-08-05'] as $fecha) {
+            $this->assertTrue(
+                \Illuminate\Support\Facades\Validator::make(['reception_date' => $fecha], $reglas)->fails(),
+                "'{$fecha}' es futura: no puede escribirse en el kardex."
+            );
+        }
+    }
 }

@@ -574,10 +574,19 @@ class ReceptionController extends Controller
                 // fecha de hoy; lo que no se puede es fechar la llegada dentro
                 // del periodo cerrado. El mismo candado vive en
                 // StoreReceptionBatchRequest, que cubre la otra ruta de entrada.
+                // `after:` compara TIMESTAMPS, así que '2026-07-31T23:59:59'
+                // se colaba mientras '2026-07-31' se rechazaba. Se compara por
+                // día: el corte es inclusivo, el 31/07 ya está cerrado.
                 'reception_date' => [
                     'required',
                     'date',
-                    'after:' . config('inventory.closed_period_until'),
+                    'after_or_equal:' . \Carbon\CarbonImmutable::parse(
+                        config('inventory.closed_period_until')
+                    )->addDay()->toDateString(),
+                    // Sin tope de futuro, un dedazo de año (2035 en vez de 2026)
+                    // mete la mercancía al estante pero la deja FUERA del informe
+                    // del mes: existe en `inventory` y no en el kardex hasta hoy.
+                    'before_or_equal:today',
                 ],
                 'received_by' => 'required|uuid|exists:users,id',
                 'items' => 'required|array|min:1',
@@ -590,7 +599,8 @@ class ReceptionController extends Controller
                 'items.*.observations' => 'nullable|string',
                 'observations' => 'nullable|string',
             ], [
-                'reception_date.after' => 'La fecha de recepción cae dentro del periodo contable '
+                'reception_date.before_or_equal' => 'La fecha de recepción no puede ser futura.',
+                'reception_date.after_or_equal' => 'La fecha de recepción cae dentro del periodo contable '
                     . 'cerrado (hasta el ' . config('inventory.closed_period_until') . '), que ya '
                     . 'se concilió con Contabilidad. Reciba con una fecha posterior.',
             ]);
@@ -821,6 +831,13 @@ class ReceptionController extends Controller
                 'data' => new ReceptionResource($reception)
             ], 201);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Sin esto, una fecha en periodo cerrado salía como HTTP 500 con el
+            // texto "Error al registrar la recepción: ...": al bodeguero le
+            // parecía que el sistema se cayó, cuando el sistema hizo bien su
+            // trabajo. Con fecha vacía además respondía en inglés.
+            DB::rollBack();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
