@@ -121,7 +121,10 @@ final class FarmBackfillApplier
             $archive = $backup . '_' . CarbonImmutable::now()->format('Ymd_His');
             DB::statement("RENAME TABLE `{$backup}` TO `{$archive}`");
             $archived[$backup] = $archive;
-            $this->ensureBackupTable($backup, $source);
+            // Archivar deja el nombre libre, así que aquí SÍ toca recrear la
+            // tabla. Es DDL, pero corre ANTES de abrir la transacción de la
+            // reparación, así que no la parte por la mitad.
+            $this->recreateBackupTable($backup, $source);
         }
 
         return $archived;
@@ -283,6 +286,37 @@ final class FarmBackfillApplier
             . 'la migración 2026_09_07_120000_create_inventory_farm_backfill_backup_table, '
             . 'no en tiempo de ejecución.'
         );
+    }
+
+    /**
+     * Recrea la tabla de respaldo con el MISMO esquema que fija la migración
+     * 2026_09_07_120000_create_inventory_farm_backfill_backup_table.
+     *
+     * Solo se usa después de archivar la anterior con --force, que deja el nombre
+     * libre. Fuera de ese caso la tabla es parte del esquema y se exige que ya
+     * exista ({@see self::ensureBackupTable}).
+     */
+    private function recreateBackupTable(string $backup, string $source): void
+    {
+        if (Schema::hasTable($backup)) {
+            return;
+        }
+
+        DB::statement("CREATE TABLE `{$backup}` LIKE `{$source}`");
+        DB::statement(
+            "ALTER TABLE `{$backup}` ADD COLUMN `backed_up_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP"
+        );
+
+        // El índice ÚNICO de `inventory` estorba en un respaldo: archivar dos
+        // corridas del mismo triple es legítimo.
+        $unique = 'inventory_product_id_brand_id_location_id_batch_number_unique';
+
+        foreach (DB::select("SHOW INDEX FROM `{$backup}`") as $index) {
+            if ($index->Key_name === $unique) {
+                DB::statement("ALTER TABLE `{$backup}` DROP INDEX `{$unique}`");
+                break;
+            }
+        }
     }
 
     /**
