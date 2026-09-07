@@ -41,6 +41,20 @@ class OutputReceptionMovementDateTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * El corte contable es configuración de PRODUCCIÓN, no una propiedad del
+     * código que se prueba aquí: estos escenarios usan fechas de 2026 que hoy
+     * caen dentro del periodo cerrado. El candado en sí tiene su propia prueba
+     * en ClosedPeriodReceptionLockTest.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['inventory.closed_period_until' => '2020-01-01']);
+    }
+
+
     /** Fecha real de recepción del lote: mes anterior a "hoy" en cualquier corrida. */
     private const RECEPTION_DATE = '2026-06-17';
 

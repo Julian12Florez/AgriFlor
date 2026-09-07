@@ -72,6 +72,10 @@ class StoreReceptionBatchRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            $this->validarPeriodoCerrado($validator);
+        });
+
+        $validator->after(function ($validator) {
             // Get reception ID from route parameter
             $receptionId = $this->route('reception');
 
@@ -145,5 +149,48 @@ class StoreReceptionBatchRequest extends FormRequest
                 }
             }
         });
+    }
+
+    /**
+     * El kardex no se escribe dentro de un mes ya conciliado con Contabilidad.
+     *
+     * Por aquí entra el 100% de los movimientos de recepción, y hasta ahora la
+     * fecha se validaba con `required|date` y nada más. El candado existía solo
+     * en Ajustes, así que una recepción retrofechada podía meter producto en un
+     * mes cerrado sin que nada lo delatara: pasó el 29-jul-2026 con +10.500 kg de
+     * QROP KS dentro de mayo, y es exactamente la diferencia que hoy separa al
+     * sistema de Siigo.
+     *
+     * Se valida la fecha de RECEPCIÓN, no la del documento: una compra de julio
+     * se sigue pudiendo recibir hoy, con la fecha de hoy. Lo que no se puede es
+     * fechar la llegada dentro del periodo cerrado.
+     */
+    private function validarPeriodoCerrado($validator): void
+    {
+        $corte = config('inventory.closed_period_until');
+        $fecha = $this->input('reception_date');
+
+        if (!$corte || !is_string($fecha) || $fecha === '') {
+            return; // Sin corte configurado, o fecha ya reportada por required/date
+        }
+
+        try {
+            $fechaRecepcion = \Carbon\CarbonImmutable::parse($fecha)->startOfDay();
+            $cierre = \Carbon\CarbonImmutable::parse($corte)->startOfDay();
+        } catch (\Throwable) {
+            return; // Ya lo reporta reception_date.date
+        }
+
+        if ($fechaRecepcion->greaterThan($cierre)) {
+            return;
+        }
+
+        $validator->errors()->add('reception_date', sprintf(
+            'El %s cae dentro del periodo contable cerrado (hasta el %s), que ya se concilió con '
+            . 'Contabilidad. Reciba con una fecha posterior; si de verdad hay que corregir un mes '
+            . 'cerrado, solicite la apertura a Contabilidad.',
+            $fechaRecepcion->format('d/m/Y'),
+            $cierre->format('d/m/Y'),
+        ));
     }
 }

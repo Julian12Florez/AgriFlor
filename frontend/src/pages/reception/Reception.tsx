@@ -3,7 +3,7 @@ import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row,
 import { CheckCircleOutlined, ClockCircleOutlined, ExclamationCircleOutlined, EyeOutlined, InboxOutlined, EnvironmentOutlined, WarningOutlined, PlusOutlined, ShoppingCartOutlined, SwapOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
-import dayjs from 'dayjs';
+import dayjs, { Dayjs } from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { receptionsApi, productsApi, purchasesApi, locationsApi, outputsApi, usersApi, handleApiError } from '../../services/api';
 import type { Reception, ReceptionItem, ReceptionBatch, ReceptionBatchItem, Product, PackagingUnit } from '../../data/types';
@@ -322,6 +322,52 @@ const ReceptionPage: React.FC = () => {
     setIsModalVisible(true);
   };
 
+  /**
+   * Fecha del documento que se está recepcionando (la compra o la salida).
+   *
+   * Con ella se SIEMBRA el selector, en vez de arrancar en hoy. Antes el
+   * movimiento de kardex heredaba el día en que se digitaba la recepción: una
+   * compra fechada el 31/08 y capturada el 01/09 quedaba cargada en septiembre,
+   * y en agosto faltaba la mercancía.
+   *
+   * El backend la emite ya plana ('YYYY-MM-DD'); en crudo venía como
+   * '...T00:00:00.000000Z' y dayjs la corría un día en Colombia.
+   */
+  const fechaDelDocumento = (source: any): Dayjs | null => {
+    const raw = source?.date;
+    if (!raw) return null;
+    const d = dayjs(String(raw).slice(0, 10));
+    return d.isValid() ? d : null;
+  };
+
+  /**
+   * Hasta dónde llega el periodo contable cerrado. El backend rechaza cualquier
+   * recepción fechada en él, así que la siembra tiene que respetarlo: sembrar la
+   * fecha de un documento de julio dejaría el formulario pre-llenado con una
+   * fecha que no se puede guardar.
+   */
+  const cierreContable = (): Dayjs | null => {
+    const raw = (availableSourcesData as any)?.closed_period_until;
+    if (!raw) return null;
+    const d = dayjs(String(raw).slice(0, 10));
+    return d.isValid() ? d : null;
+  };
+
+  /**
+   * Fecha con la que arranca el selector: la del documento, salvo que caiga en
+   * un mes ya cerrado, en cuyo caso se arranca en hoy. En ambos casos el usuario
+   * puede cambiarla, y el campo sigue mostrando la fecha real del documento.
+   */
+  const fechaSembrada = (source: any): Dayjs => {
+    const doc = fechaDelDocumento(source);
+    if (!doc) return dayjs();
+
+    const cierre = cierreContable();
+    if (cierre && !doc.isAfter(cierre, 'day')) return dayjs();
+
+    return doc;
+  };
+
   const handleViewAvailableSource = (source: any) => {
     setSelectedSource(source);
     setIsSourceDetailsModalVisible(true);
@@ -518,7 +564,9 @@ const ReceptionPage: React.FC = () => {
     }
 
     sourceReceptionForm.setFieldsValue({
-      receptionDate: dayjs(),
+      // Se siembra con la fecha del documento, no con hoy. Sigue siendo
+      // editable: la mercancía puede llegar días después de la orden.
+      receptionDate: fechaSembrada(selectedSource),
       receivedBy: selectedSource?.destination_location?.responsible_user_id || undefined,
       observations: undefined,
       items: itemsWithPending.map((item: any) => ({
@@ -1475,12 +1523,40 @@ const ReceptionPage: React.FC = () => {
             name="receptionDate"
             label="Fecha de Recepción"
             rules={[{ required: true, message: 'La fecha es requerida' }]}
+            extra={
+              fechaDelDocumento(selectedSource)
+                ? `Documento fechado el ${fechaDelDocumento(selectedSource)!.format('DD/MM/YYYY')}`
+                : undefined
+            }
           >
             <DatePicker
               style={{ width: '100%' }}
               format="DD/MM/YYYY"
               placeholder="Seleccione la fecha"
             />
+          </Form.Item>
+
+          {/* El kardex se escribe con ESTA fecha. Cruzar de mes cambia el mes al
+              que se carga la mercancía y, con él, el informe que se concilia
+              contra contabilidad. Se avisa, no se bloquea: la mercancía puede
+              llegar de verdad el mes siguiente. */}
+          <Form.Item noStyle shouldUpdate>
+            {({ getFieldValue }) => {
+              const elegida: Dayjs | undefined = getFieldValue('receptionDate');
+              const doc = fechaDelDocumento(selectedSource);
+              if (!elegida || !doc || elegida.format('YYYY-MM') === doc.format('YYYY-MM')) {
+                return null;
+              }
+              return (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="La recepción queda en un mes distinto al del documento"
+                  description={`El documento es de ${doc.format('MMMM [de] YYYY')} y la está recibiendo en ${elegida.format('MMMM [de] YYYY')}. El inventario se cargará en ${elegida.format('MMMM')}, no en ${doc.format('MMMM')}.`}
+                />
+              );
+            }}
           </Form.Item>
         </Col>
         <Col xs={24} sm={12}>

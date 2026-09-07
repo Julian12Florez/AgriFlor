@@ -61,6 +61,9 @@ class MonthlyReportRemanenteClassificationTest extends TestCase
         parent::setUp();
 
         config(['adjustments.closed_period_until' => '2000-01-01']);
+        // Lo mismo para el candado de recepciones: las fechas de este escenario
+        // (abril/febrero de 2026) caen dentro del periodo cerrado de producción.
+        config(['inventory.closed_period_until' => '2000-01-01']);
     }
 
     /**

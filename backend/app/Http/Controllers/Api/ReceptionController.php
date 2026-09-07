@@ -73,7 +73,12 @@ class ReceptionController extends Controller
                 'id' => $purchase->id,
                 'source_type' => 'purchase',
                 'document_number' => $purchase->order_number,
-                'date' => $purchase->purchase_date,
+                // Fecha PLANA. Emitido en crudo salía '2026-09-04T00:00:00.000000Z' y dayjs,
+                // que en este proyecto no carga el plugin utc, lo interpreta en la zona
+                // del navegador: en Colombia (UTC−5) lo pintaba como 03/09, y un
+                // documento del día 1 caía al MES anterior. Esta fecha siembra el
+                // selector de la recepción, así que corrida envenena el kardex.
+                'date' => $purchase->purchase_date?->format('Y-m-d'),
                 'origin_location' => $purchase->originLocation ? [
                     'id' => $purchase->originLocation->id,
                     'name' => $purchase->originLocation->name,
@@ -142,7 +147,8 @@ class ReceptionController extends Controller
                 'id' => $output->id,
                 'source_type' => 'output',
                 'document_number' => $output->output_number,
-                'date' => $output->output_date,
+                // Fecha PLANA, por el mismo motivo que en las compras: ver arriba.
+                'date' => $output->output_date?->format('Y-m-d'),
                 'origin_location' => [
                     'id' => $output->originLocation->id,
                     'name' => $output->originLocation->name,
@@ -202,6 +208,10 @@ class ReceptionController extends Controller
 
         return response()->json([
             'success' => true,
+            // El formulario siembra su selector con la fecha del documento, y
+            // necesita saber hasta dónde llega el periodo cerrado para no
+            // pre-llenar una fecha que el backend va a rechazar.
+            'closed_period_until' => config('inventory.closed_period_until'),
             'data' => $sources,
             'meta' => [
                 'total' => count($sources),
@@ -257,7 +267,12 @@ class ReceptionController extends Controller
                 'id' => $purchase->id,
                 'source_type' => 'purchase',
                 'document_number' => $purchase->order_number,
-                'date' => $purchase->purchase_date,
+                // Fecha PLANA. Emitido en crudo salía '2026-09-04T00:00:00.000000Z' y dayjs,
+                // que en este proyecto no carga el plugin utc, lo interpreta en la zona
+                // del navegador: en Colombia (UTC−5) lo pintaba como 03/09, y un
+                // documento del día 1 caía al MES anterior. Esta fecha siembra el
+                // selector de la recepción, así que corrida envenena el kardex.
+                'date' => $purchase->purchase_date?->format('Y-m-d'),
                 'origin_location' => $purchase->originLocation ? [
                     'id' => $purchase->originLocation->id,
                     'name' => $purchase->originLocation->name,
@@ -300,7 +315,8 @@ class ReceptionController extends Controller
                 'id' => $output->id,
                 'source_type' => 'output',
                 'document_number' => $output->output_number,
-                'date' => $output->output_date,
+                // Fecha PLANA, por el mismo motivo que en las compras: ver arriba.
+                'date' => $output->output_date?->format('Y-m-d'),
                 'origin_location' => [
                     'id' => $output->originLocation->id,
                     'name' => $output->originLocation->name,
@@ -335,6 +351,10 @@ class ReceptionController extends Controller
 
         return response()->json([
             'success' => true,
+            // El formulario siembra su selector con la fecha del documento, y
+            // necesita saber hasta dónde llega el periodo cerrado para no
+            // pre-llenar una fecha que el backend va a rechazar.
+            'closed_period_until' => config('inventory.closed_period_until'),
             'data' => $sources,
             'meta' => [
                 'total' => count($sources),
@@ -548,7 +568,17 @@ class ReceptionController extends Controller
             $data = $request->validate([
                 'source_id' => 'required|uuid',
                 'source_type' => 'required|in:purchase,output',
-                'reception_date' => 'required|date',
+                // `after` con el corte: el kardex no entra en un mes ya conciliado
+                // con Contabilidad. Se valida la fecha de RECEPCIÓN, no la del
+                // documento: una compra de julio se puede recibir hoy con la
+                // fecha de hoy; lo que no se puede es fechar la llegada dentro
+                // del periodo cerrado. El mismo candado vive en
+                // StoreReceptionBatchRequest, que cubre la otra ruta de entrada.
+                'reception_date' => [
+                    'required',
+                    'date',
+                    'after:' . config('inventory.closed_period_until'),
+                ],
                 'received_by' => 'required|uuid|exists:users,id',
                 'items' => 'required|array|min:1',
                 'items.*.reception_item_id' => 'nullable|uuid',
@@ -559,6 +589,10 @@ class ReceptionController extends Controller
                 'items.*.expiration_date' => 'nullable|date',
                 'items.*.observations' => 'nullable|string',
                 'observations' => 'nullable|string',
+            ], [
+                'reception_date.after' => 'La fecha de recepción cae dentro del periodo contable '
+                    . 'cerrado (hasta el ' . config('inventory.closed_period_until') . '), que ya '
+                    . 'se concilió con Contabilidad. Reciba con una fecha posterior.',
             ]);
 
             // Get source
