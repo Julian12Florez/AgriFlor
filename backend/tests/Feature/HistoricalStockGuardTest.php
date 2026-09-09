@@ -132,6 +132,73 @@ class HistoricalStockGuardTest extends TestCase
     // 3. Lo que NO debe estorbar
     // ------------------------------------------------------------------
 
+    /**
+     * COMPRAR Y DESPACHAR EL MISMO DÍA. Es el caso más común de la operación y la
+     * primera versión de esta guardia lo prohibía.
+     *
+     * Reportado el 09-sep-2026: se compraron 40 kg de OXICLORURO DE COBRE, se
+     * recibieron ese día, y al intentar la salida el sistema decía "no tiene
+     * inventario". Al mover la salida al día siguiente sí la dejaba — la señal de
+     * que el saldo del día no estaba contando lo que había entrado ese mismo día.
+     */
+    public function test_permite_despachar_el_mismo_dia_que_se_recibio(): void
+    {
+        $this->movimiento('entry', 40, '2026-09-09');
+
+        $this->assertEqualsWithDelta(
+            40,
+            $this->disponible('2026-09-09'),
+            0.01,
+            'Lo que entró hoy está disponible hoy: el día es una fecha, no un instante.'
+        );
+
+        $this->assertTrue(
+            $this->historico->alcanza(
+                $this->f['product']->id,
+                $this->f['brand']->id,
+                $this->f['finca']->id,
+                '2026-09-09',
+                40,
+            ),
+            'Comprar por la mañana y despachar por la tarde tiene que poder hacerse.'
+        );
+
+        // Y no se puede sacar más de lo que entró.
+        $this->assertFalse(
+            $this->historico->alcanza(
+                $this->f['product']->id,
+                $this->f['brand']->id,
+                $this->f['finca']->id,
+                '2026-09-09',
+                40.5,
+            )
+        );
+    }
+
+    /**
+     * El mismo día, pero con una salida ya registrada: el saldo del día cuenta
+     * las dos cosas.
+     */
+    public function test_el_saldo_del_dia_descuenta_las_salidas_de_ese_dia(): void
+    {
+        $this->movimiento('entry', 40, '2026-09-09');
+        $this->movimiento('exit', 30, '2026-09-09');
+
+        $this->assertEqualsWithDelta(10, $this->disponible('2026-09-09'), 0.01);
+
+        $this->assertFalse(
+            $this->historico->alcanza(
+                $this->f['product']->id,
+                $this->f['brand']->id,
+                $this->f['finca']->id,
+                '2026-09-09',
+                11,
+            ),
+            'Ya se despacharon 30 de los 40: solo quedan 10.'
+        );
+    }
+
+
     /** Una salida normal, con fecha posterior a la entrada, pasa sin ruido. */
     public function test_deja_pasar_una_salida_legitima_retrofechada(): void
     {

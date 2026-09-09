@@ -37,10 +37,20 @@ use Illuminate\Support\Facades\DB;
  * No basta el saldo en D. Si en D hay 2.000 pero cinco días después una salida
  * lo deja en 100, sacar 1.500 fechado en D deja ese día en −1.400.
  *
- * El cálculo es CONSERVADOR en un punto: cuando ya existen movimientos con la
- * misma fecha D, se asume que la salida nueva ocurre ANTES que ellos. Dentro de
- * un mismo día no hay orden real —`movement_date` es una fecha, no un
- * instante—, así que ante la duda se toma el escenario más exigente.
+ * DENTRO DEL MISMO DÍA
+ * ====================
+ * El saldo del día D cuenta lo que entró ESE MISMO DÍA. Al principio se hizo al
+ * revés —se asumía que la salida ocurría antes que los movimientos ya registrados
+ * en D— y eso prohibía el caso más común de la operación: comprar 40 kg de
+ * OXICLORURO DE COBRE por la mañana, recibirlos, y despacharlos a la finca esa
+ * misma tarde. El sistema respondía "no tiene inventario", y al mover la salida al
+ * día siguiente sí la dejaba. Es exactamente el síntoma que reportó el cliente el
+ * 09-sep-2026.
+ *
+ * `movement_date` es una fecha, no un instante: dentro del día no hay orden que
+ * distinguir, y el hecho económico es que el producto SÍ estaba ese día. Lo que
+ * sigue protegido es el caso peligroso de verdad: fechar una salida ANTES del día
+ * en que el producto llegó.
  */
 class HistoricalStockService
 {
@@ -89,29 +99,30 @@ class HistoricalStockService
             ->get();
 
         $acumulado = 0.0;
-        $saldoJustoAntesDeLaFecha = 0.0;
+        $saldoEnLaFecha = 0.0;
         $minimoDesdeLaFecha = null;
 
         foreach ($filas as $fila) {
             $dia = substr((string) $fila->movement_date, 0, 10);
+            $acumulado += (float) $fila->delta;
 
-            if ($dia < $fecha) {
-                $acumulado += (float) $fila->delta;
-                $saldoJustoAntesDeLaFecha = $acumulado;
-                continue;
+            // Saldo AL CIERRE del día D, contando lo que ya entró ESE MISMO DÍA.
+            if ($dia <= $fecha) {
+                $saldoEnLaFecha = $acumulado;
             }
 
-            $acumulado += (float) $fila->delta;
-            $minimoDesdeLaFecha = $minimoDesdeLaFecha === null
-                ? $acumulado
-                : min($minimoDesdeLaFecha, $acumulado);
+            // Y el punto más bajo de ahí en adelante: insertar la salida baja
+            // todos esos puntos por igual.
+            if ($dia >= $fecha) {
+                $minimoDesdeLaFecha = $minimoDesdeLaFecha === null
+                    ? $acumulado
+                    : min($minimoDesdeLaFecha, $acumulado);
+            }
         }
 
-        // El saldo del propio día D, antes de los movimientos que ya existen en
-        // esa fecha: es el punto conservador del que se hablaba arriba.
         $minimo = $minimoDesdeLaFecha === null
-            ? $saldoJustoAntesDeLaFecha
-            : min($saldoJustoAntesDeLaFecha, $minimoDesdeLaFecha);
+            ? $saldoEnLaFecha
+            : min($saldoEnLaFecha, $minimoDesdeLaFecha);
 
         return max(0.0, round($minimo, 2));
     }
