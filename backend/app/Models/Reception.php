@@ -11,6 +11,56 @@ class Reception extends Model implements AuditableContract
 {
     use HasUuids, Auditable;
 
+    /**
+     * Siguiente número de recepción del año.
+     *
+     * POR QUÉ NO SE CUENTA
+     * --------------------
+     * Esto se numeraba con `Reception::count() + 1`, y esa cuenta se rompe sola:
+     * basta que se borre UNA recepción para que el contador retroceda y vuelva a
+     * proponer un número que ya existe. Entonces `receptions_reception_number_unique`
+     * rechaza el insert y NO SE PUEDE RECEPCIONAR NADA — ni esa, ni ninguna otra,
+     * porque todas piden el mismo número.
+     *
+     * Pasó en producción el 09-sep-2026: al borrar REC-2026-000562 quedaron 607
+     * recepciones con máximo REC-2026-000608, así que `count()+1` daba 000608, que
+     * ya estaba tomado. El sistema quedó bloqueado para recibir.
+     *
+     * Se numera por el MÁXIMO del año, como ya hacía
+     * {@see \App\Models\ProductOutput::generateOutputNumber()}. Los huecos que dejen
+     * los borrados se quedan como huecos, que es lo correcto en una numeración
+     * documental: un consecutivo no se reutiliza.
+     *
+     * El bucle cubre el caso de dos recepciones creadas a la vez: si el número ya
+     * se lo llevó otra petición, se pide el siguiente en vez de reventar.
+     */
+    public static function generateReceptionNumber(): string
+    {
+        $prefix = 'REC-' . date('Y') . '-';
+
+        $ultimo = self::where('reception_number', 'like', $prefix . '%')
+            ->orderBy('reception_number', 'desc')
+            ->value('reception_number');
+
+        $siguiente = $ultimo ? ((int) substr($ultimo, strlen($prefix))) + 1 : 1;
+
+        // Defensa contra concurrencia: si alguien más tomó ese número entre la
+        // consulta y el insert, se avanza al siguiente libre.
+        for ($intento = 0; $intento < 50; $intento++) {
+            $candidato = $prefix . str_pad((string) $siguiente, 6, '0', STR_PAD_LEFT);
+
+            if (!self::where('reception_number', $candidato)->exists()) {
+                return $candidato;
+            }
+
+            $siguiente++;
+        }
+
+        // Salida de emergencia: prefiero un número feo pero único a dejar al
+        // bodeguero sin poder recibir.
+        return $prefix . str_pad((string) $siguiente, 6, '0', STR_PAD_LEFT) . '-' . uniqid();
+    }
+
     protected $table = 'receptions';
 
     protected $fillable = [

@@ -465,7 +465,7 @@ class ReceptionController extends Controller
 
             // Auto-generate reception number if not provided
             if (empty($data['reception_number'])) {
-                $data['reception_number'] = 'REC-' . date('Y') . '-' . str_pad(Reception::count() + 1, 6, '0', STR_PAD_LEFT);
+                $data['reception_number'] = Reception::generateReceptionNumber();
             }
 
             // Get origin and destination from source if not provided
@@ -622,7 +622,7 @@ class ReceptionController extends Controller
             // If reception doesn't exist, create it
             if (!$reception) {
                 $reception = Reception::create([
-                    'reception_number' => 'REC-' . date('Y') . '-' . str_pad(Reception::count() + 1, 6, '0', STR_PAD_LEFT),
+                    'reception_number' => Reception::generateReceptionNumber(),
                     'source_id' => $data['source_id'],
                     'source_type' => $data['source_type'],
                     'origin_location_id' => $data['source_type'] === 'purchase'
