@@ -150,22 +150,42 @@ const Locations: React.FC = () => {
     isSubmittingRef.current = true;
 
     try {
-      const lat = values.coordinates?.lat;
-      const lng = values.coordinates?.lng;
-
       // Format data for backend API (snake_case)
-      const locationData = {
+      const locationData: Record<string, unknown> = {
         name: values.name,
         type: values.type,
         municipality: values.municipality,
         address: values.address,
         responsible_user_id: values.responsible_user_id,
         status: values.status || 'active',
-        total_workers: values.total_workers ?? null,
-        coordinates: (lat && lng && !isNaN(Number(lat)) && !isNaN(Number(lng)))
-          ? { lat: Number(lat), lng: Number(lng) }
-          : undefined
       };
+
+      // Las coordenadas se mandaban anidadas —`coordinates: {lat, lng}`— y el
+      // backend valida `coordinates_lat` y `coordinates_lng` por separado
+      // (StoreLocationRequest:23-24). Al no coincidir el nombre, la clave nunca
+      // entraba en validated() y la latitud que el usuario escribía se perdía sin
+      // un solo aviso: 21 de 21 ubicaciones de producción están sin coordenadas.
+      // Se mandan planas, y solo cuando hay un número (0 es una latitud válida,
+      // así que no vale comprobarlo por "truthiness").
+      const coordenada = (v: unknown): number | undefined => {
+        if (v === undefined || v === null || v === '') return undefined;
+        const n = Number(v);
+        return Number.isNaN(n) ? undefined : n;
+      };
+      const lat = coordenada(values.coordinates?.lat);
+      const lng = coordenada(values.coordinates?.lng);
+      if (lat !== undefined) locationData.coordinates_lat = lat;
+      if (lng !== undefined) locationData.coordinates_lng = lng;
+
+      // El número de trabajadores solo se manda si el formulario lo trae. Antes iba
+      // como `values.total_workers ?? null`, y eso BORRABA el dato: el campo solo se
+      // pinta cuando el tipo es finca, así que al guardar cualquier otro cambio (o al
+      // editar una bodega) llegaba `undefined` y se enviaba null.
+      // `undefined` = el usuario no tocó el campo -> el backend deja el valor quieto.
+      // `null`      = el usuario lo borró a propósito -> se limpia.
+      if (values.total_workers !== undefined) {
+        locationData.total_workers = values.total_workers;
+      }
 
       let locationId: string;
 

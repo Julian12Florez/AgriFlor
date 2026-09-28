@@ -50,6 +50,10 @@ export interface Location {
     email: string;
   };
   status: 'active' | 'inactive';
+  // Trabajadores propios de la finca. No es decorativo: sin él,
+  // TaskScheduleController rechaza programar tareas con gente propia. Solo
+  // aplica a las fincas, de ahí que sea opcional.
+  total_workers?: number | null;
   created_at?: string;
 }
 
