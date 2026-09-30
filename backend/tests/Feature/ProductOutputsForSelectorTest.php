@@ -175,6 +175,121 @@ class ProductOutputsForSelectorTest extends TestCase
         $this->assertStringContainsString('60.00 kg disponible', $after[0]['display_label']);
     }
 
+    /**
+     * El selector restaba lo reservado, pero NO decía por qué. Reportado el
+     * 18-sep-2026 con KENDO: el kardex y el conteo físico decían 7,13 L en
+     * BODEGA PRINCIPAL y el selector ofrecía 1,13. La diferencia eran 6 L
+     * reservados por SAL-20260723-0051, una salida de JULIO a Mansión cuya
+     * recepción (REC-2026-000313) recibió los otros dos productos y dejó el
+     * KENDO en 0 de 6. Quedó "parcial" 70 días y nadie podía saber que ESA era
+     * la recepción que había que finalizar para liberar el stock.
+     *
+     * El rótulo tiene que decir cuánto está reservado, por qué salida, a qué
+     * destino y desde cuándo.
+     */
+    public function test_el_rotulo_explica_que_salida_retiene_el_stock(): void
+    {
+        $f = $this->makeFixtures();
+
+        Inventory::create([
+            'product_id' => $f['product']->id,
+            'brand_id' => $f['brand']->id,
+            'location_id' => $f['origin']->id,
+            'batch_number' => 'LOTE-RESERVA-1',
+            'quantity' => 100,
+            'unit' => 'kg',
+            'unit_price' => 10,
+            'total_value' => 1000,
+            'status' => 'good',
+        ]);
+
+        $this->makeCommittedOutput($f, 40);
+        $salida = ProductOutput::latest('created_at')->first();
+
+        $fila = $this->actingAs($f['admin'], 'api')
+            ->getJson('/api/products-for-outputs?location_id=' . $f['origin']->id)
+            ->json('data.0');
+
+        $this->assertStringContainsString('60.00 kg disponible', $fila['display_label']);
+        $this->assertStringContainsString('40.00 kg reservados', $fila['display_label']);
+        $this->assertStringContainsString($salida->output_number, $fila['display_label'],
+            'Sin el número de la salida el usuario no sabe qué recepción finalizar.');
+        $this->assertStringContainsString('Finca Selector Test', $fila['display_label']);
+
+        // Y en forma estructurada, para que el frontend pueda enlazarla.
+        $this->assertCount(1, $fila['committed_by']);
+        $this->assertSame($salida->output_number, $fila['committed_by'][0]['output_number']);
+        $this->assertSame('Finca Selector Test', $fila['committed_by'][0]['destination']);
+        $this->assertEqualsWithDelta(40, $fila['committed_by'][0]['pending'], 0.01);
+        $this->assertNotEmpty($fila['committed_by'][0]['reception_number']);
+    }
+
+    /** Sin reservas el rótulo queda como siempre: nada de ruido. */
+    public function test_sin_reservas_el_rotulo_no_menciona_reservas(): void
+    {
+        $f = $this->makeFixtures();
+
+        Inventory::create([
+            'product_id' => $f['product']->id,
+            'brand_id' => $f['brand']->id,
+            'location_id' => $f['origin']->id,
+            'batch_number' => 'LOTE-LIBRE-1',
+            'quantity' => 100,
+            'unit' => 'kg',
+            'unit_price' => 10,
+            'total_value' => 1000,
+            'status' => 'good',
+        ]);
+
+        $fila = $this->actingAs($f['admin'], 'api')
+            ->getJson('/api/products-for-outputs?location_id=' . $f['origin']->id)
+            ->json('data.0');
+
+        $this->assertStringNotContainsString('reservad', $fila['display_label']);
+        $this->assertSame([], $fila['committed_by']);
+    }
+
+    /**
+     * Una vez finalizada la recepción con lo recibido, la reserva desaparece y
+     * el selector vuelve a ofrecer todo el físico. Es la salida que tiene el
+     * usuario, y tiene que funcionar.
+     */
+    public function test_finalizar_la_recepcion_libera_la_reserva(): void
+    {
+        $f = $this->makeFixtures();
+
+        Inventory::create([
+            'product_id' => $f['product']->id,
+            'brand_id' => $f['brand']->id,
+            'location_id' => $f['origin']->id,
+            'batch_number' => 'LOTE-FINALIZAR-1',
+            'quantity' => 100,
+            'unit' => 'kg',
+            'unit_price' => 10,
+            'total_value' => 1000,
+            'status' => 'good',
+        ]);
+
+        $this->makeCommittedOutput($f, 40);
+        $recepcion = Reception::latest('created_at')->first();
+
+        $this->actingAs($f['admin'], 'api')
+            ->postJson('/api/receptions/' . $recepcion->id . '/finalize')
+            ->assertOk();
+
+        $fila = $this->actingAs($f['admin'], 'api')
+            ->getJson('/api/products-for-outputs?location_id=' . $f['origin']->id)
+            ->json('data.0');
+
+        $this->assertSame(100.0, (float) $fila['available_quantity']);
+        $this->assertStringNotContainsString('reservad', $fila['display_label']);
+        $this->assertSame(
+            100.0,
+            (float) Inventory::where('batch_number', 'LOTE-FINALIZAR-1')->value('quantity'),
+            'Finalizar libera la reserva SIN mover inventario.'
+        );
+    }
+
     public function test_orders_batches_without_expiration_last(): void
     {
         $f = $this->makeFixtures();

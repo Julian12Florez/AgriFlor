@@ -44,7 +44,8 @@ class CommittedStockService
         array $statuses = self::DEFAULT_STATUSES,
         ?string $excludeOutputId = null
     ): Collection {
-        $query = ProductOutput::where('origin_location_id', $locationId)
+        $query = ProductOutput::with('destinationLocation')
+            ->where('origin_location_id', $locationId)
             ->whereIn('status', $statuses);
 
         if ($excludeOutputId !== null) {
@@ -105,9 +106,17 @@ class CommittedStockService
                 $pendingBase = max(0, $deliveredBase - $receivedBase);
                 if ($pendingBase > 0.01) {
                     $committedBase += $pendingBase;
+                    // Destino, fecha y recepción: sin ellos el usuario ve menos
+                    // stock y no tiene cómo saber qué recepción finalizar para
+                    // liberarlo (KENDO, 18-sep-2026: 6 L retenidos 70 días por una
+                    // salida de julio).
                     $blocking[] = [
                         'output_number' => $otherOutput->output_number ?? $otherOutput->id,
                         'pending' => round($pendingBase, 2),
+                        'destination' => $otherOutput->destinationLocation?->name,
+                        'output_date' => $otherOutput->output_date?->format('Y-m-d'),
+                        'reception_id' => $reception?->id,
+                        'reception_number' => $reception?->reception_number,
                     ];
                 }
             }

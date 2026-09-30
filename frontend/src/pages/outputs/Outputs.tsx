@@ -478,7 +478,9 @@ const Outputs: React.FC = () => {
       if (originLoc && originLoc.type !== 'farm') {
         form.setFieldValue('originLocationId', undefined);
         setSelectedOriginLocationId('');
-        setAvailableProducts([]);
+        // Era `setAvailableProducts`, que no existe: el ReferenceError cortaba
+        // este manejador aquí y el destino inválido de abajo nunca se limpiaba.
+        setProductsForOutputs([]);
       }
       if (destLoc && destLoc.type !== 'warehouse') {
         form.setFieldValue('destinationLocationId', undefined);

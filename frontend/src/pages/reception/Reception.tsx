@@ -148,7 +148,16 @@ const ReceptionPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['available-sources'] });
       queryClient.invalidateQueries({ queryKey: ['outputs'] });
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      setIsDetailModalVisible(false);
+      // Se llamaba a `setIsDetailModalVisible`, un estado que este componente
+      // nunca declaró (759e9ad, 2-jun-2026). El backend SÍ finalizaba, pero el
+      // ReferenceError caía en onError y el usuario veía "setIsDetailModalVisible
+      // is not defined": la reserva se liberaba y la pantalla decía que había
+      // fallado. `tsc` lo detecta; el deploy corre `vite build`, que no revisa
+      // tipos, y así llegó a producción. El botón vive en dos modales —el
+      // detalle de la recepción y el de "Disponibles para Recibir"—: se cierran
+      // los dos.
+      setIsModalVisible(false);
+      setIsSourceDetailsModalVisible(false);
       setSelectedReception(null);
       message.success(resp?.message || 'Recepción finalizada. Remanente liberado.');
     },

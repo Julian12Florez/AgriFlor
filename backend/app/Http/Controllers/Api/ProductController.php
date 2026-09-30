@@ -275,12 +275,14 @@ class ProductController extends Controller
 
         $groupCommitted = [];
         $groupAvailable = [];
+        $groupBlocking = [];
         foreach ($groupPhysicalBase as $key => $physical) {
             [$productId, $brandId] = explode('|', $key, 2);
-            $committed = $this->committedStockService
-                ->committedBreakdown($otherOutputs, $productId, $brandId)['total'];
-            $groupCommitted[$key] = $committed;
-            $groupAvailable[$key] = max(0, $physical - $committed);
+            $breakdown = $this->committedStockService
+                ->committedBreakdown($otherOutputs, $productId, $brandId);
+            $groupCommitted[$key] = $breakdown['total'];
+            $groupBlocking[$key] = $breakdown['blocking'];
+            $groupAvailable[$key] = max(0, $physical - $breakdown['total']);
         }
 
         // Apply search filter if provided
@@ -295,7 +297,7 @@ class ProductController extends Controller
         }
 
         // Format data for frontend dropdown
-        $formattedData = $inventoryItems->map(function ($item) use ($groupCommitted, $groupAvailable) {
+        $formattedData = $inventoryItems->map(function ($item) use ($groupCommitted, $groupAvailable, $groupBlocking) {
             $expirationDate = $item->expiration_date
                 ? $item->expiration_date->format('d/m/Y')
                 : 'Sin vencimiento';
@@ -317,6 +319,14 @@ class ProductController extends Controller
             $isExpired = $item->status === 'expired' || ($daysToExpiry !== null && $daysToExpiry < 0);
             $expiredLabel = $isExpired ? ' [VENCIDO]' : '';
 
+            // Por qué hay menos de lo que dice el kardex. Restar lo reservado sin
+            // explicarlo dejó al cliente 70 días viendo 1,13 L de KENDO cuando
+            // tenía 7,13 en físico y en libro: los 6 L faltantes los retenía una
+            // salida de julio cuya recepción quedó parcial. Con el número de la
+            // salida y el destino sabe qué recepción finalizar para liberarlo.
+            $blocking = $groupBlocking[$key] ?? [];
+            $reservedLabel = $this->reservedLabel($blocking, $committedForGroup, $baseUnit);
+
             return [
                 'inventory_id' => $item->id,
                 'product_id' => $item->product_id,
@@ -337,6 +347,7 @@ class ProductController extends Controller
                 // recibidas (mismo producto+marca, en toda la ubicación) y lo que
                 // realmente queda disponible para ESTE lote.
                 'committed_quantity' => round($committedForGroup, 2),
+                'committed_by' => $blocking,
                 'available_quantity' => round($availableForRow, 2),
                 'unit_price' => $item->unit_price,
                 'category' => $item->product->category?->name,
@@ -344,24 +355,26 @@ class ProductController extends Controller
                 'active_ingredient' => $item->product->active_ingredient,
                 // Display label for dropdown: "ProductName [code] - Brand - ExpDate - Disponible"
                 'display_label' => sprintf(
-                    '%s%s%s - %s - %s %s disponible%s',
+                    '%s%s%s - %s - %s %s disponible%s%s',
                     $item->product->name,
                     $item->product->product_code ? ' [' . $item->product->product_code . ']' : '',
                     $item->brand && $item->brand->name ? ' - ' . $item->brand->name : '',
                     $expirationDate,
                     number_format($availableForRow, 2),
                     $baseUnit,
-                    $expiredLabel
+                    $expiredLabel,
+                    $reservedLabel
                 ),
                 // Short label for mobile (incluye código para búsqueda)
                 'short_label' => sprintf(
-                    '%s%s - %s - %s %s%s',
+                    '%s%s - %s - %s %s%s%s',
                     $item->product->name,
                     $item->product->product_code ? ' [' . $item->product->product_code . ']' : '',
                     $expirationDate,
                     number_format($availableForRow, 2),
                     $baseUnit,
-                    $expiredLabel
+                    $expiredLabel,
+                    $reservedLabel
                 ),
             ];
         })->values();
@@ -372,6 +385,43 @@ class ProductController extends Controller
             'data' => $formattedData,
             'count' => $formattedData->count(),
         ]);
+    }
+
+    /**
+     * " (6.00 L reservados por SAL-20260723-0051 a Mansión, pendiente desde
+     * 22/07/2026)". Vacío cuando no hay reservas. Nombra hasta dos salidas y
+     * resume el resto, para que el rótulo no se vuelva ilegible.
+     *
+     * @param  array<int, array{output_number: string, pending: float, destination: ?string, output_date: ?string}>  $blocking
+     */
+    private function reservedLabel(array $blocking, float $committed, string $unit): string
+    {
+        if ($committed <= 0.01 || $blocking === []) {
+            return '';
+        }
+
+        $causas = array_map(function (array $b) {
+            $texto = $b['output_number'];
+            if (!empty($b['destination'])) {
+                $texto .= ' a ' . $b['destination'];
+            }
+            if (!empty($b['output_date'])) {
+                $texto .= ', pendiente desde ' . \Carbon\Carbon::parse($b['output_date'])->format('d/m/Y');
+            }
+            return $texto;
+        }, array_slice($blocking, 0, 2));
+
+        $resto = count($blocking) - count($causas);
+        if ($resto > 0) {
+            $causas[] = sprintf('y %d salida%s más', $resto, $resto === 1 ? '' : 's');
+        }
+
+        return sprintf(
+            ' (%s %s reservados por %s)',
+            number_format($committed, 2),
+            $unit,
+            implode('; ', $causas)
+        );
     }
 
     /**

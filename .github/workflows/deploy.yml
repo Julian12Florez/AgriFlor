@@ -85,6 +85,22 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # `vite build` no revisa tipos, y `tsc -b` completo tiene ~145 errores
+      # previos que bloquearían todo deploy. Este paso solo frena lo que
+      # REVIENTA en ejecución: nombres que no existen (TS2304/TS2552). Así llegó
+      # a producción el botón "Finalizar recepción", que liberaba la reserva y
+      # mostraba "setIsDetailModalVisible is not defined" desde el 2-jun-2026.
+      - name: Nombres inexistentes (ReferenceError en ejecución)
+        working-directory: frontend
+        run: |
+          set +e
+          npx tsc --noEmit -p tsconfig.app.json --pretty false > /tmp/tsc.log 2>&1
+          if grep -E "TS2304|TS2552" /tmp/tsc.log; then
+            echo "::error::Hay referencias a nombres que no existen: revientan en ejecución."
+            exit 1
+          fi
+          echo "Sin nombres inexistentes."
+
       - name: Build
         working-directory: frontend
         env:
