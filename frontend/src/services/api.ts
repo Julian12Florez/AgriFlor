@@ -421,6 +421,14 @@ export const purchasesApi = {
   cancel: (id: string) =>
     api.put<ApiResponse<any>>(`/purchases/${id}/cancel`, {}),
 
+  // Eliminar una compra —también recibida— revirtiendo su inventario. Primero la
+  // vista previa (no escribe), luego la ejecución con motivo obligatorio.
+  reversalPreview: (id: string) =>
+    api.get<ApiResponse<any>>(`/purchases/${id}/reversal-preview`),
+
+  reverse: (id: string, motivo: string) =>
+    api.post<ApiResponse<any>>(`/purchases/${id}/reverse`, { motivo }),
+
   exportPdf: (id: string, orderNumber?: string) => {
     const url = `${API_BASE_URL}/purchases/${id}/export-pdf`;
     const filename = orderNumber ? `orden_compra_${orderNumber}.pdf` : `orden_compra_${id}.pdf`;

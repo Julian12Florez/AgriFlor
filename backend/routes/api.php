@@ -284,6 +284,13 @@ Route::middleware('auth:api')->group(function () {
         Route::put('purchases/{id}/cancel', [PurchaseController::class, 'cancel']);
     });
 
+    // PURCHASES - Eliminar revirtiendo inventario (también recibidas). Destructivo:
+    // solo administrador, con motivo obligatorio que queda en la auditoría.
+    Route::middleware('role:admin')->group(function () {
+        Route::get('purchases/{id}/reversal-preview', [PurchaseController::class, 'reversalPreview']);
+        Route::post('purchases/{id}/reverse', [PurchaseController::class, 'reverse']);
+    });
+
     // PRODUCT OUTPUTS - Read (All roles - todos deben tener acceso a salidas)
     Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
         Route::post('product-outputs/validate-inventory', [ProductOutputController::class, 'validateInventory']);

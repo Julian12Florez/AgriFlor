@@ -399,6 +399,58 @@ class PurchaseController extends Controller
      * Remove the specified purchase
      * Files are deleted AFTER commit to prevent orphaned files (ERR-002 fix)
      */
+    /**
+     * Vista previa de "Eliminar compra": qué se revertiría producto por producto
+     * y qué lo impide. No escribe nada.
+     */
+    public function reversalPreview(string $id, \App\Services\PurchaseReversalService $reversal): JsonResponse
+    {
+        $purchase = Purchase::findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data' => array_merge(
+                ['order_number' => $purchase->order_number, 'status' => $purchase->status],
+                $reversal->plan($purchase)
+            ),
+        ]);
+    }
+
+    /**
+     * Elimina una compra —también una ya recibida— revirtiendo lo que metió al
+     * inventario. Ver App\Services\PurchaseReversalService.
+     */
+    public function reverse(Request $request, string $id, \App\Services\PurchaseReversalService $reversal): JsonResponse
+    {
+        $request->validate(
+            ['motivo' => ['required', 'string', 'min:10', 'max:500']],
+            [
+                'motivo.required' => 'Escriba por qué se elimina la compra: queda en la auditoría.',
+                'motivo.min' => 'El motivo debe tener al menos 10 caracteres.',
+            ]
+        );
+
+        $purchase = Purchase::findOrFail($id);
+
+        try {
+            $resumen = $reversal->reverse($purchase, trim($request->input('motivo')), auth()->user()?->name ?? 'desconocido');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $bloqueos = collect($e->errors())->flatten()->values()->all();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar la compra: ' . ($bloqueos[0] ?? 'hay algo que lo impide.'),
+                'blockers' => $bloqueos,
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => "Compra {$resumen['order_number']} eliminada. Su inventario quedó revertido.",
+            'data' => $resumen,
+        ]);
+    }
+
     public function destroy(string $id): JsonResponse
     {
         try {

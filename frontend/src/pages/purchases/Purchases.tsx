@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, message, Modal, Row, Col, Select, Descriptions, Divider, Alert, Typography, Drawer, Table, Form, DatePicker, InputNumber, Popconfirm } from 'antd';
-import { EyeOutlined, DownloadOutlined, PrinterOutlined, ShoppingCartOutlined, ClockCircleOutlined, CheckCircleOutlined, TruckOutlined, ExclamationCircleOutlined, PlusOutlined, InboxOutlined, StopOutlined } from '@ant-design/icons';
+import { EyeOutlined, DownloadOutlined, PrinterOutlined, ShoppingCartOutlined, ClockCircleOutlined, CheckCircleOutlined, TruckOutlined, ExclamationCircleOutlined, PlusOutlined, InboxOutlined, StopOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { purchasesApi, suppliersApi, productsApi, locationsApi, companiesApi, handleApiError } from '../../services/api';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
+import { usePermissions } from '../../hooks/usePermissions';
+import PurchaseReversalModal from './PurchaseReversalModal';
 
 const { Text, Title } = Typography;
 const { Search } = Input;
@@ -82,6 +84,11 @@ const Purchases: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
+  const [isReversalOpen, setIsReversalOpen] = useState(false);
+  // Por NOMBRE de rol, igual que el backend (role:admin): "acceso completo" lo
+  // tienen otros roles que el endpoint rechaza con 403.
+  const { getRoleName } = usePermissions();
+  const puedeEliminarCompras = getRoleName() === 'admin';
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
@@ -661,6 +668,11 @@ const Purchases: React.FC = () => {
             >
               Descargar PDF
             </Button>
+            {puedeEliminarCompras && selectedPurchase.status !== 'cancelled' && (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setIsReversalOpen(true)}>
+                Eliminar compra
+              </Button>
+            )}
           </Space>
         </div>
       </div>
@@ -741,6 +753,17 @@ const Purchases: React.FC = () => {
           }}
         />
       </Card>
+
+      <PurchaseReversalModal
+        purchase={selectedPurchase ? { id: selectedPurchase.id, orderNumber: selectedPurchase.orderNumber } : null}
+        open={isReversalOpen}
+        onClose={() => setIsReversalOpen(false)}
+        onDeleted={() => {
+          setIsReversalOpen(false);
+          setIsModalVisible(false);
+          setSelectedPurchase(null);
+        }}
+      />
 
       {/* Modal de detalles */}
       {isMobile ? (

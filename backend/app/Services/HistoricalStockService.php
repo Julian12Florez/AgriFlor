@@ -76,6 +76,33 @@ class HistoricalStockService
         string $fecha,
         ?string $excluirMovimientoId = null,
     ): float {
+        return max(0.0, $this->saldoMinimoDesde(
+            $productId,
+            $brandId,
+            $locationId,
+            $fecha,
+            $excluirMovimientoId === null ? [] : [$excluirMovimientoId],
+        ));
+    }
+
+    /**
+     * El saldo más bajo del kardex desde `$fecha` en adelante, SIN recortar a
+     * cero: si da negativo, dice cuánto.
+     *
+     * Es lo que necesita quien quiere QUITAR entradas (revertir una compra
+     * recibida): se excluyen esas entradas y se mira si algún día, desde la
+     * primera de ellas, el saldo queda por debajo de cero. disponibleALaFecha()
+     * no sirve para eso porque responde 0 tanto si sobra justo como si faltan 15.
+     *
+     * @param  array<int, string>  $excluirMovimientos  Ids a ignorar en el cálculo.
+     */
+    public function saldoMinimoDesde(
+        string $productId,
+        ?string $brandId,
+        string $locationId,
+        string $fecha,
+        array $excluirMovimientos = [],
+    ): float {
         $fecha = substr($fecha, 0, 10);
 
         $query = DB::table('inventory_movements')
@@ -90,8 +117,8 @@ class HistoricalStockService
             ? $query->whereNull('brand_id')
             : $query->where('brand_id', $brandId);
 
-        if ($excluirMovimientoId !== null) {
-            $query->where('id', '!=', $excluirMovimientoId);
+        if ($excluirMovimientos !== []) {
+            $query->whereNotIn('id', $excluirMovimientos);
         }
 
         $filas = $query->groupBy('movement_date')
@@ -124,7 +151,7 @@ class HistoricalStockService
             ? $saldoEnLaFecha
             : min($saldoEnLaFecha, $minimoDesdeLaFecha);
 
-        return max(0.0, round($minimo, 2));
+        return round($minimo, 2);
     }
 
     /**
