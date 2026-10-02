@@ -330,15 +330,44 @@ const Outputs: React.FC = () => {
       setSelectedOutputTypeId(record.outputType.id);
     }
 
+    // Cada línea se mostraba buscando el producto en el inventario ACTUAL del
+    // origen. Si ya no había (lo normal en una salida despachada: el lote se
+    // agotó, o una devolución se llevó todo a la bodega), el campo mostraba el ID
+    // interno del producto y "Físico: 0.00 · Disponible: 0.00" (reportado el
+    // 2-oct-2026 con SAL-20260918-0005). Y cuando sí había, mostraba el lote y el
+    // stock de HOY de otro lote cualquiera, no lo que salió.
+    //
+    // Ahora una salida que ya no se puede editar se muestra con SUS datos
+    // (producto, marca, lote, vencimiento). Una pendiente busca su inventario por
+    // producto + marca (y el mismo lote si lo trae), y si no lo encuentra también
+    // cae a los datos de la salida en vez de al ID.
+    const etiquetaDeLaSalida = (p: OutputProduct) =>
+      [
+        p.productName || 'Producto',
+        p.brandName,
+        p.batchNumber ? `Lote ${p.batchNumber}` : null,
+        p.expirationDate ? `Vence ${dayjs(p.expirationDate).format('DD/MM/YYYY')}` : null,
+      ].filter(Boolean).join(' - ');
+
+    const inventarioDe = (p: OutputProduct) => {
+      if (!canEdit) return undefined;
+      const mismos = loadedProducts.filter(
+        (item: any) => item.product_id === p.productId && item.brand_id === p.brandId
+      );
+      return mismos.find((item: any) => p.batchNumber && item.batch_number === p.batchNumber) ?? mismos[0];
+    };
+
     // Map products to labelInValue format
     const mappedProducts = record.products.map(p => {
-      const inventoryItem = loadedProducts.find((item: any) => item.product_id === p.productId);
+      const inventoryItem = inventarioDe(p);
 
       return {
         productId: inventoryItem ? {
           value: inventoryItem.inventory_id,
           label: inventoryItem.display_label
-        } : p.productId,
+        } : { value: p.productId, label: etiquetaDeLaSalida(p) },
+        // Sin inventario en el origen no hay físico ni disponible que mostrar.
+        sinInventario: !inventoryItem,
         realProductId: p.productId,
         brandId: p.brandId,
         inventoryId: inventoryItem?.inventory_id,
@@ -348,11 +377,13 @@ const Outputs: React.FC = () => {
         baseQuantity: inventoryItem?.base_quantity || inventoryItem?.quantity,
         committedQuantity: inventoryItem?.committed_quantity || 0,
         availableQuantity: inventoryItem?.available_quantity ?? inventoryItem?.base_quantity ?? inventoryItem?.quantity,
-        baseUnit: inventoryItem?.base_unit || inventoryItem?.unit,
+        // Sin inventario quedaban vacías y el guardado caía a 'kg' aunque el
+        // producto fuera en litros: se usa la unidad registrada en la salida.
+        baseUnit: inventoryItem?.base_unit || inventoryItem?.unit || p.unit,
         quantityRequested: p.quantityRequested,
         quantityDelivered: p.quantityDelivered,
         batchNumber: p.batchNumber,
-        unit: inventoryItem?.unit
+        unit: inventoryItem?.unit ?? p.unit
       };
     });
 
@@ -1101,6 +1132,18 @@ const Outputs: React.FC = () => {
                             const products = getFieldValue('products') || [];
                             const currentProduct = products[name];
                             if (!currentProduct?.productId) return null;
+                            // Una salida ya despachada no tiene "físico" ni "disponible": se muestra
+                            // lo que salió. Y si el producto ya no está en el origen, se dice eso en
+                            // vez de "Físico: 0.00".
+                            if (isReadOnly || currentProduct.sinInventario) {
+                              return (
+                                <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                                  {isReadOnly
+                                    ? `Entregado: ${Number(currentProduct.quantityDelivered || 0).toFixed(2)} ${currentProduct.unit || ''}`
+                                    : 'Sin existencias de este producto en el origen'}
+                                </Typography.Text>
+                              );
+                            }
                             return (
                               <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
                                 Físico: {(currentProduct.baseQuantity || 0).toFixed(2)} {currentProduct.baseUnit}
@@ -1324,6 +1367,17 @@ const Outputs: React.FC = () => {
                           const products = getFieldValue('products') || [];
                           const currentProduct = products[name];
                           if (!currentProduct?.productId) return null;
+                          // Igual que en el formulario de arriba: una salida despachada muestra lo
+                          // entregado, no el "físico" de hoy.
+                          if (isReadOnly || currentProduct.sinInventario) {
+                            return (
+                              <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
+                                {isReadOnly
+                                  ? `Entregado: ${Number(currentProduct.quantityDelivered || 0).toFixed(2)} ${currentProduct.unit || ''}`
+                                  : 'Sin existencias de este producto en el origen'}
+                              </Typography.Text>
+                            );
+                          }
                           return (
                             <Typography.Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 8 }}>
                               Físico: {(currentProduct.baseQuantity || 0).toFixed(2)} {currentProduct.baseUnit}
@@ -1442,9 +1496,13 @@ const Outputs: React.FC = () => {
                         {({ getFieldValue }) => {
                           const products = getFieldValue('products') || [];
                           const currentProduct = products[name];
-                          const productId = currentProduct?.productId;
-                          const product = availableProducts.find((p: any) => p.id === productId);
-                          const unit = product?.base_unit || '';
+                          // `productId` es el valor del selector ({value: id del lote,
+                          // label}), no el id del producto: buscarlo en el catálogo
+                          // nunca encontraba nada y la columna salía "-". Solo
+                          // funcionaba, por accidente, cuando la línea mostraba el id
+                          // crudo del producto.
+                          const product = availableProducts.find((p: any) => p.id === currentProduct?.realProductId);
+                          const unit = currentProduct?.baseUnit || currentProduct?.unit || product?.base_unit || '';
                           return (
                             <Input
                               value={unit}
