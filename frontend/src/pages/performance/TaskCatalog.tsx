@@ -315,6 +315,13 @@ const TaskCatalog = () => {
                       {cat.name}
                     </Option>
                   ))}
+                  {/* Solo vienen las categorías activas: si la tarea abierta tiene una
+                      que se inactivó, se agrega con su nombre para no mostrar el ID. */}
+                  {editingTask?.categoryData && !categories.some((cat: any) => cat.id === editingTask.categoryData.id) && (
+                    <Option key={editingTask.categoryData.id} value={editingTask.categoryData.id}>
+                      {editingTask.categoryData.name} (inactiva)
+                    </Option>
+                  )}
                 </Select>
               </Form.Item>
             </Col>

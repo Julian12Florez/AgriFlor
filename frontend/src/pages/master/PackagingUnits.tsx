@@ -42,7 +42,9 @@ const PackagingUnits: React.FC = () => {
   // Fetch base units for the form
   const { data: baseUnitsData } = useQuery({
     queryKey: ['baseUnits'],
-    queryFn: () => baseUnitsApi.list(),
+    // El API pagina a 15 por defecto: sin per_page, la unidad 16 en adelante
+    // no estaría entre las opciones y el selector mostraría su ID.
+    queryFn: () => baseUnitsApi.list({ per_page: 999 }),
   });
 
   const packagingUnits = unitsData?.data || [];

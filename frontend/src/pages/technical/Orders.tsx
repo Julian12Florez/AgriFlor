@@ -39,7 +39,9 @@ const Orders: React.FC = () => {
   // Fetch recipes
   const { data: recipesData } = useQuery({
     queryKey: ['recipes'],
-    queryFn: () => recipesApi.list(),
+    // El API pagina a 15 por defecto: sin per_page, la receta 16 en adelante
+    // no estaría entre las opciones y el selector mostraría su ID.
+    queryFn: () => recipesApi.list({ per_page: 999 }),
   });
 
   // Fetch products (per_page alto para traer todos)

@@ -3,6 +3,7 @@ import { Button, Input, Select, Space, Card, Tag, Popconfirm, message, Modal, Fo
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { conOpcionActual } from '../../utils/opcionActual';
 import { productsApi, brandsApi, packagingUnitsApi, baseUnitsApi, categoriesApi, handleApiError } from '../../services/api';
 import type { Product } from '../../data/types';
 import ResponsiveTable from '../../components/ResponsiveTable';
@@ -501,8 +502,15 @@ const Products: React.FC = () => {
                   showSearch
                   optionFilterProp="children"
                 >
-                  {categories.map((cat: any) => (
-                    <Option key={cat.id} value={cat.id}>{cat.name}</Option>
+                  {/* Las categorías vienen filtradas a activas: si el producto tiene
+                      una que se inactivó, se agrega con su nombre para no mostrar el ID. */}
+                  {conOpcionActual(
+                    categories.map((cat: any) => ({ value: cat.id, label: cat.name })),
+                    editingProduct?.categoryId
+                      ? { value: editingProduct.categoryId, label: editingProduct.categoryName ?? editingProduct.category?.name }
+                      : null,
+                  ).map((op) => (
+                    <Option key={op.value} value={op.value}>{op.label}</Option>
                   ))}
                 </Select>
               </Form.Item>

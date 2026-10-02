@@ -4,6 +4,7 @@ import { PlusOutlined, EditOutlined, DeleteOutlined, EnvironmentOutlined, HomeOu
 import ResponsiveTable from '../../components/ResponsiveTable';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { conOpcionActual } from '../../utils/opcionActual';
 import { locationsApi, farmLotsApi, usersApi, handleApiError } from '../../services/api';
 import type { Location } from '../../data/types';
 
@@ -558,10 +559,14 @@ const Locations: React.FC = () => {
                   filterOption={(input, option) =>
                     (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
                   }
-                  options={users?.map((user: any) => ({
-                    value: user.id,
-                    label: user.name
-                  }))}
+                  // La lista trae solo usuarios activos: si el responsable de la
+                  // finca se inactivó, se agrega con su nombre para no mostrar el ID.
+                  options={conOpcionActual(
+                    users?.map((user: any) => ({ value: user.id, label: user.name })),
+                    editingLocation?.responsible_user
+                      ? { value: editingLocation.responsible_user.id, label: editingLocation.responsible_user.name }
+                      : null,
+                  )}
                 />
               </Form.Item>
             </Col>

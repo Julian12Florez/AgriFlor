@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { conOpcionActual } from '../../utils/opcionActual';
 import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi, companiesApi, handleApiError } from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -79,7 +80,9 @@ const Outputs: React.FC = () => {
   // Fetch technical orders
   const { data: ordersData } = useQuery({
     queryKey: ['orders'],
-    queryFn: () => ordersApi.list(),
+    // El API pagina a 15 por defecto: sin per_page, la orden 16 en adelante
+    // no estaría entre las opciones y el selector mostraría su ID.
+    queryFn: () => ordersApi.list({ per_page: 999 }),
   });
 
   // Fetch users
@@ -91,7 +94,7 @@ const Outputs: React.FC = () => {
   // Fetch output types
   const { data: outputTypesData } = useQuery({
     queryKey: ['output-types'],
-    queryFn: () => outputTypesApi.list({ status: 'active' }),
+    queryFn: () => outputTypesApi.list({ status: 'active', per_page: 999 }),
   });
 
   // Empresas emisoras: pueblan el selector "Empresa" del formulario de salida.
@@ -816,7 +819,7 @@ const Outputs: React.FC = () => {
           {dayjs(record.outputDate).format('DD/MM/YYYY')}
         </Descriptions.Item>
         <Descriptions.Item label="Responsable">
-          {record.responsibleUserDetails?.name || record.responsibleUser || 'Sin asignar'}
+          {record.responsibleUserDetails?.name || (record.responsibleUser ? 'Usuario no disponible' : 'Sin asignar')}
         </Descriptions.Item>
         <Descriptions.Item label="Productos">
           {record.products.map((product, index) => (
@@ -885,9 +888,16 @@ const Outputs: React.FC = () => {
               placeholder="Seleccione el tipo de salida"
               onChange={handleOutputTypeChange}
             >
-              {availableOutputTypes.map((type: any) => (
-                <Option key={type.id} value={type.id}>
-                  {type.name}
+              {/* Solo vienen los tipos activos: si la salida abierta usa uno que
+                  se inactivó, se agrega con su nombre para no mostrar el ID. */}
+              {conOpcionActual(
+                availableOutputTypes.map((type: any) => ({ value: type.id, label: type.name })),
+                editingOutput?.outputType
+                  ? { value: editingOutput.outputType.id, label: editingOutput.outputType.name }
+                  : null,
+              ).map((op) => (
+                <Option key={op.value} value={op.value}>
+                  {op.label}
                 </Option>
               ))}
             </Select>
@@ -903,9 +913,13 @@ const Outputs: React.FC = () => {
               onChange={handleOrderChange}
               allowClear
             >
-              {availableOrders.map(order => (
+              {/* Se pintaba `{order.id} - {order.name}`: el ID interno y un campo
+                  que el API no manda. Se muestra el número de la orden y su receta. */}
+              {availableOrders.map((order: any) => (
                 <Option key={order.id} value={order.id}>
-                  {order.id} - {order.name} ({order.status === 'approved' ? '✅ Aprobada' : '⏳ Borrador'})
+                  {order.orderNumber || 'Orden sin número'}
+                  {order.recipe?.name ? ` - ${order.recipe.name}` : ''}
+                  {` (${order.status === 'approved' ? '✅ Aprobada' : '⏳ Borrador'})`}
                 </Option>
               ))}
             </Select>
