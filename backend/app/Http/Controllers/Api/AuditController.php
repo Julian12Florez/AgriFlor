@@ -31,6 +31,8 @@ class AuditController extends Controller
         'supplier' => 'Proveedor',
         'application' => 'Aplicación',
         'user' => 'Usuario',
+        'role' => 'Perfil',
+        'company' => 'Empresa',
     ];
 
     private array $eventNames = [
@@ -96,7 +98,17 @@ class AuditController extends Controller
         'description' => 'Descripción',
         'payment_terms' => 'Términos de pago',
         'role' => 'Rol',
+        // Perfiles (Administración → Perfiles)
+        'display_name' => 'Nombre del perfil',
+        'location_scoped' => 'Solo ve las fincas a su cargo (inventario, salidas, recepciones, ajustes)',
+        'schedule_scoped' => 'Solo ve las programaciones de las fincas a su cargo',
+        'has_full_access' => 'Acceso total',
+        'permisos_agregados' => 'Permisos agregados',
+        'permisos_quitados' => 'Permisos quitados',
     ];
+
+    // Casillas sí/no
+    private const BOOLEANS = ['location_scoped', 'schedule_scoped', 'has_full_access'];
 
     // Campo → "bucket" de modelo para resolver el ID a un nombre legible
     private const FK_RESOLVERS = [
@@ -226,6 +238,8 @@ class AuditController extends Controller
             'brand' => $pluck(\App\Models\Brand::class, $bucket['brand']),
             'packaging_unit' => $pluck(\App\Models\PackagingUnit::class, $bucket['packaging_unit']),
             'user' => $pluck(\App\Models\User::class, $bucket['user']),
+            // Nombre técnico del perfil (users.role) → nombre visible
+            'role_name' => \App\Models\Role::pluck('display_name', 'name'),
         ];
     }
 
@@ -234,13 +248,17 @@ class AuditController extends Controller
      */
     private function loadDocuments(array $items): array
     {
-        $ids = ['purchase' => [], 'output' => [], 'reception' => []];
+        $ids = ['purchase' => [], 'output' => [], 'reception' => [], 'role' => [], 'user' => []];
         foreach ($items as $a) {
             if (isset($ids[$a->auditable_type])) {
                 $ids[$a->auditable_type][] = $a->auditable_id;
             }
         }
         return [
+            // Un perfil o un usuario editado solo trae los campos que cambiaron:
+            // el nombre se busca aparte para poder decir de cuál se trata.
+            'role' => empty($ids['role']) ? collect() : \App\Models\Role::whereIn('id', array_unique($ids['role']))->pluck('display_name', 'id'),
+            'user' => empty($ids['user']) ? collect() : \App\Models\User::whereIn('id', array_unique($ids['user']))->pluck('name', 'id'),
             'purchase' => empty($ids['purchase']) ? collect() : \App\Models\Purchase::with(['purchaseItems.product', 'purchaseItems.brand', 'supplier', 'destinationLocation'])->whereIn('id', array_unique($ids['purchase']))->get()->keyBy('id'),
             'output' => empty($ids['output']) ? collect() : \App\Models\ProductOutput::with(['outputProducts.product', 'originLocation', 'destinationLocation', 'outputType'])->whereIn('id', array_unique($ids['output']))->get()->keyBy('id'),
             'reception' => empty($ids['reception']) ? collect() : \App\Models\Reception::with(['receptionItems.product', 'originLocation', 'destinationLocation'])->whereIn('id', array_unique($ids['reception']))->get()->keyBy('id'),
@@ -279,6 +297,15 @@ class AuditController extends Controller
 
         // Datos maestros (o documento ya eliminado): usar el nombre disponible
         $vals = (!empty($a->new_values) ? $a->new_values : $a->old_values) ?? [];
+
+        if ($type === 'role') {
+            $nombre = $docs['role']->get($a->auditable_id) ?? $vals['display_name'] ?? null;
+            return $nombre ? "Perfil: $nombre" : 'Perfil';
+        }
+        if ($type === 'user' && ($nombre = $docs['user']->get($a->auditable_id))) {
+            return "Usuario: $nombre";
+        }
+
         $name = $vals['name'] ?? $vals['order_number'] ?? $vals['reception_number'] ?? $vals['output_number'] ?? null;
         $label = $this->modelNames[$type] ?? $type;
         return $name ? "$label: $name" : $label;
@@ -298,6 +325,10 @@ class AuditController extends Controller
         $out = [];
         foreach ($keys as $k) {
             if (in_array($k, self::HIDDEN, true)) {
+                continue;
+            }
+            // De un perfil se muestra el nombre visible, no el técnico.
+            if ($a->auditable_type === 'role' && in_array($k, ['name', 'excluded_modules'], true)) {
                 continue;
             }
             $from = $this->present($k, $old[$k] ?? null, $lk);
@@ -325,6 +356,14 @@ class AuditController extends Controller
         $r = self::FK_RESOLVERS[$field] ?? null;
         if ($r && is_string($value) && isset($lk[$r][$value])) {
             return $lk[$r][$value];
+        }
+        // Casillas sí/no
+        if (in_array($field, self::BOOLEANS, true)) {
+            return filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 'Sí' : 'No';
+        }
+        // Perfil de un usuario: nombre visible en vez del técnico
+        if ($field === 'role' && is_string($value)) {
+            return $lk['role_name'][$value] ?? $value;
         }
         // Traducciones de valores conocidos
         if ($field === 'status') return self::STATUS[$value] ?? $value;

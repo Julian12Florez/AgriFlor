@@ -137,8 +137,10 @@ const getQuantityDisplay = (record: Adjustment): QuantityDisplay => {
 
 const Adjustments: React.FC = () => {
   const queryClient = useQueryClient();
-  const { user, getRoleName } = usePermissions();
-  const isAdminRole = getRoleName() === 'admin';
+  // Aprobar/rechazar: el mismo permiso que pide el backend (se marca en
+  // Administración → Perfiles). Antes era "solo el perfil admin" por nombre.
+  const { user, hasPermission } = usePermissions();
+  const isAdminRole = hasPermission('approve_adjustment');
 
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [searchText, setSearchText] = useState('');

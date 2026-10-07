@@ -23,15 +23,16 @@ class TaskScheduleController extends Controller
 
     /**
      * Verifica si el usuario actual puede acceder a un schedule.
-     * Si rol='farm', solo puede ver/editar schedules de fincas donde es responsable.
+     * Si su perfil tiene marcada la casilla "solo ve las programaciones de las
+     * fincas a su cargo" (día uno: Operario de Finca), solo puede ver/editar
+     * schedules de fincas donde es responsable.
      */
     private function canAccessSchedule(TaskSchedule $schedule): bool
     {
         $user = auth()->user();
         if (!$user) return false;
-        $roleName = $user->roleRelation?->name ?? $user->role;
-        if ($roleName !== 'farm') return true; // admin/supervisor/etc ven todo
-        // farm operator: debe ser responsable de la finca
+        if ($user->canViewAllSchedules()) return true;
+        // perfil restringido: debe ser responsable de la finca
         return \App\Models\Location::where('id', $schedule->location_id)
             ->where('responsible_user_id', $user->id)
             ->exists();
@@ -114,10 +115,9 @@ class TaskScheduleController extends Controller
             'start_date.before_or_equal' => 'Una tarea no programada no puede tener fecha de inicio futura.',
         ]);
 
-        // Si user es farm, validar que la finca destino sea de su responsabilidad
+        // Perfil restringido a sus fincas: la finca destino debe ser de su responsabilidad
         $authUser = auth()->user();
-        $authRoleName = $authUser?->roleRelation?->name ?? $authUser?->role;
-        if ($authRoleName === 'farm') {
+        if ($authUser && !$authUser->canViewAllSchedules()) {
             $isResponsible = \App\Models\Location::where('id', $validated['location_id'])
                 ->where('responsible_user_id', $authUser->id)
                 ->exists();
@@ -925,10 +925,9 @@ class TaskScheduleController extends Controller
 
         $location = \App\Models\Location::findOrFail($request->location_id);
 
-        // Si rol farm, validar que sea responsable de esta finca
+        // Perfil restringido a sus fincas: debe ser responsable de esta
         $user = auth()->user();
-        $roleName = $user?->roleRelation?->name ?? $user?->role;
-        if ($roleName === 'farm' && $location->responsible_user_id !== $user->id) {
+        if ($user && !$user->canViewAllSchedules() && $location->responsible_user_id !== $user->id) {
             return response()->json(['success' => false, 'message' => 'No tienes acceso a esta finca.'], 403);
         }
 

@@ -41,6 +41,10 @@ class RolesSeeder extends Seeder
                     'description' => $descripcion,
                     'has_full_access' => $accesoTotal,
                     'excluded_modules' => null,
+                    // "Solo ve su finca": la regla que antes vivía en el código
+                    // (User::LOCATION_SCOPED_ROLES y `farm` en las programaciones).
+                    'location_scoped' => in_array($nombre, ['supervisor', 'farm'], true),
+                    'schedule_scoped' => $nombre === 'farm',
                 ]
             );
         }

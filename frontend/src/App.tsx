@@ -36,6 +36,7 @@ import InventoryAudit from './pages/reports/InventoryAudit';
 import StockReport from './pages/reports/StockReport';
 import ConsumptionReport from './pages/reports/ConsumptionReport';
 import Users from './pages/admin/Users';
+import Profiles from './pages/admin/Profiles';
 import Companies from './pages/admin/Companies';
 import AuditLog from './pages/admin/AuditLog';
 import Workers from './pages/liquidation/Workers';
@@ -318,17 +319,25 @@ const App: React.FC = () => {
               } />
 
               {/* Admin Routes - module: 'admin' */}
+              {/* Cada pantalla pide, además del módulo, el permiso que pide su API */}
               <Route path="/admin/users" element={
-                <ProtectedRoute module="admin" showAccessDenied>
+                <ProtectedRoute module="admin" permission="manage_users" showAccessDenied>
                   <MainLayout>
                     <Users />
                   </MainLayout>
                 </ProtectedRoute>
               } />
-              {/* Empresas emisoras - solo admin puede crear/editar (el backend
-                  restringe la escritura con `role:admin`) */}
+              {/* Perfiles y permisos: qué ve y qué puede hacer cada perfil */}
+              <Route path="/admin/profiles" element={
+                <ProtectedRoute module="admin" permission="manage_roles" showAccessDenied>
+                  <MainLayout>
+                    <Profiles />
+                  </MainLayout>
+                </ProtectedRoute>
+              } />
+              {/* Empresas emisoras */}
               <Route path="/admin/companies" element={
-                <ProtectedRoute allowedRoles={['admin']} showAccessDenied>
+                <ProtectedRoute module="admin" permission="manage_companies" showAccessDenied>
                   <MainLayout>
                     <Companies />
                   </MainLayout>

@@ -40,6 +40,10 @@ class AppServiceProvider extends ServiceProvider
             'supplier' => 'App\Models\Supplier',
             'user' => 'App\Models\User',
             'adjustment' => 'App\Models\Adjustment',
+            'role' => 'App\Models\Role',
+            // Faltaba: Company es auditable y sin alias cada guardado de una
+            // empresa terminaba en error 500 (ClassMorphViolationException).
+            'company' => 'App\Models\Company',
         ]);
 
         // Register model observers for automatic inventory management

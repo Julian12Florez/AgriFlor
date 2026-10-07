@@ -75,12 +75,11 @@ class UserController extends Controller
         $data['status'] = $data['status'] ?? 'active';
 
         // Assign role_id based on role name
-        if (isset($data['role'])) {
-            $role = Role::where('name', $data['role'])->first();
-            if ($role) {
-                $data['role_id'] = $role->id;
-            }
+        $role = Role::where('name', $data['role'])->firstOrFail();
+        if ($denegado = $this->soloAccesoTotalTocaAdministradores(null, $role)) {
+            return $denegado;
         }
+        $data['role_id'] = $role->id;
 
         $user = User::create($data);
         $user->load('roleRelation.permissions');
@@ -119,11 +118,12 @@ class UserController extends Controller
         }
 
         // Sync role_id when role changes
-        if (isset($data['role'])) {
-            $role = Role::where('name', $data['role'])->first();
-            if ($role) {
-                $data['role_id'] = $role->id;
-            }
+        $role = isset($data['role']) ? Role::where('name', $data['role'])->firstOrFail() : null;
+        if ($denegado = $this->soloAccesoTotalTocaAdministradores($user, $role)) {
+            return $denegado;
+        }
+        if ($role) {
+            $data['role_id'] = $role->id;
         }
 
         $user->update($data);
@@ -143,6 +143,10 @@ class UserController extends Controller
     {
         $user = User::visible()->findOrFail($id);
 
+        if ($denegado = $this->soloAccesoTotalTocaAdministradores($user, null)) {
+            return $denegado;
+        }
+
         // Prevent deleting the authenticated user
         if ($user->id === auth()->id()) {
             return response()->json([
@@ -160,6 +164,33 @@ class UserController extends Controller
     }
 
     /**
+     * Candado: solo un usuario de acceso total (Administrador) puede crear,
+     * modificar o eliminar a otro de acceso total, o darle ese perfil a alguien.
+     *
+     * `manage_users` es un permiso que el administrador puede dar a otros
+     * perfiles desde la pantalla de Perfiles. Sin este candado, quien lo reciba
+     * podría nombrarse administrador o cambiarle la clave al que ya lo es.
+     *
+     * @param  User|null  $afectado    el usuario que se modifica (null al crear)
+     * @param  Role|null  $nuevoPerfil el perfil que se le quiere asignar (null si no cambia)
+     */
+    private function soloAccesoTotalTocaAdministradores(?User $afectado, ?Role $nuevoPerfil): ?JsonResponse
+    {
+        if (auth()->user()?->hasFullAccess()) {
+            return null;
+        }
+
+        if ($afectado?->hasFullAccess() || $nuevoPerfil?->has_full_access) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo un administrador puede crear, modificar o eliminar usuarios con perfil de administrador.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
      * Update user status
      */
     public function updateStatus(Request $request, string $id): JsonResponse
@@ -169,6 +200,10 @@ class UserController extends Controller
         ]);
 
         $user = User::visible()->findOrFail($id);
+
+        if ($denegado = $this->soloAccesoTotalTocaAdministradores($user, null)) {
+            return $denegado;
+        }
 
         // Prevent deactivating the authenticated user
         if ($user->id === auth()->id() && $request->status === 'inactive') {

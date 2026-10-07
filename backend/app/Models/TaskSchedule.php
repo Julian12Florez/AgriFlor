@@ -97,16 +97,15 @@ class TaskSchedule extends Model
     }
 
     /**
-     * Filtra los schedules para un usuario según su rol.
-     * - admin / supervisor / financiero: ven TODAS
-     * - farm (encargado de finca): solo ve las locations donde es responsible_user_id
-     * - otros roles: ven todas (no se restringen)
+     * Filtra los schedules para un usuario según su perfil.
+     * - Con la casilla "solo ve las programaciones de las fincas a su cargo"
+     *   (día uno: Operario de Finca): solo las locations donde es responsible_user_id.
+     * - Los demás perfiles: ven todas.
      */
     public function scopeForUser($query, $user)
     {
         if (!$user) return $query;
-        $roleName = $user->roleRelation?->name ?? $user->role;
-        if ($roleName === 'farm') {
+        if (!$user->canViewAllSchedules()) {
             $locationIds = \App\Models\Location::where('responsible_user_id', $user->id)
                 ->pluck('id');
             return $query->whereIn('location_id', $locationIds);

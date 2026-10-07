@@ -3,10 +3,67 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'agronomist' | 'warehouse' | 'supervisor' | 'farm' | 'purchasing' | 'financiero';
+  /** Nombre técnico del perfil. Ya no es una lista fija: los perfiles se crean en Administración → Perfiles. */
+  role: string;
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
+}
+
+// ---------- Perfiles y permisos (Administración → Perfiles) ----------
+
+export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'special';
+
+export interface PermissionItem {
+  name: string;
+  label: string;
+  /** Fila de la tabla de permisos (p. ej. "Productos", "Compras"). */
+  group: string;
+  action: PermissionAction;
+  /** Es EL permiso que hace aparecer la sección en el menú. */
+  isMenu: boolean;
+}
+
+export interface PermissionModule {
+  key: string;
+  label: string;
+  /** Permiso que hace visible la sección en el menú; null = la ven todos. */
+  menuPermission: string | null;
+  permissions: PermissionItem[];
+}
+
+export interface Profile {
+  id: string;
+  /** Nombre técnico: se genera al crear y no cambia. */
+  name: string;
+  displayName: string;
+  description: string | null;
+  hasFullAccess: boolean;
+  locationScoped: boolean;
+  scheduleScoped: boolean;
+  /** false para el Administrador: no se edita ni se elimina. */
+  editable: boolean;
+  usersCount: number;
+  permissions: string[];
+  /** Secciones del menú que ve (etiquetas). */
+  menu: string[];
+  updatedAt?: string;
+}
+
+export interface ProfileOption {
+  id: string;
+  name: string;
+  displayName: string;
+  hasFullAccess: boolean;
+  menu: string[];
+}
+
+export interface ProfilePayload {
+  display_name: string;
+  description?: string | null;
+  location_scoped: boolean;
+  schedule_scoped: boolean;
+  permissions: string[];
 }
 
 export interface Product {

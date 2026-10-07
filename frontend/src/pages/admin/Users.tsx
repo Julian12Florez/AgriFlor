@@ -1,19 +1,31 @@
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import { Table, Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Avatar, Checkbox } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, UserOutlined, MailOutlined, PhoneOutlined, LockOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { usersApi, handleApiError } from '../../services/api';
+import { usersApi, rolesApi, handleApiError } from '../../services/api';
 
 interface User {
   id: string;
   email: string;
   name: string;
-  role: 'admin' | 'agronomist' | 'warehouse' | 'supervisor' | 'farm' | 'purchasing' | 'financiero';
+  /** Nombre técnico del perfil (los perfiles se administran en Administración → Perfiles). */
+  role: string;
   status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
 }
+
+/** Color de la etiqueta de los perfiles de fábrica; uno nuevo usa el color por defecto. */
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'red',
+  agronomist: 'green',
+  warehouse: 'blue',
+  supervisor: 'orange',
+  farm: 'purple',
+  purchasing: 'cyan',
+  financiero: 'gold',
+};
 
 const { Search } = Input;
 const { Option } = Select;
@@ -43,11 +55,24 @@ const Users: React.FC = () => {
 
   const users = usersData?.data || [];
 
+  // Perfiles disponibles: salen de Administración → Perfiles, no de una lista fija.
+  const { data: rolesData, isLoading: rolesLoading } = useQuery({
+    queryKey: ['roles-options'],
+    queryFn: () => rolesApi.options(),
+  });
+  const roles = useMemo(() => rolesData?.data || [], [rolesData]);
+
+  // Perfil elegido en el formulario, para mostrar qué menú le da al usuario.
+  const selectedRoleName = Form.useWatch('role', form);
+  const selectedRole = roles.find((r) => r.name === selectedRoleName);
+
   // Create user mutation
   const createUserMutation = useMutation({
     mutationFn: (data: any) => usersApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      // La pantalla de Perfiles muestra cuántos usuarios tiene cada perfil.
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
       setIsModalVisible(false);
       form.resetFields();
       message.success('Usuario creado exitosamente');
@@ -62,6 +87,8 @@ const Users: React.FC = () => {
     mutationFn: ({ id, data }: { id: string; data: any }) => usersApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      // La pantalla de Perfiles muestra cuántos usuarios tiene cada perfil.
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
       setIsModalVisible(false);
       form.resetFields();
       setEditingUser(null);
@@ -77,6 +104,8 @@ const Users: React.FC = () => {
     mutationFn: (id: string) => usersApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      // La pantalla de Perfiles muestra cuántos usuarios tiene cada perfil.
+      queryClient.invalidateQueries({ queryKey: ['roles'] });
       message.success('Usuario eliminado exitosamente');
     },
     onError: (error: any) => {
@@ -84,31 +113,9 @@ const Users: React.FC = () => {
     },
   });
 
-  const getRoleColor = (role: string) => {
-    const colors = {
-      admin: 'red',
-      agronomist: 'green',
-      warehouse: 'blue',
-      supervisor: 'orange',
-      farm: 'purple',
-      purchasing: 'cyan',
-      financiero: 'gold'
-    };
-    return colors[role as keyof typeof colors] || 'default';
-  };
+  const getRoleColor = (role: string) => ROLE_COLORS[role] || 'geekblue';
 
-  const getRoleText = (role: string) => {
-    const texts = {
-      admin: 'Administrador',
-      agronomist: 'Agrónomo',
-      warehouse: 'Bodeguero',
-      supervisor: 'Supervisor',
-      farm: 'Operario de Finca',
-      purchasing: 'Encargado de Compras',
-      financiero: 'Financiero'
-    };
-    return texts[role as keyof typeof texts] || role;
-  };
+  const getRoleText = (role: string) => roles.find((r) => r.name === role)?.displayName || role;
 
   const handleEdit = (record: User) => {
     setEditingUser(record);
@@ -193,15 +200,7 @@ const Users: React.FC = () => {
           {getRoleText(role)}
         </Tag>
       ),
-      filters: [
-        { text: 'Administrador', value: 'admin' },
-        { text: 'Agrónomo', value: 'agronomist' },
-        { text: 'Bodeguero', value: 'warehouse' },
-        { text: 'Supervisor', value: 'supervisor' },
-        { text: 'Operario de Finca', value: 'farm' },
-        { text: 'Encargado de Compras', value: 'purchasing' },
-        { text: 'Financiero', value: 'financiero' },
-      ],
+      filters: roles.map((r) => ({ text: r.displayName, value: r.name })),
       onFilter: (value, record) => record.role === value,
     },
     {
@@ -297,17 +296,14 @@ const Users: React.FC = () => {
             <Select
               placeholder="Filtrar por rol"
               allowClear
-              style={{ width: 150 }}
+              style={{ width: 200 }}
               value={roleFilter}
               onChange={setRoleFilter}
+              loading={rolesLoading}
             >
-              <Option value="admin">Administrador</Option>
-              <Option value="agronomist">Agrónomo</Option>
-              <Option value="warehouse">Bodeguero</Option>
-              <Option value="supervisor">Supervisor</Option>
-              <Option value="farm">Operario de Finca</Option>
-              <Option value="purchasing">Encargado de Compras</Option>
-              <Option value="financiero">Financiero</Option>
+              {roles.map((r) => (
+                <Option key={r.name} value={r.name}>{r.displayName}</Option>
+              ))}
             </Select>
             <Select
               placeholder="Filtrar por estado"
@@ -396,28 +392,12 @@ const Users: React.FC = () => {
                 label="Rol"
                 rules={[{ required: true, message: 'El rol es requerido' }]}
               >
-                <Select placeholder="Seleccione el rol">
-                  <Option value="admin">
-                    <Tag color="red" style={{ margin: 0 }}>Administrador</Tag>
-                  </Option>
-                  <Option value="agronomist">
-                    <Tag color="green" style={{ margin: 0 }}>Agrónomo</Tag>
-                  </Option>
-                  <Option value="warehouse">
-                    <Tag color="blue" style={{ margin: 0 }}>Bodeguero</Tag>
-                  </Option>
-                  <Option value="supervisor">
-                    <Tag color="orange" style={{ margin: 0 }}>Supervisor</Tag>
-                  </Option>
-                  <Option value="farm">
-                    <Tag color="purple" style={{ margin: 0 }}>Operario de Finca</Tag>
-                  </Option>
-                  <Option value="purchasing">
-                    <Tag color="cyan" style={{ margin: 0 }}>Encargado de Compras</Tag>
-                  </Option>
-                  <Option value="financiero">
-                    <Tag color="gold" style={{ margin: 0 }}>Financiero</Tag>
-                  </Option>
+                <Select placeholder="Seleccione el rol" loading={rolesLoading}>
+                  {roles.map((r) => (
+                    <Option key={r.name} value={r.name}>
+                      <Tag color={getRoleColor(r.name)} style={{ margin: 0 }}>{r.displayName}</Tag>
+                    </Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -434,6 +414,20 @@ const Users: React.FC = () => {
               </Form.Item>
             </Col>
           </Row>
+
+          {/* Qué menú le da ese perfil a la persona (se configura en Administración → Perfiles) */}
+          {selectedRole && (
+            <div style={{ marginTop: -8, marginBottom: 16, fontSize: 12, color: '#666' }} data-testid="menu-del-perfil">
+              <span style={{ marginRight: 6 }}>Con este perfil verá en el menú:</span>
+              {selectedRole.hasFullAccess ? (
+                <Tag color="red">Todo el sistema</Tag>
+              ) : selectedRole.menu.length === 0 ? (
+                <span>ninguna sección configurable</span>
+              ) : (
+                selectedRole.menu.map((seccion) => <Tag key={seccion}>{seccion}</Tag>)
+              )}
+            </div>
+          )}
 
           {/* Password fields - required on create, optional on edit */}
           {editingUser && (

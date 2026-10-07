@@ -85,10 +85,10 @@ const Purchases: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [isReversalOpen, setIsReversalOpen] = useState(false);
-  // Por NOMBRE de rol, igual que el backend (role:admin): "acceso completo" lo
-  // tienen otros roles que el endpoint rechaza con 403.
-  const { getRoleName } = usePermissions();
-  const puedeEliminarCompras = getRoleName() === 'admin';
+  // El mismo permiso que pide el backend para eliminar una compra ya recibida
+  // (se marca en Administración → Perfiles). Antes era por nombre de perfil.
+  const { hasPermission } = usePermissions();
+  const puedeEliminarCompras = hasPermission('reverse_purchase');
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();

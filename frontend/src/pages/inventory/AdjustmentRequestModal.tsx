@@ -30,11 +30,6 @@ import usePermissions from '../../hooks/usePermissions';
 import { formatQuantity } from '../../utils/formatters';
 import { invalidateAdjustmentRelated } from './adjustmentQueries';
 
-// Roles restringidos a su(s) ubicación(es): supervisor (encargado de finca) y farm
-// (operario de finca). Mismo criterio que Outputs.tsx — fail-safe: un rol no
-// contemplado ve/elige todas las ubicaciones.
-const LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
-
 // Clave de comparación para nombres de presentación: quita acentos/diacríticos
 // y pasa a minúsculas. String.toLowerCase() por sí solo NO basta — es sensible a
 // acentos ("Galón" !== "Galon") mientras MySQL compara con utf8mb4_unicode_ci,
@@ -62,7 +57,7 @@ interface AdjustmentRequestModalProps {
 const AdjustmentRequestModal: React.FC<AdjustmentRequestModalProps> = ({ open, onClose }) => {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
-  const { user, getRoleName, isAdmin } = usePermissions();
+  const { user, canViewAllLocations: puedeVerTodasLasUbicaciones } = usePermissions();
 
   const [isMobile, setIsMobile] = useState(false);
   const [selectedType, setSelectedType] = useState<AdjustmentType | undefined>();
@@ -79,7 +74,7 @@ const AdjustmentRequestModal: React.FC<AdjustmentRequestModalProps> = ({ open, o
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  const canViewAllLocations = isAdmin() || !LOCATION_SCOPED_ROLES.includes(getRoleName());
+  const canViewAllLocations = puedeVerTodasLasUbicaciones();
 
   const { data: productsData } = useQuery({
     queryKey: ['products', 'all-for-adjustments'],

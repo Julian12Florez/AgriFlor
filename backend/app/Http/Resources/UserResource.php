@@ -33,6 +33,10 @@ class UserResource extends JsonResource
                 'description' => $this->roleRelation->description,
                 'hasFullAccess' => $this->roleRelation->has_full_access,
                 'excludedModules' => $this->roleRelation->excluded_modules ?? [],
+                // "Solo ve su finca": casillas del perfil. El frontend las usa
+                // para ofrecer solo las ubicaciones a cargo del usuario.
+                'canViewAllLocations' => $this->canViewAllLocations(),
+                'canViewAllSchedules' => $this->canViewAllSchedules(),
             ];
 
             // Include permissions if loaded

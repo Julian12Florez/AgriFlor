@@ -41,7 +41,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
-  const { user, hasModuleAccess, getRoleDisplayName, getRoleName } = usePermissions();
+  const { user, hasModuleAccess, hasPermission, getRoleDisplayName, getRoleName } = usePermissions();
 
   // Detectar cambios de tamaño de pantalla
   useEffect(() => {
@@ -193,25 +193,31 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       ],
     });
 
-    // Administración - module: 'admin' (la Auditoría NO va aquí: ni admin la ve)
+    // Administración - module: 'admin' (la Auditoría NO va aquí: ni admin la ve).
+    // Cada pantalla se muestra por SU permiso, el mismo que pide el backend:
+    // un perfil al que se le dé solo "Administrar usuarios" no ve Empresas ni
+    // Perfiles (y no se come un 403 al entrar).
     if (hasModuleAccess('admin')) {
-      const adminChildren: any[] = [
-        { key: '/admin/users', label: 'Usuarios' },
-      ];
+      const adminChildren: any[] = [];
 
-      // Empresas emisoras: EXCLUSIVO del rol 'admin'. Se filtra por NOMBRE de rol y no
-      // por módulo porque el backend restringe la escritura con `role:admin`; otro rol
-      // con acceso al módulo 'admin' vería la pantalla y comería un 403 al guardar.
-      if (getRoleName() === 'admin') {
+      if (hasPermission('manage_users')) {
+        adminChildren.push({ key: '/admin/users', label: 'Usuarios' });
+      }
+      if (hasPermission('manage_roles')) {
+        adminChildren.push({ key: '/admin/profiles', label: 'Perfiles' });
+      }
+      if (hasPermission('manage_companies')) {
         adminChildren.push({ key: '/admin/companies', label: 'Empresas' });
       }
 
-      items.push({
-        key: 'sub6',
-        icon: <SettingOutlined />,
-        label: 'Administración',
-        children: adminChildren,
-      });
+      if (adminChildren.length > 0) {
+        items.push({
+          key: 'sub6',
+          icon: <SettingOutlined />,
+          label: 'Administración',
+          children: adminChildren,
+        });
+      }
     }
 
     // Auditoría - EXCLUSIVO del rol 'auditor' (ningún otro rol, ni siquiera admin)
@@ -224,7 +230,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     }
 
     return items;
-  }, [hasModuleAccess, getRoleName]);
+  }, [hasModuleAccess, hasPermission, getRoleName]);
 
   // Dropdown del usuario
   const userMenuItems: MenuProps['items'] = [

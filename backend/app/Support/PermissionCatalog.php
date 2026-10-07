@@ -144,6 +144,35 @@ final class PermissionCatalog
         ];
     }
 
+    /**
+     * Permisos que existen pero NO se ofrecen en la pantalla de Perfiles:
+     *  - audit.view: la auditoría va por nombre de perfil (`role:auditor`); ni
+     *    el administrador la ve, así que tampoco puede regalarla.
+     *  - adjust_inventory: reservado, hoy no protege ninguna ruta. Una casilla
+     *    que no hace nada confunde.
+     * Al guardar un perfil desde la pantalla estos no se tocan.
+     */
+    public const HIDDEN_FROM_PROFILES = ['audit.view', 'adjust_inventory'];
+
+    /**
+     * Los permisos que el administrador puede marcar en la pantalla de Perfiles.
+     *
+     * @return array<int, array{name: string, label: string, module: string, group: string, action: string, menu: bool, sort: int, roles: array<int, string>}>
+     */
+    public static function assignable(): array
+    {
+        return array_values(array_filter(
+            self::all(),
+            fn (array $p) => !in_array($p['name'], self::HIDDEN_FROM_PROFILES, true)
+        ));
+    }
+
+    /** @return array<int, string> */
+    public static function assignableNames(): array
+    {
+        return array_column(self::assignable(), 'name');
+    }
+
     /** @return array<int, string> */
     public static function names(): array
     {

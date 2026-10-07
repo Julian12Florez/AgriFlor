@@ -9,6 +9,12 @@ export interface RoleData {
   description?: string;
   hasFullAccess: boolean;
   excludedModules: string[];
+  /**
+   * Casillas "solo ve las fincas a su cargo" del perfil (Administración →
+   * Perfiles). Las calcula el backend; aquí solo se leen.
+   */
+  canViewAllLocations?: boolean;
+  canViewAllSchedules?: boolean;
 }
 
 export interface UserWithPermissions {
@@ -93,6 +99,15 @@ export const usePermissions = () => {
        */
       isAdmin: (): boolean => {
         return hasFullAccess;
+      },
+
+      /**
+       * ¿Ve todas las ubicaciones, o solo las fincas a su cargo? Lo decide la
+       * casilla del perfil. Si el dato no viene (sesión vieja en caché) se
+       * asume que ve todo: el backend filtra igual.
+       */
+      canViewAllLocations: (): boolean => {
+        return hasFullAccess || (user?.roleData?.canViewAllLocations ?? true);
       },
 
       /**

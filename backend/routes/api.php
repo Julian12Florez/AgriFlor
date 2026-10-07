@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\OutputTypeController;
 use App\Http\Controllers\Api\ReportExportController;
 use App\Http\Controllers\Api\WorkerController;
 use App\Http\Controllers\Api\ImportController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\TaskCatalogController;
 use App\Http\Controllers\Api\PerformanceSettingsController;
 use App\Http\Controllers\Api\TaskScheduleController;
@@ -124,6 +125,23 @@ Route::middleware('auth:api')->group(function () {
     // ----------------------------------------
     Route::apiResource('users', UserController::class)->middleware('permission:manage_users');
     Route::patch('users/{id}/status', [UserController::class, 'updateStatus'])->middleware('permission:manage_users');
+
+    // ----------------------------------------
+    // PERFILES Y PERMISOS (Administración → Perfiles)
+    // Aquí se configura lo que piden todas las demás rutas de este archivo.
+    // El perfil de acceso total no se edita y el auditor no existe para esta
+    // pantalla (ver RoleController).
+    // ----------------------------------------
+    // Lista corta para el selector de perfil del formulario de usuario.
+    Route::get('roles/options', [RoleController::class, 'options']);
+
+    Route::middleware('permission:manage_roles')->group(function () {
+        Route::get('roles', [RoleController::class, 'index']);
+        Route::get('roles/catalog', [RoleController::class, 'catalog']);
+        Route::post('roles', [RoleController::class, 'store']);
+        Route::put('roles/{id}', [RoleController::class, 'update']);
+        Route::delete('roles/{id}', [RoleController::class, 'destroy']);
+    });
 
     // ----------------------------------------
     // AUDITORÍA (quién hizo qué en el core) — SOLO LECTURA, SOLO rol 'auditor'

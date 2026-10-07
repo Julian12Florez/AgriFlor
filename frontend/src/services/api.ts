@@ -1,4 +1,4 @@
-import type { ApiResponse, PaginatedResponse, Adjustment, AdjustmentReason, Company, CompanyPayload } from '../types/index';
+import type { ApiResponse, PaginatedResponse, Adjustment, AdjustmentReason, Company, CompanyPayload, Profile, ProfileOption, ProfilePayload, PermissionModule } from '../types/index';
 import type { FormInstance, MessageInstance } from 'antd';
 
 // API Configuration
@@ -900,6 +900,30 @@ export const usersApi = {
 
   delete: (id: string) =>
     api.delete<ApiResponse<null>>(`/users/${id}`),
+};
+
+// Perfiles y permisos (Administración → Perfiles)
+export const rolesApi = {
+  /** Perfiles con sus permisos, para la pantalla de Perfiles. */
+  list: () =>
+    api.get<ApiResponse<Profile[]>>('/roles'),
+
+  /** Lista corta para el selector de perfil del formulario de usuario. */
+  options: () =>
+    api.get<ApiResponse<ProfileOption[]>>('/roles/options'),
+
+  /** Permisos que se pueden marcar, agrupados por sección del menú. */
+  catalog: () =>
+    api.get<ApiResponse<PermissionModule[]>>('/roles/catalog'),
+
+  create: (data: ProfilePayload) =>
+    api.post<ApiResponse<Profile>>('/roles', data),
+
+  update: (id: string, data: ProfilePayload) =>
+    api.put<ApiResponse<Profile>>(`/roles/${id}`, data),
+
+  delete: (id: string) =>
+    api.delete<ApiResponse<null>>(`/roles/${id}`),
 };
 
 // Output Types API

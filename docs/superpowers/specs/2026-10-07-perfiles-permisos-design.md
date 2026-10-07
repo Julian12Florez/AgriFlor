@@ -91,6 +91,48 @@ Cada permiso nace asignado exactamente a los perfiles que hoy pasan la lista
 3. **Botones y vistas.** El frontend oculta cada botón según `hasPermission`, y
    las reglas por nombre (`getRoleName() === 'admin'`) pasan a permisos.
 
+## Parte 2 — lo construido (2026-10-07)
+
+Pantalla **Administración → Perfiles** (`/admin/profiles`, permiso `manage_roles`).
+
+- **API** (`RoleController`): `GET/POST /roles`, `PUT/DELETE /roles/{id}`,
+  `GET /roles/catalog` (todas con `permission:manage_roles`) y
+  `GET /roles/options` (cualquier sesión; alimenta el selector del formulario de
+  usuario, con las secciones del menú que da cada perfil).
+- **Nombre técnico**: se genera al crear (`Jefe de Bodega` → `jefe_de_bodega`) y
+  no cambia; lo que se renombra es `display_name`. `users.role` pasó de ENUM a
+  `VARCHAR(50)` y se valida contra `roles.name`.
+- **Solo ve su finca**: dos casillas en `roles`, marcadas el día uno como estaba
+  la regla en el código:
+  - `location_scoped` (inventario, salidas, recepciones, ajustes): Supervisor y
+    Operario de Finca. Reemplaza `User::LOCATION_SCOPED_ROLES` (backend y frontend).
+  - `schedule_scoped` (programaciones de tareas): solo Operario de Finca.
+    Reemplaza las comparaciones `=== 'farm'` de `TaskScheduleController` y
+    `TaskSchedule`. No estaba en el plan original: salió al buscar las reglas
+    por nombre que quedaban, y sin ella un perfil nuevo no podía heredar esa
+    restricción.
+- **No se ofrecen en la pantalla** (`PermissionCatalog::HIDDEN_FROM_PROFILES`):
+  `audit.view` (la auditoría sigue por nombre) y `adjust_inventory` (reservado,
+  no protege nada). Guardar un perfil no se los quita a quien los tenía.
+- **Candados**: el perfil de acceso total no se edita ni se elimina; el auditor
+  devuelve 404; un perfil con usuarios no se elimina; solo un usuario de acceso
+  total puede crear, modificar o eliminar a otro de acceso total (ahora que
+  `manage_users` se puede delegar).
+- **Auditoría**: `Role` y `User` son auditables. Los permisos agregados y
+  quitados quedan con su nombre legible ("Permisos agregados: Crear compras").
+  De un usuario se audita nombre, correo, perfil y estado; nunca la clave.
+- **Frontend**: el menú y las rutas de Administración piden el permiso de cada
+  pantalla (`manage_users`, `manage_roles`, `manage_companies`); los botones
+  "Eliminar compra recibida" y "Aprobar/Rechazar ajuste" pasaron de
+  `getRoleName() === 'admin'` a `reverse_purchase` y `approve_adjustment`.
+- **De paso**: `Company` era auditable sin alias en el morph map; cada guardado
+  de una empresa terminaba en error 500. Se agregó el alias y una prueba que
+  revisa todo modelo auditable.
+
+Queda para la parte 3: ocultar en cada pantalla los botones Crear/Editar/
+Eliminar según `hasPermission`. Hoy un perfil sin el permiso ve el botón y el
+API le responde 403.
+
 ## Hallazgos para decidir después (no se tocan en la parte 1)
 
 - `warehouse` puede crear/editar/eliminar compras por API sin ver el menú Compras.

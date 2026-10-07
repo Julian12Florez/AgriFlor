@@ -30,6 +30,9 @@ use Tests\TestCase;
  *
  * Si esta prueba falla después de un cambio deliberado de permisos por defecto,
  * lo que hay que actualizar es la foto, a conciencia y ruta por ruta.
+ *
+ * Las rutas creadas después (las 6 de la pantalla de Perfiles, parte 2) se
+ * declaran en la misma foto con el acceso que deben tener el día uno.
  */
 class PermissionParityTest extends TestCase
 {
@@ -116,7 +119,7 @@ class PermissionParityTest extends TestCase
         }
 
         $this->assertSame([], $diferencias, "Cambió el acceso de alguien:\n" . implode("\n", $diferencias));
-        $this->assertCount(239, $vistas, 'La foto del antes tenía 239 rutas.');
+        $this->assertCount(245, $vistas, 'La foto del antes tenía 239 rutas; la pantalla de Perfiles agregó 6.');
     }
 
     /** El menú de cada perfil es el mismo: nadie ve una sección de más ni de menos. */

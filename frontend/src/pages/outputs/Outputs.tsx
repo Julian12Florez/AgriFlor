@@ -9,11 +9,6 @@ import { conOpcionActual } from '../../utils/opcionActual';
 import { outputsApi, productsApi, locationsApi, ordersApi, usersApi, outputTypesApi, farmLotsApi, companiesApi, handleApiError } from '../../services/api';
 import { usePermissions } from '../../hooks/usePermissions';
 
-// Roles restringidos a su(s) ubicación(es): supervisor (encargado de finca) y farm
-// (operario de finca). Cualquier otro rol elige/ve todas las ubicaciones. Se usa lista de
-// restringidos (no de globales) para ser fail-safe: un rol no contemplado ve todo.
-const LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
-
 const { Text, Title } = Typography;
 import type { ProductOutput, OutputProduct, Product, PackagingUnit } from '../../data/types';
 
@@ -109,8 +104,8 @@ const Outputs: React.FC = () => {
 
   // Aislamiento por ubicación: el responsable solo puede elegir como ORIGEN de la salida
   // una de las ubicaciones que tiene asignadas. Los roles globales pueden elegir cualquiera.
-  const { user, getRoleName, isAdmin } = usePermissions();
-  const canViewAllLocations = isAdmin() || !LOCATION_SCOPED_ROLES.includes(getRoleName());
+  const { user, canViewAllLocations: puedeVerTodasLasUbicaciones } = usePermissions();
+  const canViewAllLocations = puedeVerTodasLasUbicaciones();
   const availableProducts = productsData?.data || [];
   const availableOrders = ordersData?.data || [];
   const availableUsers = usersData?.data || [];

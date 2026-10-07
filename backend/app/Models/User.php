@@ -6,11 +6,36 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use OwenIt\Auditing\Auditable;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 use PHPOpenSourceSaver\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable implements JWTSubject
+class User extends Authenticatable implements JWTSubject, AuditableContract
 {
     use HasFactory, Notifiable, HasUuids;
+    use Auditable {
+        readyForAuditing as protected listoParaAuditar;
+    }
+
+    /**
+     * Qué se audita de un usuario: quién es y qué acceso tiene. Cambiarle el
+     * perfil a alguien es cambiarle lo que puede hacer, así que tiene que
+     * quedar. La clave nunca se guarda en la auditoría.
+     */
+    protected $auditInclude = ['name', 'email', 'role', 'status'];
+
+    /**
+     * Un cambio que no toca nada de lo anterior (la clave, por ejemplo) no
+     * deja una fila vacía en la auditoría.
+     */
+    public function readyForAuditing(): bool
+    {
+        if (!$this->listoParaAuditar()) {
+            return false;
+        }
+
+        return $this->auditEvent !== 'updated' || $this->isDirty($this->auditInclude);
+    }
 
     protected $table = 'users';
 
@@ -178,13 +203,17 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
-     * Roles que SÍ se restringen a la(s) ubicación(es) de las que son responsables:
-     * `supervisor` (encargado de finca) y `farm` (operario de finca). CUALQUIER otro rol
-     * (admin, warehouse/bodega, purchasing/compras, financiero, agronomist, etc.) ve TODAS
-     * las ubicaciones. Se usa lista de restringidos (no de globales) para ser fail-safe:
-     * un rol nuevo o no contemplado ve todo por defecto en vez de quedar con listas vacías.
+     * "Solo ve su finca" es una casilla del perfil (`roles.location_scoped` y
+     * `roles.schedule_scoped`), que el administrador marca en la pantalla de
+     * Perfiles. Hasta el 7-oct-2026 eran nombres escritos aquí.
+     *
+     * Estas dos listas quedan SOLO para un usuario sin ningún perfil en la base
+     * (datos viejos; en producción no hay ninguno y el formulario ya no deja
+     * crearlos): conserva la restricción que tenía por nombre en vez de pasar a
+     * verlo todo.
      */
-    public const LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
+    private const LEGACY_LOCATION_SCOPED_ROLES = ['supervisor', 'farm'];
+    private const LEGACY_SCHEDULE_SCOPED_ROLES = ['farm'];
 
     /**
      * Nombre canónico del rol (relación nueva `role_id`, con fallback al campo legacy).
@@ -195,17 +224,44 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
-     * ¿El usuario puede ver los movimientos/entradas/salidas de TODAS las ubicaciones?
-     * True para roles con acceso total o cualquier rol NO restringido por ubicación;
-     * false solo para supervisor/farm, que quedan limitados a sus ubicaciones.
+     * ¿El usuario puede ver los movimientos/entradas/salidas/ajustes de TODAS
+     * las ubicaciones? False solo si su perfil tiene marcada la casilla "solo
+     * ve las fincas a su cargo": queda limitado a las ubicaciones de las que es
+     * responsable. Un perfil nuevo ve todo mientras no se le marque.
      */
     public function canViewAllLocations(): bool
     {
-        if ($this->roleRelation?->has_full_access) {
-            return true;
+        $perfil = $this->effectiveRole();
+
+        if (!$perfil) {
+            return !in_array($this->role, self::LEGACY_LOCATION_SCOPED_ROLES, true);
         }
 
-        return !in_array($this->roleName(), self::LOCATION_SCOPED_ROLES, true);
+        return $perfil->has_full_access || !$perfil->location_scoped;
+    }
+
+    /**
+     * Lo mismo para las programaciones de tareas (Rendimiento): con la casilla
+     * marcada solo ve, crea y edita las de las fincas a su cargo.
+     */
+    public function canViewAllSchedules(): bool
+    {
+        $perfil = $this->effectiveRole();
+
+        if (!$perfil) {
+            return !in_array($this->role, self::LEGACY_SCHEDULE_SCOPED_ROLES, true);
+        }
+
+        return $perfil->has_full_access || !$perfil->schedule_scoped;
+    }
+
+    /** ¿Su perfil es de acceso total (Administrador)? */
+    public function hasFullAccess(): bool
+    {
+        $perfil = $this->effectiveRole();
+
+        // Sin perfil en la base, igual que hasPermission(): solo el nombre 'admin'.
+        return $perfil ? $perfil->has_full_access : $this->role === 'admin';
     }
 
     /**
