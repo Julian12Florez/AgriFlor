@@ -87,12 +87,21 @@ class TaskScheduleController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        // Se puede registrar una tarea que ya empezó, hasta un mes atrás. Antes
+        // una programación normal exigía inicio >= hoy, y una "no programada"
+        // aceptaba cualquier fecha pasada sin tope.
+        $fechaMinima = $this->fechaMinimaDeRegistro();
+        $reglaInicio = ['required', 'date', 'after_or_equal:' . $fechaMinima->toDateString()];
+        if ($request->boolean('is_ad_hoc')) {
+            $reglaInicio[] = 'before_or_equal:tomorrow';
+        }
+
         $validated = $request->validate([
             'task_catalog_id' => ['required', 'uuid', 'exists:task_catalog,id'],
             'location_id' => ['required', 'uuid', 'exists:locations,id'],
             'lot_id' => ['nullable', 'uuid', 'exists:farm_lots,id'],
             'total_quantity' => ['nullable', 'numeric', 'min:0.01'],
-            'start_date' => ['required', 'date', $request->boolean('is_ad_hoc') ? 'before_or_equal:tomorrow' : 'after_or_equal:today'],
+            'start_date' => $reglaInicio,
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'planned_persons' => ['nullable', 'integer', 'min:0'],
             'external_farm_workers' => ['nullable', 'integer', 'min:0'],
@@ -100,6 +109,9 @@ class TaskScheduleController extends Controller
             'observations' => ['nullable', 'string'],
             'is_ad_hoc' => ['nullable', 'boolean'],
             'ad_hoc_motive' => ['nullable', 'string', 'required_if:is_ad_hoc,true'],
+        ], [
+            'start_date.after_or_equal' => $this->mensajeFechaMinima('La fecha de inicio', $fechaMinima),
+            'start_date.before_or_equal' => 'Una tarea no programada no puede tener fecha de inicio futura.',
         ]);
 
         // Si user es farm, validar que la finca destino sea de su responsabilidad
@@ -354,7 +366,7 @@ class TaskScheduleController extends Controller
         if ($schedule->status === 'planificada') {
             $rules = array_merge($rules, [
                 'total_quantity' => ['sometimes', 'numeric', 'min:0.01'],
-                'start_date' => ['sometimes', 'date'],
+                'start_date' => ['sometimes', 'date', 'after_or_equal:' . $this->fechaMinimaDeRegistro()->toDateString()],
                 'end_date' => ['sometimes', 'date', 'after_or_equal:start_date'],
                 'planned_persons' => ['sometimes', 'integer', 'min:1'],
                 'lot_id' => ['nullable', 'uuid', 'exists:farm_lots,id'],
@@ -542,6 +554,24 @@ class TaskScheduleController extends Controller
         // Se permite registrar avance desde la fecha de CREACIÓN de la programación
         // (no solo desde start_date), para poder avanzar tareas programadas a futuro.
         $logDate = Carbon::parse($validated['log_date']);
+
+        // El avance es de algo que ya pasó: nunca a futuro (el backend lo
+        // aceptaba; solo lo frenaba la pantalla) y como máximo de un mes atrás
+        // (antes no había tope: pasados 30 días solo se avisaba).
+        if ($logDate->copy()->startOfDay()->gt(Carbon::today())) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La fecha del avance (' . $logDate->format('d/m/Y') . ') no puede ser futura.',
+            ], 422);
+        }
+        $fechaMinima = $this->fechaMinimaDeRegistro();
+        if ($logDate->copy()->startOfDay()->lt($fechaMinima)) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->mensajeFechaMinima('La fecha del avance', $fechaMinima),
+            ], 422);
+        }
+
         $minDate = $schedule->created_at->copy()->startOfDay();
         if ($schedule->start_date->copy()->startOfDay()->lt($minDate)) {
             $minDate = $schedule->start_date->copy()->startOfDay();
@@ -604,6 +634,22 @@ class TaskScheduleController extends Controller
 
             return response()->json($response, 201);
         });
+    }
+
+    /**
+     * Fecha más antigua con la que se puede registrar una tarea o un avance: hoy
+     * menos un mes calendario (7-oct -> 7-sep). Sin desbordar en fin de mes: el
+     * 31 de marzo da el último día de febrero, no el 3 de marzo.
+     */
+    private function fechaMinimaDeRegistro(): Carbon
+    {
+        return Carbon::today()->subMonthNoOverflow();
+    }
+
+    private function mensajeFechaMinima(string $campo, Carbon $fechaMinima): string
+    {
+        return "{$campo} no puede ser anterior al " . $fechaMinima->format('d/m/Y')
+            . ': solo se permite registrar hasta un mes atrás.';
     }
 
     /**

@@ -440,11 +440,14 @@ const ScheduleList = () => {
                     name="start_date"
                     label="Fecha de Inicio"
                     rules={[{ required: true, message: 'Requerido' }]}
+                    tooltip="Puede registrar una tarea que ya empezó, hasta un mes atrás."
                   >
                     <DatePicker
                       style={{ width: '100%' }}
                       format="DD/MM/YYYY"
-                      disabledDate={(current) => current && current.isBefore(dayjs().startOf('day'))}
+                      // Se puede registrar una tarea que ya empezó, hasta un mes atrás
+                      // (misma regla que el backend: hoy menos un mes calendario).
+                      disabledDate={(current) => current && current.isBefore(dayjs().subtract(1, 'month').startOf('day'))}
                     />
                   </Form.Item>
                 </Col>

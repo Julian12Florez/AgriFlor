@@ -320,11 +320,18 @@ const DailyPanel = () => {
                   name="log_date"
                   label="Fecha del Avance"
                   rules={[{ required: true, message: 'Requerido' }]}
+                  tooltip="Puede registrar el avance de días pasados, hasta un mes atrás."
                 >
                   <DatePicker
                     style={{ width: '100%' }}
                     format="DD/MM/YYYY"
-                    disabledDate={(current) => current && current.isAfter(dayjs().endOf('day'))}
+                    // Nunca a futuro y como máximo un mes atrás (misma regla que el backend).
+                    disabledDate={(current) =>
+                      current && (
+                        current.isAfter(dayjs().endOf('day')) ||
+                        current.isBefore(dayjs().subtract(1, 'month').startOf('day'))
+                      )
+                    }
                   />
                 </Form.Item>
               </Col>
