@@ -382,10 +382,13 @@ Route::middleware('auth:api')->group(function () {
     Route::get('adjustment-reasons', [AdjustmentController::class, 'reasons']);
     Route::get('adjustments', [AdjustmentController::class, 'index']);
     Route::get('adjustments/{id}', [AdjustmentController::class, 'show']);
-    Route::post('adjustments', [AdjustmentController::class, 'store']);
-    // Cancelar: cualquier autenticado puede intentarlo, la autorización real
-    // (solo el solicitante, solo si está pending) vive en el controlador.
-    Route::put('adjustments/{id}/cancel', [AdjustmentController::class, 'cancel']);
+    // Solicitar y cancelar: permiso `request_adjustment`. Hasta el 7-oct-2026
+    // cualquier sesión podía (incluido el auditor); por decisión del cliente
+    // nace apagado y el administrador lo habilita por perfil en Perfiles.
+    // Además, cancelar solo lo puede el solicitante y solo si está pending
+    // (eso vive en el controlador).
+    Route::post('adjustments', [AdjustmentController::class, 'store'])->middleware('permission:request_adjustment');
+    Route::put('adjustments/{id}/cancel', [AdjustmentController::class, 'cancel'])->middleware('permission:request_adjustment');
 
     Route::put('adjustments/{id}/approve', [AdjustmentController::class, 'approve'])->middleware('permission:approve_adjustment');
     Route::put('adjustments/{id}/reject', [AdjustmentController::class, 'reject'])->middleware('permission:approve_adjustment');

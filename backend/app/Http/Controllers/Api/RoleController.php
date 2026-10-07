@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Role;
+use App\Models\User;
 use App\Support\PermissionCatalog;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,7 +23,8 @@ use Illuminate\Validation\Rule;
  * Reglas fijas:
  *  - El perfil de acceso total (Administrador) no se edita ni se elimina.
  *  - El Auditor no existe para esta pantalla (ni se lista, ni se edita, ni se
- *    puede dar su permiso a otro perfil).
+ *    puede dar su permiso a otro perfil, ni su nombre "choca" con uno nuevo):
+ *    es un perfil único e invisible para todos los demás usuarios.
  *  - Un perfil con usuarios no se elimina.
  *  - El nombre técnico (`name`) se genera al crear y no cambia: enlaza a los
  *    usuarios (`users.role`). Lo que se renombra es `display_name`.
@@ -182,7 +184,11 @@ class RoleController extends Controller
         return $request->validate([
             'display_name' => [
                 'required', 'string', 'min:3', 'max:60',
-                Rule::unique('roles', 'display_name')->ignore($perfil?->id),
+                // Los perfiles secretos no cuentan: si "Auditor" chocara, el
+                // mensaje delataría que existe un perfil que nadie ve.
+                Rule::unique('roles', 'display_name')
+                    ->ignore($perfil?->id)
+                    ->where(fn ($q) => $q->whereNotIn('name', User::SECRET_ROLES)),
             ],
             'description' => ['nullable', 'string', 'max:255'],
             'location_scoped' => ['sometimes', 'boolean'],

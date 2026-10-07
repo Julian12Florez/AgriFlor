@@ -333,6 +333,13 @@ class ApiService {
     });
   }
 
+  async patch<T>(endpoint: string, data: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   async delete<T>(endpoint: string): Promise<T> {
     return this.request<T>(endpoint, {
       method: 'DELETE',
@@ -1262,8 +1269,10 @@ export const taskCatalogApi = {
   update: (id: string, data: any) =>
     api.put<ApiResponse<any>>(`/performance/task-catalog/${id}`, data),
 
+  // La ruta del backend es PATCH: con PUT respondía 405 y el botón
+  // activar/desactivar del Catálogo de Tareas nunca funcionó.
   toggleActive: (id: string) =>
-    api.put<ApiResponse<any>>(`/performance/task-catalog/${id}/toggle`, {}),
+    api.patch<ApiResponse<any>>(`/performance/task-catalog/${id}/toggle`, {}),
 
   categories: () =>
     api.get<ApiResponse<string[]>>('/performance/task-catalog/categories'),

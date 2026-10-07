@@ -20,3 +20,8 @@ REPORTE_PRUEBAS.md
 
 # Node
 node_modules/
+
+# Copias de producción (contienen contraseñas cifradas y datos de clientes):
+# NUNCA deben subirse al repositorio.
+.dumps/
+.playwright-mcp/

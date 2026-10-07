@@ -93,16 +93,14 @@
   "tipo": "perfiles",
   "perfiles": [
    "admin",
-   "purchasing",
-   "warehouse"
+   "purchasing"
   ]
  },
  "DELETE api/purchases/{id}/attachments/{attachmentId}": {
   "tipo": "perfiles",
   "perfiles": [
    "admin",
-   "purchasing",
-   "warehouse"
+   "purchasing"
   ]
  },
  "DELETE api/roles/{id}": {
@@ -670,7 +668,10 @@
   ]
  },
  "POST api/adjustments": {
-  "tipo": "sesion"
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
  },
  "POST api/admin/clean-data": {
   "tipo": "perfiles",
@@ -860,6 +861,7 @@
   "tipo": "perfiles",
   "perfiles": [
    "admin",
+   "farm",
    "farm_operator",
    "supervisor"
   ]
@@ -957,16 +959,14 @@
   "tipo": "perfiles",
   "perfiles": [
    "admin",
-   "purchasing",
-   "warehouse"
+   "purchasing"
   ]
  },
  "POST api/purchases/{id}/attachments": {
   "tipo": "perfiles",
   "perfiles": [
    "admin",
-   "purchasing",
-   "warehouse"
+   "purchasing"
   ]
  },
  "POST api/purchases/{id}/reverse": {
@@ -1199,7 +1199,10 @@
   ]
  },
  "PUT api/adjustments/{id}/cancel": {
-  "tipo": "sesion"
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
  },
  "PUT api/adjustments/{id}/reject": {
   "tipo": "perfiles",
@@ -1333,16 +1336,14 @@
   "tipo": "perfiles",
   "perfiles": [
    "admin",
-   "purchasing",
-   "warehouse"
+   "purchasing"
   ]
  },
  "PUT api/purchases/{id}/cancel": {
   "tipo": "perfiles",
   "perfiles": [
    "admin",
-   "purchasing",
-   "warehouse"
+   "purchasing"
   ]
  },
  "PUT api/receptions/{id}/cancel": {

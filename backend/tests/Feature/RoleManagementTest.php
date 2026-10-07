@@ -195,25 +195,70 @@ class RoleManagementTest extends TestCase
     }
 
     /**
-     * `adjust_inventory` está reservado: existe, lo tienen tres perfiles, pero no
-     * protege nada y por eso la pantalla no lo muestra. Guardar un perfil desde
-     * la pantalla no puede quitárselo a quien lo tenía.
+     * Decisión del cliente (7-oct-2026): solicitar ajustes nace APAGADO; solo el
+     * administrador lo tiene y lo habilita al perfil que quiera.
      */
-    public function test_guardar_un_perfil_conserva_los_permisos_que_la_pantalla_no_muestra(): void
+    public function test_solicitar_ajustes_nace_apagado_y_el_admin_lo_habilita_por_perfil(): void
     {
-        $perfil = Role::where('name', 'supervisor')->firstOrFail();
-        $this->assertTrue($perfil->hasPermission('adjust_inventory'));
+        $bodeguero = $this->usuarioCon('warehouse');
+        $perfil = Role::where('name', 'warehouse')->firstOrFail();
 
-        $casillas = $this->casillasDe($perfil);
-        $this->assertNotContains('adjust_inventory', $casillas);
+        foreach (collect($this->comoAdmin()->getJson('/api/roles')->json('data')) as $p) {
+            $this->assertSame(
+                $p['hasFullAccess'],
+                in_array('request_adjustment', $p['permissions'], true),
+                "request_adjustment del perfil {$p['name']}"
+            );
+        }
+        $this->como($bodeguero)->postJson('/api/adjustments', [])->assertStatus(403);
+        $this->comoAdmin()->postJson('/api/adjustments', [])->assertStatus(422);
+
+        // Es una casilla más de la pantalla: Inventario → Ajustes → Crear.
+        $inventario = collect($this->comoAdmin()->getJson('/api/roles/catalog')->json('data'))->firstWhere('key', 'inventory');
+        $casilla = collect($inventario['permissions'])->firstWhere('name', 'request_adjustment');
+        $this->assertSame(['Ajustes', 'create'], [$casilla['group'], $casilla['action']]);
 
         $this->comoAdmin()->putJson("/api/roles/{$perfil->id}", [
-            'display_name' => 'Supervisor',
-            'permissions' => array_values(array_diff($casillas, ['approve_output'])),
+            'display_name' => 'Bodeguero',
+            'permissions' => array_merge($this->casillasDe($perfil), ['request_adjustment']),
         ])->assertOk();
 
-        $this->assertTrue($perfil->fresh()->hasPermission('adjust_inventory'));
-        $this->assertFalse($perfil->fresh()->hasPermission('approve_output'));
+        $this->como($bodeguero)->postJson('/api/adjustments', [])->assertStatus(422);
+    }
+
+    /**
+     * El Auditor es un perfil único: nadie más lo ve, ni su usuario ni su
+     * perfil, en ningún listado, selector o mensaje de error.
+     */
+    public function test_el_auditor_es_invisible_para_todos(): void
+    {
+        $auditor = $this->usuarioCon('auditor');
+
+        $usuarios = collect($this->comoAdmin()->getJson('/api/users?per_page=100')->assertOk()->json('data'));
+        $this->assertNull($usuarios->firstWhere('id', $auditor->id), 'Gestión de usuarios');
+        $this->assertNull($usuarios->firstWhere('role', 'auditor'));
+
+        $simples = collect($this->como($this->usuarioCon('supervisor'))->getJson('/api/users/simple')->assertOk()->json('data'));
+        $this->assertNull($simples->firstWhere('id', $auditor->id), 'Selectores de responsable');
+
+        $this->comoAdmin()->getJson("/api/users/{$auditor->id}")->assertStatus(404);
+        $this->comoAdmin()->putJson("/api/users/{$auditor->id}", ['name' => 'X'])->assertStatus(404);
+        $this->comoAdmin()->patchJson("/api/users/{$auditor->id}/status", ['status' => 'inactive'])->assertStatus(404);
+        $this->comoAdmin()->deleteJson("/api/users/{$auditor->id}")->assertStatus(404);
+
+        $this->assertNull(collect($this->comoAdmin()->getJson('/api/roles')->json('data'))->firstWhere('name', 'auditor'));
+        $this->assertNull(collect($this->comoAdmin()->getJson('/api/roles/options')->json('data'))->firstWhere('name', 'auditor'));
+
+        // Crear un perfil llamado "Auditor" no delata al que existe: se crea
+        // como uno más, sin la auditoría y sin tocar al verdadero.
+        $nuevo = $this->comoAdmin()->postJson('/api/roles', ['display_name' => 'Auditor', 'permissions' => ['view_reports']])
+            ->assertCreated();
+        $this->assertSame('auditor_2', $nuevo->json('data.name'));
+        $this->assertFalse(Role::where('name', 'auditor_2')->firstOrFail()->hasPermission('audit.view'));
+        $this->assertSame(['audit.view'], Role::where('name', 'auditor')->firstOrFail()->permissions()->pluck('name')->all());
+
+        // Y el auditor sigue entrando a lo suyo.
+        $this->como($auditor)->getJson('/api/audits')->assertOk();
     }
 
     public function test_no_se_repiten_nombres_de_perfil(): void

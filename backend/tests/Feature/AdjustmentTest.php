@@ -205,13 +205,33 @@ class AdjustmentTest extends TestCase
         return $this->createUserWithRole($role);
     }
 
+    /**
+     * Usuario con ese perfil, que SÍ puede solicitar ajustes.
+     *
+     * Desde el 7-oct-2026 solicitar y cancelar ajustes exige el permiso
+     * `request_adjustment`, que nace apagado (solo el administrador lo tiene y
+     * lo habilita por perfil). Estas pruebas miden OTRAS reglas (ubicación,
+     * aprobación), así que el perfil de prueba lo recibe: sin él, un "403 por
+     * ubicación ajena" pasaría por la razón equivocada (falta de permiso).
+     * El alcance por finca se marca igual que en producción (supervisor y farm).
+     */
     private function createUserWithRole(string $role): User
     {
+        $perfil = \App\Models\Role::firstOrCreate(['name' => $role], [
+            'display_name' => ucfirst($role),
+            'has_full_access' => $role === 'admin',
+            'location_scoped' => in_array($role, ['supervisor', 'farm'], true),
+            'schedule_scoped' => $role === 'farm',
+        ]);
+        $solicitar = \App\Models\Permission::where('name', 'request_adjustment')->firstOrFail();
+        $perfil->permissions()->syncWithoutDetaching([$solicitar->id]);
+
         return User::create([
             'name' => ucfirst($role) . ' Test',
             'email' => $role . '_' . uniqid() . '@agriflor.com',
             'password' => bcrypt('password'),
             'role' => $role,
+            'role_id' => $perfil->id,
             'status' => 'active',
         ]);
     }

@@ -68,8 +68,13 @@ final class PermissionCatalog
     /**
      * Permisos que ya no significan nada y se eliminan: o no protegían ninguna
      * ruta, o los reemplazó uno más preciso (crear/editar/eliminar por separado).
+     *
+     * `adjust_inventory` ("reservado") no protegía nada; lo reemplazó
+     * `request_adjustment` el 7-oct-2026, que nace SIN asignar (decisión del
+     * cliente: solicitar ajustes queda apagado hasta que el administrador lo
+     * habilite a un perfil).
      */
-    public const OBSOLETE = ['view_products', 'manage_master_data', 'manage_technical', 'delete_reception', 'system_settings'];
+    public const OBSOLETE = ['view_products', 'manage_master_data', 'manage_technical', 'delete_reception', 'system_settings', 'adjust_inventory'];
 
     /**
      * @return array<int, array{name: string, label: string, module: string, group: string, action: string, menu: bool, sort: int, roles: array<int, string>}>
@@ -102,9 +107,9 @@ final class PermissionCatalog
             ['name' => 'delete_technical_order', 'label' => 'Eliminar órdenes técnicas', 'module' => 'technical', 'group' => 'Órdenes técnicas', 'action' => 'delete', 'menu' => false, 'sort' => 230, 'roles' => ['agronomist']],
             ['name' => 'process_technical_order', 'label' => 'Aprobar, completar y cancelar órdenes técnicas', 'module' => 'technical', 'group' => 'Órdenes técnicas', 'action' => 'special', 'menu' => false, 'sort' => 240, 'roles' => ['agronomist']],
             ['name' => 'view_purchases', 'label' => 'Ver Compras', 'module' => 'purchases', 'group' => 'Menú', 'action' => 'view', 'menu' => true, 'sort' => 250, 'roles' => ['purchasing']],
-            ['name' => 'create_purchase', 'label' => 'Crear compras', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'create', 'menu' => false, 'sort' => 260, 'roles' => ['purchasing', 'warehouse']],
-            ['name' => 'edit_purchase', 'label' => 'Editar compras', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'edit', 'menu' => false, 'sort' => 270, 'roles' => ['purchasing', 'warehouse']],
-            ['name' => 'delete_purchase', 'label' => 'Eliminar compras', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'delete', 'menu' => false, 'sort' => 280, 'roles' => ['purchasing', 'warehouse']],
+            ['name' => 'create_purchase', 'label' => 'Crear compras', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'create', 'menu' => false, 'sort' => 260, 'roles' => ['purchasing']],
+            ['name' => 'edit_purchase', 'label' => 'Editar compras', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'edit', 'menu' => false, 'sort' => 270, 'roles' => ['purchasing']],
+            ['name' => 'delete_purchase', 'label' => 'Eliminar compras', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'delete', 'menu' => false, 'sort' => 280, 'roles' => ['purchasing']],
             ['name' => 'reverse_purchase', 'label' => 'Eliminar compra recibida (revierte inventario)', 'module' => 'purchases', 'group' => 'Compras', 'action' => 'special', 'menu' => false, 'sort' => 290, 'roles' => []],
             ['name' => 'view_outputs', 'label' => 'Ver Salidas', 'module' => 'outputs', 'group' => 'Salidas', 'action' => 'view', 'menu' => true, 'sort' => 300, 'roles' => ['agronomist', 'farm', 'financiero', 'purchasing', 'supervisor', 'warehouse']],
             ['name' => 'create_output', 'label' => 'Crear salidas', 'module' => 'outputs', 'group' => 'Salidas', 'action' => 'create', 'menu' => false, 'sort' => 310, 'roles' => ['agronomist', 'farm', 'financiero', 'purchasing', 'supervisor', 'warehouse']],
@@ -117,7 +122,7 @@ final class PermissionCatalog
             ['name' => 'create_reception', 'label' => 'Crear recepciones', 'module' => 'reception', 'group' => 'Recepciones', 'action' => 'create', 'menu' => false, 'sort' => 380, 'roles' => ['agronomist', 'farm', 'financiero', 'purchasing', 'supervisor', 'warehouse']],
             ['name' => 'edit_reception', 'label' => 'Completar, cancelar y finalizar recepciones', 'module' => 'reception', 'group' => 'Recepciones', 'action' => 'edit', 'menu' => false, 'sort' => 390, 'roles' => ['agronomist', 'farm', 'financiero', 'purchasing', 'supervisor', 'warehouse']],
             ['name' => 'view_inventory', 'label' => 'Ver Inventario', 'module' => 'inventory', 'group' => 'Menú', 'action' => 'view', 'menu' => true, 'sort' => 400, 'roles' => ['agronomist', 'financiero', 'supervisor', 'warehouse']],
-            ['name' => 'adjust_inventory', 'label' => 'Ajustes de inventario (reservado)', 'module' => 'inventory', 'group' => 'Ajustes', 'action' => 'special', 'menu' => false, 'sort' => 410, 'roles' => ['financiero', 'supervisor', 'warehouse']],
+            ['name' => 'request_adjustment', 'label' => 'Solicitar y cancelar ajustes', 'module' => 'inventory', 'group' => 'Ajustes', 'action' => 'create', 'menu' => false, 'sort' => 410, 'roles' => []],
             ['name' => 'approve_adjustment', 'label' => 'Aprobar y rechazar ajustes', 'module' => 'inventory', 'group' => 'Ajustes', 'action' => 'special', 'menu' => false, 'sort' => 420, 'roles' => []],
             ['name' => 'manage_alerts', 'label' => 'Crear y resolver alertas', 'module' => 'inventory', 'group' => 'Alertas', 'action' => 'special', 'menu' => false, 'sort' => 430, 'roles' => ['financiero', 'supervisor', 'warehouse']],
             ['name' => 'view_reports', 'label' => 'Ver Reportes', 'module' => 'reports', 'group' => 'Menú', 'action' => 'view', 'menu' => true, 'sort' => 440, 'roles' => ['financiero']],
@@ -133,7 +138,7 @@ final class PermissionCatalog
             ['name' => 'create_task_catalog', 'label' => 'Crear catálogo de tareas', 'module' => 'performance', 'group' => 'Catálogo de tareas', 'action' => 'create', 'menu' => false, 'sort' => 540, 'roles' => ['supervisor']],
             ['name' => 'edit_task_catalog', 'label' => 'Editar catálogo de tareas', 'module' => 'performance', 'group' => 'Catálogo de tareas', 'action' => 'edit', 'menu' => false, 'sort' => 550, 'roles' => ['supervisor']],
             ['name' => 'delete_task_catalog', 'label' => 'Eliminar catálogo de tareas', 'module' => 'performance', 'group' => 'Catálogo de tareas', 'action' => 'delete', 'menu' => false, 'sort' => 560, 'roles' => ['supervisor']],
-            ['name' => 'register_task_log', 'label' => 'Registrar avance diario', 'module' => 'performance', 'group' => 'Registro diario', 'action' => 'special', 'menu' => false, 'sort' => 570, 'roles' => ['supervisor']],
+            ['name' => 'register_task_log', 'label' => 'Registrar avance diario', 'module' => 'performance', 'group' => 'Registro diario', 'action' => 'special', 'menu' => false, 'sort' => 570, 'roles' => ['farm', 'supervisor']],
             ['name' => 'delete_task_log', 'label' => 'Eliminar registros de avance', 'module' => 'performance', 'group' => 'Registro diario', 'action' => 'special', 'menu' => false, 'sort' => 580, 'roles' => []],
             ['name' => 'manage_performance_settings', 'label' => 'Cambiar la configuración de rendimiento', 'module' => 'performance', 'group' => 'Configuración', 'action' => 'special', 'menu' => false, 'sort' => 590, 'roles' => []],
             ['name' => 'view_admin', 'label' => 'Ver Administración', 'module' => 'admin', 'group' => 'Menú', 'action' => 'view', 'menu' => true, 'sort' => 600, 'roles' => []],
@@ -147,12 +152,11 @@ final class PermissionCatalog
     /**
      * Permisos que existen pero NO se ofrecen en la pantalla de Perfiles:
      *  - audit.view: la auditoría va por nombre de perfil (`role:auditor`); ni
-     *    el administrador la ve, así que tampoco puede regalarla.
-     *  - adjust_inventory: reservado, hoy no protege ninguna ruta. Una casilla
-     *    que no hace nada confunde.
+     *    el administrador la ve, así que tampoco puede regalarla. El Auditor es
+     *    un perfil único e invisible para todos los demás.
      * Al guardar un perfil desde la pantalla estos no se tocan.
      */
-    public const HIDDEN_FROM_PROFILES = ['audit.view', 'adjust_inventory'];
+    public const HIDDEN_FROM_PROFILES = ['audit.view'];
 
     /**
      * Los permisos que el administrador puede marcar en la pantalla de Perfiles.

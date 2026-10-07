@@ -33,6 +33,13 @@ use Tests\TestCase;
  *
  * Las rutas creadas después (las 6 de la pantalla de Perfiles, parte 2) se
  * declaran en la misma foto con el acceso que deben tener el día uno.
+ *
+ * CAMBIOS DELIBERADOS (decisiones del cliente, 7-oct-2026), ya reflejados en la foto:
+ *  - Solicitar y cancelar ajustes (POST adjustments, PUT adjustments/{id}/cancel):
+ *    antes cualquier sesión; ahora permiso `request_adjustment`, que nace
+ *    apagado (solo el administrador).
+ *  - Compras (crear, editar, cancelar, eliminar, adjuntos): el Bodeguero ya no.
+ *  - Registrar avance diario de tareas: se suma el Operario de Finca (`farm`).
  */
 class PermissionParityTest extends TestCase
 {
@@ -175,11 +182,20 @@ class PermissionParityTest extends TestCase
     {
         $inexistente = '00000000-0000-0000-0000-000000000000';
 
-        // Compras: Encargado de Compras y Bodeguero pasan la puerta (422 = llegó a
-        // la validación); el Operario de Finca no.
+        // Compras: el Encargado de Compras pasa la puerta (422 = llegó a la
+        // validación); el Bodeguero ya no (decisión del 7-oct) ni el Operario.
         $this->como('purchasing')->postJson('/api/purchases', [])->assertStatus(422);
-        $this->como('warehouse')->postJson('/api/purchases', [])->assertStatus(422);
+        $this->como('warehouse')->postJson('/api/purchases', [])->assertStatus(403);
         $this->como('farm')->postJson('/api/purchases', [])->assertStatus(403);
+
+        // Solicitar ajustes: apagado para todos menos el administrador.
+        $this->como('admin')->postJson('/api/adjustments', [])->assertStatus(422);
+        foreach (['warehouse', 'supervisor', 'financiero', 'auditor'] as $perfil) {
+            $this->como($perfil)->postJson('/api/adjustments', [])->assertStatus(403);
+        }
+
+        // Registrar avance diario: el Operario de Finca ya pasa la puerta.
+        $this->assertNotSame(403, $this->como('farm')->postJson("/api/performance/schedules/{$inexistente}/logs", [])->status());
 
         // Aprobar salidas: solo Supervisor (y admin). La base decía que 6 perfiles
         // tenían 'approve_output', pero el API nunca los dejó.
