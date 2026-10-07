@@ -12,6 +12,7 @@ import {
   FallOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, reportExportsApi, locationsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -90,21 +91,22 @@ const MonthlyInventoryReport: React.FC = () => {
   }, [locationsResp]);
 
   const { data: reportResponse, isLoading, refetch } = useQuery({
-    queryKey: ['monthly-inventory', month, year, locationId],
-    queryFn: () => inventoryApi.getMonthlyReport({ month, year, ...(locationId ? { location_id: locationId } : {}) }),
+    queryKey: ['monthly-inventory', month, year, locationId, categoryFilter],
+    queryFn: () => inventoryApi.getMonthlyReport({
+      month,
+      year,
+      ...(locationId ? { location_id: locationId } : {}),
+      ...(categoryFilter ? { category_id: categoryFilter } : {}),
+    }),
   });
 
   const reportData: MonthlyReportData | null = reportResponse?.data ?? null;
 
-  const categories = useMemo(() => {
-    if (!reportData?.products) return [];
-    return [...new Set(reportData.products.map(p => p.category))].sort();
-  }, [reportData]);
-
   const filteredProducts = useMemo(() => {
     if (!reportData?.products) return [];
+    // La categoría la filtra el backend (category_id): antes se filtraba aquí,
+    // en el navegador, y la descarga a Excel salía con todas las categorías.
     let filtered = reportData.products;
-    if (categoryFilter) filtered = filtered.filter(p => p.category === categoryFilter);
     if (searchText) {
       const lower = searchText.toLowerCase();
       filtered = filtered.filter(p =>
@@ -113,7 +115,7 @@ const MonthlyInventoryReport: React.FC = () => {
       );
     }
     return filtered;
-  }, [reportData, categoryFilter, searchText]);
+  }, [reportData, searchText]);
 
   // Chart data: Top 10 products by total shipped
   const topShippedData = useMemo(() => {
@@ -151,6 +153,7 @@ const MonthlyInventoryReport: React.FC = () => {
         month: String(month),
         year: String(year),
         ...(locationId ? { location_id: locationId } : {}),
+        ...(categoryFilter ? { category_id: categoryFilter } : {}),
       });
       message.success('Excel exportado correctamente');
     } catch {
@@ -264,9 +267,7 @@ const MonthlyInventoryReport: React.FC = () => {
             </Select>
           </Col>
           <Col xs={24} sm={8} md={4}>
-            <Select allowClear placeholder="Filtrar por categoría" value={categoryFilter} onChange={setCategoryFilter} style={{ width: '100%' }}>
-              {categories.map(cat => <Option key={cat} value={cat}>{cat}</Option>)}
-            </Select>
+            <CategoryFilterSelect value={categoryFilter} onChange={setCategoryFilter} />
           </Col>
           <Col xs={24} sm={12} md={4}>
             <input

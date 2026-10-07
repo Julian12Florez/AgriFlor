@@ -12,6 +12,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, productsApi, locationsApi, brandsApi, reportExportsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -63,6 +64,8 @@ const getCategoryLabel = (category: string): string => {
 const InventoryKardex: React.FC = () => {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [productId, setProductId] = useState<string | undefined>(undefined);
+  // El kardex es de UN producto: la categoría acota la lista de productos a elegir.
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [brandId, setBrandId] = useState<string | undefined>(undefined);
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
   const [shouldFetch, setShouldFetch] = useState(false);
@@ -314,6 +317,21 @@ const InventoryKardex: React.FC = () => {
       <Card style={{ marginBottom: 16 }} title={<><FilterOutlined /> Filtros</>}>
         <Row gutter={[16, 16]}>
           <Col xs={24} sm={12} md={8} lg={6}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>Categoría</div>
+            <CategoryFilterSelect
+              value={categoryId}
+              onChange={(id) => {
+                setCategoryId(id);
+                // Si el producto elegido no es de la categoría nueva, se suelta.
+                const actual = productsData?.data?.find((p: any) => p.id === productId);
+                if (id && actual && (actual.category_id ?? actual.categoryId) !== id) {
+                  setProductId(undefined);
+                }
+              }}
+            />
+          </Col>
+
+          <Col xs={24} sm={12} md={8} lg={6}>
             <div style={{ marginBottom: 8, fontWeight: 500 }}>Producto *</div>
             <Select
               value={productId}
@@ -327,11 +345,13 @@ const InventoryKardex: React.FC = () => {
                 return String(label || '').toLowerCase().includes(input.toLowerCase());
               }}
             >
-              {productsData?.data?.map((product: any) => (
-                <Option key={product.id} value={product.id}>
-                  {product.name}
-                </Option>
-              ))}
+              {productsData?.data
+                ?.filter((product: any) => !categoryId || (product.category_id ?? product.categoryId) === categoryId)
+                .map((product: any) => (
+                  <Option key={product.id} value={product.id}>
+                    {product.name}
+                  </Option>
+                ))}
             </Select>
           </Col>
 

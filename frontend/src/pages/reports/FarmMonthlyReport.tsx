@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, Row, Col, DatePicker, Select, Spin, Table, Tag, Alert, Typography } from 'antd';
 import { CalendarOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, locationsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -26,6 +27,7 @@ const fmt = (v: number) => (v ? v.toLocaleString('es-CO', { maximumFractionDigit
 const FarmMonthlyReport: React.FC = () => {
   const [selectedMonth, setSelectedMonth] = useState<Dayjs>(dayjs());
   const [fincaId, setFincaId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
 
   const month = selectedMonth.month() + 1;
   const year = selectedMonth.year();
@@ -37,8 +39,8 @@ const FarmMonthlyReport: React.FC = () => {
   const farms = farmsData?.data || [];
 
   const { data: reportResponse, isLoading } = useQuery({
-    queryKey: ['farm-monthly', fincaId, month, year],
-    queryFn: () => inventoryApi.getFarmMonthlyReport({ location_id: fincaId, month, year }),
+    queryKey: ['farm-monthly', fincaId, month, year, categoryId],
+    queryFn: () => inventoryApi.getFarmMonthlyReport({ location_id: fincaId, month, year, category_id: categoryId }),
     enabled: !!fincaId,
   });
   const reportData = reportResponse?.data ?? null;
@@ -84,6 +86,9 @@ const FarmMonthlyReport: React.FC = () => {
             >
               {farms.map((f: any) => <Select.Option key={f.id} value={f.id}>{f.name}</Select.Option>)}
             </Select>
+          </Col>
+          <Col xs={24} sm={10} md={6}>
+            <CategoryFilterSelect value={categoryId} onChange={setCategoryId} />
           </Col>
           <Col xs={24} sm={10} md={6}>
             <DatePicker

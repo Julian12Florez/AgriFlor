@@ -12,6 +12,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { productsApi, locationsApi, inventoryApi, reportExportsApi } from '../../services/api';
 import dayjs from 'dayjs';
 import usePermissions from '../../hooks/usePermissions';
@@ -88,6 +89,7 @@ interface ConsumptionReportData {
 const ConsumptionReport: React.FC = () => {
   const [productId, setProductId] = useState<string | undefined>(undefined);
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null] | null>(null);
   const [shouldFetch, setShouldFetch] = useState(false);
   const [reportData, setReportData] = useState<ConsumptionReportData | null>(null);
@@ -116,6 +118,7 @@ const ConsumptionReport: React.FC = () => {
       const params: any = {};
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
+      if (categoryId) params.category_id = categoryId;
       if (dateRange && dateRange[0]) params.start_date = dateRange[0].format('YYYY-MM-DD');
       if (dateRange && dateRange[1]) params.end_date = dateRange[1].format('YYYY-MM-DD');
 
@@ -133,6 +136,7 @@ const ConsumptionReport: React.FC = () => {
   const handleClearFilters = () => {
     setProductId(undefined);
     setLocationId(undefined);
+    setCategoryId(undefined);
     setDateRange(null);
     setShouldFetch(false);
     setReportData(null);
@@ -144,6 +148,7 @@ const ConsumptionReport: React.FC = () => {
       const params: any = {};
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
+      if (categoryId) params.category_id = categoryId;
       if (dateRange && dateRange[0]) params.start_date = dateRange[0].format('YYYY-MM-DD');
       if (dateRange && dateRange[1]) params.end_date = dateRange[1].format('YYYY-MM-DD');
 
@@ -163,6 +168,7 @@ const ConsumptionReport: React.FC = () => {
       const params: any = {};
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
+      if (categoryId) params.category_id = categoryId;
       if (dateRange && dateRange[0]) params.start_date = dateRange[0].format('YYYY-MM-DD');
       if (dateRange && dateRange[1]) params.end_date = dateRange[1].format('YYYY-MM-DD');
 
@@ -447,6 +453,10 @@ const ConsumptionReport: React.FC = () => {
                 </Option>
               ))}
             </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>Categoría</div>
+            <CategoryFilterSelect value={categoryId} onChange={setCategoryId} />
           </Col>
         </Row>
 

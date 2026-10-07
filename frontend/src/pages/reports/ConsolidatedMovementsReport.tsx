@@ -11,6 +11,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, productsApi, locationsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 import { buildMovementTypeParams } from '../../utils/movementFilters';
@@ -85,6 +86,7 @@ interface ReportData {
 const ConsolidatedMovementsReport: React.FC = () => {
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [productId, setProductId] = useState<string | undefined>(undefined);
   const [type, setType] = useState<string | undefined>(undefined);
   const [shouldFetch, setShouldFetch] = useState(false);
@@ -103,7 +105,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
 
   // Fetch consolidated report
   const { data: reportData, isLoading, refetch } = useQuery({
-    queryKey: ['inventory-movements-report', dateRange, locationId, productId, type],
+    queryKey: ['inventory-movements-report', dateRange, locationId, productId, type, categoryId],
     queryFn: () => {
       const params: any = {};
 
@@ -113,6 +115,8 @@ const ConsolidatedMovementsReport: React.FC = () => {
       }
 
       if (locationId) params.location_id = locationId;
+
+      if (categoryId) params.category_id = categoryId;
       if (productId) params.product_id = productId;
       Object.assign(params, buildMovementTypeParams(type));
 
@@ -135,6 +139,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
   const handleClearFilters = () => {
     setDateRange(null);
     setLocationId(undefined);
+    setCategoryId(undefined);
     setProductId(undefined);
     setType(undefined);
     setShouldFetch(false);
@@ -208,6 +213,10 @@ const ConsolidatedMovementsReport: React.FC = () => {
                 </Option>
               ))}
             </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>Categoría</div>
+            <CategoryFilterSelect value={categoryId} onChange={setCategoryId} />
           </Col>
 
           <Col xs={24} sm={12} md={8} lg={6}>

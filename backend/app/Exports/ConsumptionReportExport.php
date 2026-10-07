@@ -88,6 +88,8 @@ class ConsumptionReportExport implements FromCollection, WithHeadings, WithStyle
                 $products->where('output_products.product_id', $productId);
             }
 
+            \App\Support\ProductCategoryFilter::onProducts($products);
+
             $products = $products->get();
 
             if ($products->isEmpty()) {

@@ -4,6 +4,7 @@ import { DatabaseOutlined, WarningOutlined, CheckCircleOutlined, ExclamationCirc
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import ResponsiveTable from '../../components/ResponsiveTable';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, locationsApi, reportExportsApi } from '../../services/api';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
 
@@ -88,6 +89,7 @@ const Inventory: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [locationFilter, setLocationFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
+  const [categoryFilter, setCategoryFilter] = useState<string | undefined>();
   const [selectedProduct, setSelectedProduct] = useState<KardexItem | null>(null);
   const [isKardexModalVisible, setIsKardexModalVisible] = useState(false);
 
@@ -99,11 +101,12 @@ const Inventory: React.FC = () => {
 
   // Fetch kardex data
   const { data: kardexResponse, isLoading } = useQuery({
-    queryKey: ['inventory-kardex', locationFilter, searchText, statusFilter],
+    queryKey: ['inventory-kardex', locationFilter, searchText, statusFilter, categoryFilter],
     queryFn: () => inventoryApi.getKardex({
       location_id: locationFilter,
       search: searchText || undefined,
-      status: statusFilter
+      status: statusFilter,
+      category_id: categoryFilter
     })
   });
 
@@ -163,6 +166,7 @@ const Inventory: React.FC = () => {
       if (locationFilter) params.location_id = locationFilter;
       if (statusFilter) params.status = statusFilter;
       if (searchText) params.search = searchText;
+      if (categoryFilter) params.category_id = categoryFilter;
       await reportExportsApi.exportKardexListExcel(params);
       message.success('Excel descargado correctamente');
     } catch {
@@ -176,6 +180,7 @@ const Inventory: React.FC = () => {
       if (locationFilter) params.location_id = locationFilter;
       if (statusFilter) params.status = statusFilter;
       if (searchText) params.search = searchText;
+      if (categoryFilter) params.category_id = categoryFilter;
       await reportExportsApi.exportKardexListPdf(params);
       message.success('PDF descargado correctamente');
     } catch {
@@ -559,6 +564,7 @@ const Inventory: React.FC = () => {
               <Option value="near_expiry">Próximo a Vencer</Option>
               <Option value="expired">Expirado</Option>
             </Select>
+            <CategoryFilterSelect value={categoryFilter} onChange={setCategoryFilter} style={{ width: 200 }} />
           </Space>
           <Space>
             <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>

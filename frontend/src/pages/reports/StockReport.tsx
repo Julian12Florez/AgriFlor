@@ -13,6 +13,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, productsApi, locationsApi, reportExportsApi } from '../../services/api';
 import dayjs from 'dayjs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -44,6 +45,7 @@ interface StockItem {
 const StockReport: React.FC = () => {
   const [productId, setProductId] = useState<string | undefined>(undefined);
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [groupBy, setGroupBy] = useState<'product' | 'location'>('product');
   const [shouldFetch, setShouldFetch] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -64,11 +66,12 @@ const StockReport: React.FC = () => {
 
   // Fetch inventory
   const { data: inventoryData, isLoading, refetch } = useQuery({
-    queryKey: ['inventory-stock-report', productId, locationId],
+    queryKey: ['inventory-stock-report', productId, locationId, categoryId],
     queryFn: () => {
       const params: any = { per_page: 1000 };
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
+      if (categoryId) params.category_id = categoryId;
       return inventoryApi.list(params);
     },
     enabled: shouldFetch,
@@ -84,6 +87,7 @@ const StockReport: React.FC = () => {
   const handleClearFilters = () => {
     setProductId(undefined);
     setLocationId(undefined);
+    setCategoryId(undefined);
     setShouldFetch(false);
   };
 
@@ -93,6 +97,7 @@ const StockReport: React.FC = () => {
       const params: any = { group_by: groupBy };
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
+      if (categoryId) params.category_id = categoryId;
 
       await reportExportsApi.exportStockExcel(params);
       message.success('Reporte exportado exitosamente a Excel');
@@ -110,6 +115,7 @@ const StockReport: React.FC = () => {
       const params: any = { group_by: groupBy };
       if (productId) params.product_id = productId;
       if (locationId) params.location_id = locationId;
+      if (categoryId) params.category_id = categoryId;
 
       await reportExportsApi.exportStockPdf(params);
       message.success('Reporte exportado exitosamente a PDF');
@@ -699,6 +705,10 @@ const StockReport: React.FC = () => {
                 </Option>
               ))}
             </Select>
+          </Col>
+          <Col xs={24} sm={12} md={8} lg={6}>
+            <div style={{ marginBottom: 8, fontWeight: 500 }}>Categoría</div>
+            <CategoryFilterSelect value={categoryId} onChange={setCategoryId} />
           </Col>
 
           <Col xs={24} sm={12} md={8} lg={6}>

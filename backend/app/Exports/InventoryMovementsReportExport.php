@@ -33,6 +33,8 @@ class InventoryMovementsReportExport implements FromCollection, WithHeadings, Wi
             'responsibleUser',
         ]);
 
+        \App\Support\ProductCategoryFilter::throughRelation($query);
+
         if (($this->filters['start_date'] ?? null) && ($this->filters['end_date'] ?? null)) {
             $query->whereBetween('movement_date', [$this->filters['start_date'], $this->filters['end_date']]);
         }

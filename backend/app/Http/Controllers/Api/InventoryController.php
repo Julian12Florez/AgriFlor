@@ -96,6 +96,9 @@ class InventoryController extends Controller
         $query = Inventory::query()
             ->with(['product.packagingUnits', 'brand', 'location']);
 
+        // Filtro por categoría del producto (Fertilizante, Insecticida...)
+        \App\Support\ProductCategoryFilter::throughRelation($query);
+
         // Filter by location
         if ($request->has('location_id')) {
             $query->where('location_id', $request->location_id);
@@ -202,6 +205,9 @@ class InventoryController extends Controller
     {
         $query = InventoryMovement::query()
             ->with(['product.packagingUnits', 'brand', 'location', 'responsibleUser']);
+
+        // Filtro por categoría del producto
+        \App\Support\ProductCategoryFilter::throughRelation($query);
 
         // Filter by type
         if ($request->has('type')) {
@@ -523,6 +529,9 @@ class InventoryController extends Controller
                     'products.status as product_status'
                 ])
                 ->where('products.status', 'active');
+
+            // Filtro por categoría del producto
+            \App\Support\ProductCategoryFilter::onProducts($productsQuery);
 
             // Apply search filter
             if ($searchText) {
@@ -960,6 +969,11 @@ class InventoryController extends Controller
                 $query->where('inventory_movements.product_id', $productId);
             }
 
+            // Filtro por categoría: se aplica a la consulta base, así que los
+            // totales y las agrupaciones (por producto, ubicación, día) salen
+            // ya filtrados.
+            \App\Support\ProductCategoryFilter::onProducts($query);
+
             if ($type) {
                 $query->where('inventory_movements.type', $type);
             }
@@ -1257,6 +1271,9 @@ class InventoryController extends Controller
                     $products->where('output_products.product_id', $productId);
                 }
 
+                // Filtro por categoría del producto
+                \App\Support\ProductCategoryFilter::onProducts($products);
+
                 $products = $products->get();
 
                 if ($products->isEmpty()) {
@@ -1468,6 +1485,7 @@ class InventoryController extends Controller
             // Get all products with their categories and base units
             $products = \App\Models\Product::with('category')
                 ->where('status', 'active')
+                ->when(\App\Support\ProductCategoryFilter::id(), fn ($q, $categoria) => $q->where('category_id', $categoria))
                 ->orderBy('name')
                 ->get(['id', 'name', 'product_code', 'category_id', 'base_unit']);
 
@@ -1967,7 +1985,8 @@ class InventoryController extends Controller
             $consumoByProduct = $this->farmOutputQtyByProduct($fincaId, 'consumption', $startDate, $endDate);
 
             $products = \App\Models\Product::with('category')
-                ->where('status', 'active')->orderBy('name')
+                ->where('status', 'active')
+                ->when(\App\Support\ProductCategoryFilter::id(), fn ($q, $categoria) => $q->where('category_id', $categoria))->orderBy('name')
                 ->get(['id', 'name', 'product_code', 'category_id', 'base_unit']);
 
             $result = [];
@@ -2272,6 +2291,9 @@ class InventoryController extends Controller
                 ->where('inventory_movements.type', 'entry')
                 ->where('inventory_movements.location_id', $fincaId);
 
+            // Filtro por categoría del producto
+            \App\Support\ProductCategoryFilter::onProducts($query);
+
             if ($request->filled('date_from')) {
                 $query->where('inventory_movements.movement_date', '>=', $request->date_from . ' 00:00:00');
             }
@@ -2325,6 +2347,7 @@ class InventoryController extends Controller
             // Get products with their categories
             $products = \App\Models\Product::with('category')
                 ->where('status', 'active')
+                ->when(\App\Support\ProductCategoryFilter::id(), fn ($q, $categoria) => $q->where('category_id', $categoria))
                 ->orderBy('name')
                 ->get(['id', 'name', 'product_code', 'category_id', 'base_unit', 'status']);
 

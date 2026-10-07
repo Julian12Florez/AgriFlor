@@ -9,6 +9,7 @@ import {
   SwapOutlined,
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, locationsApi, reportExportsApi } from '../../services/api';
 import dayjs, { Dayjs } from 'dayjs';
 import {
@@ -35,6 +36,7 @@ interface ProductListingRow {
 const ProductListingReport: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [searchText, setSearchText] = useState('');
   const [exporting, setExporting] = useState(false);
 
@@ -48,8 +50,8 @@ const ProductListingReport: React.FC = () => {
   const locations = locationsData?.data ?? [];
 
   const { data: reportResponse, isLoading, refetch } = useQuery({
-    queryKey: ['product-listing', dateStr, locationId],
-    queryFn: () => inventoryApi.getProductListing({ date: dateStr, location_id: locationId }),
+    queryKey: ['product-listing', dateStr, locationId, categoryId],
+    queryFn: () => inventoryApi.getProductListing({ date: dateStr, location_id: locationId, category_id: categoryId }),
   });
 
   const reportData = reportResponse?.data ?? null;
@@ -84,6 +86,7 @@ const ProductListingReport: React.FC = () => {
       await reportExportsApi.exportProductListingExcel({
         date: dateStr,
         ...(locationId ? { location_id: locationId } : {}),
+        ...(categoryId ? { category_id: categoryId } : {}),
       });
       message.success('Excel exportado correctamente');
     } catch {
@@ -140,6 +143,9 @@ const ProductListingReport: React.FC = () => {
             <Select allowClear placeholder="Filtrar por ubicación" value={locationId} onChange={setLocationId} style={{ width: '100%' }}>
               {locations.map((loc: any) => <Option key={loc.id} value={loc.id}>{loc.name}</Option>)}
             </Select>
+          </Col>
+          <Col xs={24} sm={6} md={5}>
+            <CategoryFilterSelect value={categoryId} onChange={setCategoryId} />
           </Col>
           <Col xs={24} sm={6} md={5}>
             <input

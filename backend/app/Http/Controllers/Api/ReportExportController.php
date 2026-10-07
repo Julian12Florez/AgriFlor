@@ -74,6 +74,8 @@ class ReportExportController extends Controller
             ->where('quantity', '>', 0)
             ->whereNotIn('status', ['expired']);
 
+        \App\Support\ProductCategoryFilter::throughRelation($query);
+
         if ($filters['product_id']) {
             $query->where('product_id', $filters['product_id']);
         }
@@ -208,6 +210,8 @@ class ReportExportController extends Controller
             'location',
             'responsibleUser',
         ]);
+
+        \App\Support\ProductCategoryFilter::throughRelation($query);
 
         if ($filters['start_date'] && $filters['end_date']) {
             $query->whereBetween('movement_date', [$filters['start_date'], $filters['end_date']]);
@@ -408,6 +412,8 @@ class ReportExportController extends Controller
                 ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
                 ->join('brands', 'output_products.brand_id', '=', 'brands.id')
                 ->where('output_products.output_id', $output->output_id);
+
+            \App\Support\ProductCategoryFilter::onProducts($products);
 
             if ($productId) {
                 $products->where('output_products.product_id', $productId);
@@ -684,6 +690,8 @@ class ReportExportController extends Controller
             ->leftJoin('categories', 'products.category_id', '=', 'categories.id')
             ->join('locations', 'inventory.location_id', '=', 'locations.id')
             ->where('inventory.quantity', '>', 0);
+
+        \App\Support\ProductCategoryFilter::onProducts($query);
 
         if ($filters['location_id']) {
             $query->where('inventory.location_id', $filters['location_id']);

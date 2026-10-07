@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card, Row, Col, DatePicker, Select, Spin, Table, Tag, Alert, Statistic, Typography } from 'antd';
 import { EnvironmentOutlined, InboxOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
+import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, locationsApi } from '../../services/api';
 import { Dayjs } from 'dayjs';
 
@@ -22,6 +23,7 @@ const fmt = (v: number) => (v ? v.toLocaleString('es-CO', { maximumFractionDigit
 
 const FarmEntriesReport: React.FC = () => {
   const [fincaId, setFincaId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null);
 
   const { data: farmsData } = useQuery({
@@ -31,9 +33,10 @@ const FarmEntriesReport: React.FC = () => {
   const farms = farmsData?.data || [];
 
   const { data: reportResponse, isLoading } = useQuery({
-    queryKey: ['farm-entries', fincaId, range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD')],
+    queryKey: ['farm-entries', fincaId, range?.[0]?.format('YYYY-MM-DD'), range?.[1]?.format('YYYY-MM-DD'), categoryId],
     queryFn: () => inventoryApi.getFarmEntriesReport({
       location_id: fincaId,
+      category_id: categoryId,
       date_from: range?.[0]?.format('YYYY-MM-DD'),
       date_to: range?.[1]?.format('YYYY-MM-DD'),
     }),
@@ -84,6 +87,9 @@ const FarmEntriesReport: React.FC = () => {
               value={range as any}
               onChange={(v) => setRange(v as any)}
             />
+          </Col>
+          <Col xs={24} sm={10} md={6}>
+            <CategoryFilterSelect value={categoryId} onChange={setCategoryId} />
           </Col>
         </Row>
       </Card>

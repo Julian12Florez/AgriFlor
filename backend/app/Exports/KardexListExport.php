@@ -47,6 +47,8 @@ class KardexListExport implements FromCollection, WithHeadings, WithStyles, With
             ->join('locations', 'inventory.location_id', '=', 'locations.id')
             ->where('inventory.quantity', '>', 0);
 
+        \App\Support\ProductCategoryFilter::onProducts($query);
+
         if ($this->filters['location_id'] ?? null) {
             $query->where('inventory.location_id', $this->filters['location_id']);
         }

@@ -34,6 +34,8 @@ class StockReportExport implements FromCollection, WithHeadings, WithStyles, Wit
             ->where('quantity', '>', 0)
             ->whereNotIn('status', ['expired']);
 
+        \App\Support\ProductCategoryFilter::throughRelation($query);
+
         if ($this->filters['product_id']) {
             $query->where('product_id', $this->filters['product_id']);
         }
