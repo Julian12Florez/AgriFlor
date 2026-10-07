@@ -3,148 +3,53 @@
 namespace Database\Seeders;
 
 use App\Models\Role;
-use App\Models\Permission;
+use App\Support\PermissionCatalog;
 use Illuminate\Database\Seeder;
 
 class RolesSeeder extends Seeder
 {
+    /**
+     * Perfiles de fábrica. QUÉ puede hacer cada uno no se decide aquí: sale de
+     * App\Support\PermissionCatalog (campo `roles` de cada permiso), que es la
+     * misma fuente que usa la migración que introdujo el catálogo.
+     *
+     * Antes este seeder repartía los permisos "por módulo" (todo lo de salidas,
+     * todo lo de recepción...), y por eso la base decía, por ejemplo, que el
+     * Operario de Finca podía aprobar salidas cuando el API no lo dejaba.
+     */
     public function run(): void
     {
         // Rename legacy role names to match the enum used in routes and forms
         Role::where('name', 'warehouse_operator')->update(['name' => 'warehouse']);
         Role::where('name', 'farm_operator')->update(['name' => 'farm']);
 
-        // 1. ADMINISTRATOR - Full access to everything
-        $admin = Role::firstOrCreate(
-            ['name' => 'admin'],
-            [
-                'display_name' => 'Administrador',
-                'description' => 'Acceso completo a todos los módulos del sistema incluyendo Administración',
-                'has_full_access' => true,
-                'excluded_modules' => null,
-            ]
-        );
+        $perfiles = [
+            ['admin', 'Administrador', 'Acceso completo a todos los módulos del sistema incluyendo Administración', true],
+            ['agronomist', 'Agrónomo', 'Acceso a procesos técnicos, salidas y recepciones', false],
+            ['supervisor', 'Supervisor', 'Acceso a recepción, salidas e inventario', false],
+            ['warehouse', 'Bodeguero', 'Acceso a salidas, recepciones e inventario', false],
+            ['farm', 'Operario de Finca', 'Acceso a recepción y salidas en finca', false],
+            ['purchasing', 'Encargado de Compras', 'Acceso a datos maestros, compras, salidas y recepciones', false],
+            ['financiero', 'Financiero', 'Acceso a reportes, alertas, inventario, salidas y recepciones', false],
+        ];
 
-        // Admin has all permissions
-        $allPermissions = Permission::all();
-        $admin->permissions()->syncWithoutDetaching($allPermissions);
+        foreach ($perfiles as [$nombre, $etiqueta, $descripcion, $accesoTotal]) {
+            Role::firstOrCreate(
+                ['name' => $nombre],
+                [
+                    'display_name' => $etiqueta,
+                    'description' => $descripcion,
+                    'has_full_access' => $accesoTotal,
+                    'excluded_modules' => null,
+                ]
+            );
+        }
 
-        // 2. AGRONOMIST - Technical processes only + outputs/receptions
-        $agronomist = Role::firstOrCreate(
-            ['name' => 'agronomist'],
-            [
-                'display_name' => 'Agrónomo',
-                'description' => 'Acceso a procesos técnicos, salidas y recepciones',
-                'has_full_access' => false,
-                'excluded_modules' => null,
-            ]
-        );
-        // Update description if role already exists
-        $agronomist->update(['description' => 'Acceso a procesos técnicos, salidas y recepciones']);
+        // El perfil 'auditor' lo crea su propia migración (2026_06_03_010000).
 
-        // El agrónomo VE el inventario: programa aplicaciones y necesita saber con
-        // qué cuenta cada finca. Solo 'view_inventory'; ajustar existencias sigue
-        // siendo de bodega y administración.
-        //
-        // Sin este permiso el ticket se "resolvió" una vez subiendo al ingeniero a
-        // admin, lo que de paso le entregó administración de usuarios, aprobación
-        // de ajustes y auditoría. Concederle lo que necesita evita ese atajo.
-        $agronomistPermissions = Permission::where(function ($query) {
-            $query->whereIn('module', ['technical', 'outputs', 'reception'])
-                ->orWhere('name', 'view_inventory');
-        })->get();
-        $agronomist->permissions()->sync($agronomistPermissions);
+        PermissionCatalog::syncDefinitions();
+        PermissionCatalog::applyDefaultAssignments();
 
-        // 3. SUPERVISOR - Reception, Outputs, Inventory (NO reports)
-        $supervisor = Role::firstOrCreate(
-            ['name' => 'supervisor'],
-            [
-                'display_name' => 'Supervisor',
-                'description' => 'Acceso a recepción, salidas e inventario',
-                'has_full_access' => false,
-                'excluded_modules' => null,
-            ]
-        );
-        // Update description if role already exists
-        $supervisor->update(['description' => 'Acceso a recepción, salidas e inventario']);
-
-        $supervisorPermissions = Permission::whereIn('module', ['reception', 'outputs', 'inventory'])
-            ->get();
-        $supervisor->permissions()->sync($supervisorPermissions);
-
-        // 4. WAREHOUSE (Bodeguero) - Outputs, Reception and Inventory
-        $warehouse = Role::firstOrCreate(
-            ['name' => 'warehouse'],
-            [
-                'display_name' => 'Bodeguero',
-                'description' => 'Acceso a salidas, recepciones e inventario',
-                'has_full_access' => false,
-                'excluded_modules' => null,
-            ]
-        );
-        // Update description if role already exists
-        $warehouse->update(['description' => 'Acceso a salidas, recepciones e inventario']);
-
-        $warehousePermissions = Permission::whereIn('module', ['outputs', 'reception', 'inventory'])
-            ->get();
-        $warehouse->permissions()->sync($warehousePermissions);
-
-        // 5. FARM (Operario de Finca) - Reception and Outputs
-        $farm = Role::firstOrCreate(
-            ['name' => 'farm'],
-            [
-                'display_name' => 'Operario de Finca',
-                'description' => 'Acceso a recepción y salidas en finca',
-                'has_full_access' => false,
-                'excluded_modules' => null,
-            ]
-        );
-
-        $farmPermissions = Permission::whereIn('module', ['reception', 'outputs'])
-            ->get();
-        $farm->permissions()->sync($farmPermissions);
-
-        // 6. PURCHASING (Encargado de Compras) - Masters, Purchases, Outputs, Reception
-        $purchasing = Role::firstOrCreate(
-            ['name' => 'purchasing'],
-            [
-                'display_name' => 'Encargado de Compras',
-                'description' => 'Acceso a datos maestros, compras, salidas y recepciones',
-                'has_full_access' => false,
-                'excluded_modules' => null,
-            ]
-        );
-        // Update description if role already exists
-        $purchasing->update(['description' => 'Acceso a datos maestros, compras, salidas y recepciones']);
-
-        $purchasingPermissions = Permission::whereIn('module', ['master', 'purchases', 'products', 'outputs', 'reception'])
-            ->get();
-        $purchasing->permissions()->sync($purchasingPermissions);
-
-        // 7. FINANCIERO - Reports, Alerts, Inventory, Outputs, Reception
-        $financiero = Role::firstOrCreate(
-            ['name' => 'financiero'],
-            [
-                'display_name' => 'Financiero',
-                'description' => 'Acceso a reportes, alertas, inventario, salidas y recepciones',
-                'has_full_access' => false,
-                'excluded_modules' => null,
-            ]
-        );
-        // Update description if role already exists
-        $financiero->update(['description' => 'Acceso a reportes, alertas, inventario, salidas y recepciones']);
-
-        $financieroPermissions = Permission::whereIn('module', ['reports', 'inventory', 'outputs', 'reception'])
-            ->get();
-        $financiero->permissions()->sync($financieroPermissions);
-
-        $this->command->info('Roles seeded successfully with the following structure:');
-        $this->command->info('1. admin - Administrador (Full access)');
-        $this->command->info('2. agronomist - Agrónomo (Technical + Outputs + Reception)');
-        $this->command->info('3. supervisor - Supervisor (Reception + Outputs + Inventory)');
-        $this->command->info('4. warehouse - Bodeguero (Outputs + Reception + Inventory)');
-        $this->command->info('5. farm - Operario de Finca (Outputs + Reception)');
-        $this->command->info('6. purchasing - Encargado de Compras (Master + Purchases + Products + Outputs + Reception)');
-        $this->command->info('7. financiero - Financiero (Reports + Inventory + Outputs + Reception)');
+        $this->command?->info('Perfiles creados; permisos asignados según App\\Support\\PermissionCatalog.');
     }
 }

@@ -1,0 +1,1393 @@
+{
+ "DELETE api/base-units/{base_unit}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "DELETE api/brands/{brand}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "DELETE api/categories/{category}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "DELETE api/companies/{company}/logo": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "DELETE api/farm-lots/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "warehouse"
+  ]
+ },
+ "DELETE api/locations/{location}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "DELETE api/output-types/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "DELETE api/packaging-units/{packaging_unit}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "DELETE api/performance/logs/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "DELETE api/performance/task-categories/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "DELETE api/product-outputs/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "DELETE api/products/{product}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "DELETE api/purchases/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "DELETE api/purchases/{id}/attachments/{attachmentId}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "DELETE api/suppliers/{id}/contacts/{contactId}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "DELETE api/suppliers/{supplier}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "DELETE api/tasks/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "DELETE api/tasks/{id}/deductions/{deductionId}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "DELETE api/technical-orders/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "DELETE api/technical-recipes/{technical_recipe}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "DELETE api/users/{user}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "DELETE api/workers/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/adjustment-reasons": {
+  "tipo": "sesion"
+ },
+ "GET api/adjustments": {
+  "tipo": "sesion"
+ },
+ "GET api/adjustments/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/alerts": {
+  "tipo": "sesion"
+ },
+ "GET api/alerts/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/applications": {
+  "tipo": "sesion"
+ },
+ "GET api/applications/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/audits": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "auditor"
+  ]
+ },
+ "GET api/audits/filters": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "auditor"
+  ]
+ },
+ "GET api/auth/me": {
+  "tipo": "sesion"
+ },
+ "GET api/base-units": {
+  "tipo": "sesion"
+ },
+ "GET api/base-units/{base_unit}": {
+  "tipo": "sesion"
+ },
+ "GET api/brands": {
+  "tipo": "sesion"
+ },
+ "GET api/brands/{brand}": {
+  "tipo": "sesion"
+ },
+ "GET api/categories": {
+  "tipo": "sesion"
+ },
+ "GET api/categories/{category}": {
+  "tipo": "sesion"
+ },
+ "GET api/companies": {
+  "tipo": "sesion"
+ },
+ "GET api/companies/{company}": {
+  "tipo": "sesion"
+ },
+ "GET api/companies/{company}/logo": {
+  "tipo": "sesion"
+ },
+ "GET api/daily-assignments": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/daily-assignments/template": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/dashboard/inventory-by-category": {
+  "tipo": "sesion"
+ },
+ "GET api/dashboard/recent-activity": {
+  "tipo": "sesion"
+ },
+ "GET api/dashboard/statistics": {
+  "tipo": "sesion"
+ },
+ "GET api/farm-lots": {
+  "tipo": "sesion"
+ },
+ "GET api/farm-lots/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/consumption/report": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/farm-entries-report": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/farm-monthly-report": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/kardex": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/kardex/product/{productId}": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/location/{locationId}": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/monthly-report": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/movements": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/movements/product/{productId}": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/movements/report": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/product-listing": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/product/{productId}/details": {
+  "tipo": "sesion"
+ },
+ "GET api/inventory/{productId}": {
+  "tipo": "sesion"
+ },
+ "GET api/locations": {
+  "tipo": "sesion"
+ },
+ "GET api/locations/type/farms": {
+  "tipo": "sesion"
+ },
+ "GET api/locations/type/warehouses": {
+  "tipo": "sesion"
+ },
+ "GET api/locations/{locationId}/farm-lots": {
+  "tipo": "sesion"
+ },
+ "GET api/locations/{location}": {
+  "tipo": "sesion"
+ },
+ "GET api/output-types": {
+  "tipo": "sesion"
+ },
+ "GET api/output-types/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/packaging-units": {
+  "tipo": "sesion"
+ },
+ "GET api/packaging-units/{packaging_unit}": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/panel": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/reports/by-task": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/reports/compliance": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/reports/gantt": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/reports/projection": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/schedules": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/schedules/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/schedules/{id}/daily-performance": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/schedules/{id}/logs": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/settings": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/task-catalog": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/task-catalog/categories": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/task-catalog/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/task-categories": {
+  "tipo": "sesion"
+ },
+ "GET api/performance/worker-availability": {
+  "tipo": "sesion"
+ },
+ "GET api/product-outputs": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "GET api/product-outputs/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "GET api/product-outputs/{id}/applications": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "warehouse"
+  ]
+ },
+ "GET api/product-outputs/{id}/remision-pdf": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "GET api/products": {
+  "tipo": "sesion"
+ },
+ "GET api/products-for-outputs": {
+  "tipo": "sesion"
+ },
+ "GET api/products/{product}": {
+  "tipo": "sesion"
+ },
+ "GET api/purchases": {
+  "tipo": "sesion"
+ },
+ "GET api/purchases/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/purchases/{id}/export-pdf": {
+  "tipo": "sesion"
+ },
+ "GET api/purchases/{id}/reversal-preview": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "GET api/receptions": {
+  "tipo": "sesion"
+ },
+ "GET api/receptions/available-sources": {
+  "tipo": "sesion"
+ },
+ "GET api/receptions/available-sources-for-responsible": {
+  "tipo": "sesion"
+ },
+ "GET api/receptions/{id}": {
+  "tipo": "sesion"
+ },
+ "GET api/receptions/{id}/batches": {
+  "tipo": "sesion"
+ },
+ "GET api/receptions/{id}/pending-products": {
+  "tipo": "sesion"
+ },
+ "GET api/reports/analytics/{type}/export-excel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "GET api/reports/analytics/{type}/export-pdf": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "GET api/reports/consumption/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/consumption/export-pdf": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/kardex-list/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/kardex-list/export-pdf": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/kardex/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/kardex/export-pdf": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/liquidation/export-excel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "GET api/reports/liquidation/export-pdf": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "GET api/reports/monthly-inventory/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/movements/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/movements/export-pdf": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/product-listing/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/stock/export-excel": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/reports/stock/export-pdf": {
+  "tipo": "permiso",
+  "permiso": "export_reports"
+ },
+ "GET api/suppliers": {
+  "tipo": "sesion"
+ },
+ "GET api/suppliers/{supplier}": {
+  "tipo": "sesion"
+ },
+ "GET api/tasks": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/tasks/simple": {
+  "tipo": "sesion"
+ },
+ "GET api/tasks/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/tasks/{id}/net-amount": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/technical-orders": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "supervisor"
+  ]
+ },
+ "GET api/technical-orders/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "supervisor"
+  ]
+ },
+ "GET api/technical-recipes": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "GET api/technical-recipes/{technical_recipe}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "GET api/users": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "GET api/users/simple": {
+  "tipo": "sesion"
+ },
+ "GET api/users/{user}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "GET api/workers": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/workers/simple": {
+  "tipo": "sesion"
+ },
+ "GET api/workers/template": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "GET api/workers/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "PATCH api/performance/task-catalog/{id}/toggle": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "PATCH api/users/{id}/status": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/adjustments": {
+  "tipo": "sesion"
+ },
+ "POST api/admin/clean-data": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/admin/import-inventory": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/admin/run-migrations": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/admin/setup-brand": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/alerts": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/applications": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "warehouse"
+  ]
+ },
+ "POST api/applications/{id}/approve": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "warehouse"
+  ]
+ },
+ "POST api/applications/{id}/cancel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "warehouse"
+  ]
+ },
+ "POST api/auth/change-password": {
+  "tipo": "sesion"
+ },
+ "POST api/auth/forgot-password": {
+  "tipo": "publica"
+ },
+ "POST api/auth/login": {
+  "tipo": "publica"
+ },
+ "POST api/auth/logout": {
+  "tipo": "sesion"
+ },
+ "POST api/auth/refresh": {
+  "tipo": "publica"
+ },
+ "POST api/auth/reset-password": {
+  "tipo": "publica"
+ },
+ "POST api/base-units": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "POST api/brands": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "POST api/categories": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "POST api/companies": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/companies/{company}/logo": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/daily-assignments": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/daily-assignments/preview": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/daily-assignments/process": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/farm-lots": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "warehouse"
+  ]
+ },
+ "POST api/locations": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/output-types": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/packaging-units": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "POST api/performance/reports/farm-comparison": {
+  "tipo": "sesion"
+ },
+ "POST api/performance/schedules": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "POST api/performance/schedules/estimate-ad-hoc": {
+  "tipo": "sesion"
+ },
+ "POST api/performance/schedules/{id}/cancel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "POST api/performance/schedules/{id}/finalize": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "POST api/performance/schedules/{id}/logs": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "farm_operator",
+   "supervisor"
+  ]
+ },
+ "POST api/performance/task-catalog": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "POST api/performance/task-categories": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "POST api/product-outputs": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/product-outputs/validate-inventory": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/product-outputs/{id}/approve": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "POST api/product-outputs/{id}/complete": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/product-outputs/{id}/mark-in-transit": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/product-outputs/{id}/register-application": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "warehouse"
+  ]
+ },
+ "POST api/products": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "POST api/products/search-with-inventory": {
+  "tipo": "sesion"
+ },
+ "POST api/purchases": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "POST api/purchases/{id}/attachments": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "POST api/purchases/{id}/reverse": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/receptions": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/receptions/direct-reception": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/receptions/{id}/batches": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/receptions/{id}/close-with-available": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/receptions/{id}/finalize": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "POST api/reports/analytics/deductions-breakdown": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "POST api/reports/analytics/labor-costs": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "POST api/reports/analytics/period-comparison": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "POST api/reports/analytics/task-analysis": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "POST api/reports/analytics/worker-productivity": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "POST api/reports/liquidation": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "liquidador",
+   "supervisor"
+  ]
+ },
+ "POST api/suppliers": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "POST api/suppliers/{id}/contacts": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "POST api/tasks": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/tasks/{id}/deductions": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/technical-orders": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "POST api/technical-orders/{id}/approve": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "POST api/technical-orders/{id}/cancel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "POST api/technical-orders/{id}/complete": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "POST api/technical-recipes": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "POST api/technical-recipes/{id}/duplicate": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "POST api/users": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "POST api/workers": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/workers/import": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "POST api/workers/preview": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "PUT api/adjustments/{id}/approve": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "PUT api/adjustments/{id}/cancel": {
+  "tipo": "sesion"
+ },
+ "PUT api/adjustments/{id}/reject": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "PUT api/alerts/{id}/dismiss": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "PUT api/alerts/{id}/resolve": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "financiero",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "PUT api/base-units/{base_unit}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "PUT api/brands/{brand}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "PUT api/categories/{category}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "PUT api/companies/{company}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "PUT api/farm-lots/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "warehouse"
+  ]
+ },
+ "PUT api/locations/{location}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "PUT api/output-types/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "PUT api/packaging-units/{packaging_unit}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "PUT api/performance/schedules/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "PUT api/performance/settings": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "PUT api/performance/task-catalog/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "PUT api/performance/task-categories/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "supervisor"
+  ]
+ },
+ "PUT api/product-outputs/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "PUT api/products/{product}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "PUT api/purchases/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "PUT api/purchases/{id}/cancel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing",
+   "warehouse"
+  ]
+ },
+ "PUT api/receptions/{id}/cancel": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "PUT api/receptions/{id}/complete": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist",
+   "farm",
+   "financiero",
+   "purchasing",
+   "supervisor",
+   "warehouse"
+  ]
+ },
+ "PUT api/suppliers/{supplier}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "purchasing"
+  ]
+ },
+ "PUT api/tasks/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "PUT api/tasks/{id}/deductions/{deductionId}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ },
+ "PUT api/technical-orders/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "PUT api/technical-recipes/{technical_recipe}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "agronomist"
+  ]
+ },
+ "PUT api/users/{user}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin"
+  ]
+ },
+ "PUT api/workers/{id}": {
+  "tipo": "perfiles",
+  "perfiles": [
+   "admin",
+   "liquidador"
+  ]
+ }
+}

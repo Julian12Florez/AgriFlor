@@ -575,9 +575,12 @@ class ProductOutputController extends Controller
                 ], 422);
             }
 
-            // Check user role (assuming there's a role check middleware or method)
+            // Mismo permiso que pide la ruta (permission:approve_output). Antes se
+            // comparaba el nombre del perfil ('supervisor' o 'admin'), y un perfil
+            // nuevo con permiso de aprobar habría pasado la ruta para chocar aquí.
             $user = Auth::user();
-            if (!$user->hasRole('supervisor') && !$user->hasRole('admin')) {
+            $user->loadMissing('roleRelation');
+            if (!$user->hasPermission('approve_output')) {
                 DB::rollBack();
                 return response()->json([
                     'success' => false,

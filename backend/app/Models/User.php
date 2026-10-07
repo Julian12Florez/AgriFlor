@@ -107,23 +107,47 @@ class User extends Authenticatable implements JWTSubject
         return $this->role === $roleName;
     }
 
-    public function hasPermission(string $permissionName): bool
+    /**
+     * El perfil que rige los permisos de este usuario.
+     *
+     * Normalmente es el enlazado por `role_id`. Si el usuario no tiene enlace
+     * (datos viejos), se toma el perfil cuyo nombre coincide con su columna
+     * `role`: es lo que hacía el control anterior por nombre (CheckRole), y sin
+     * esto un usuario así pasaría de "entra" a "no entra a nada" al migrar las
+     * rutas a permisos. En producción los 33 usuarios están enlazados.
+     */
+    public function effectiveRole(): ?Role
     {
-        if (!$this->roleRelation) {
-            return false;
+        if ($this->roleRelation) {
+            return $this->roleRelation;
         }
 
-        return $this->roleRelation->hasPermission($permissionName);
+        return $this->role ? Role::where('name', $this->role)->first() : null;
+    }
+
+    public function hasPermission(string $permissionName): bool
+    {
+        $perfil = $this->effectiveRole();
+
+        if (!$perfil) {
+            // Sin ningún perfil con ese nombre en la base: solo el nombre
+            // 'admin' conserva el acceso total (igual que hasModuleAccess).
+            return $this->role === 'admin';
+        }
+
+        return $perfil->hasPermission($permissionName);
     }
 
     public function hasModuleAccess(string $module): bool
     {
-        if (!$this->roleRelation) {
+        $perfil = $this->effectiveRole();
+
+        if (!$perfil) {
             // Fallback to old role system
             return $this->role === 'admin';
         }
 
-        return $this->roleRelation->hasModuleAccess($module);
+        return $perfil->hasModuleAccess($module);
     }
 
     public function getPermissions(): array

@@ -16,9 +16,15 @@ class Permission extends Model
         'display_name',
         'module',
         'description',
+        'group_label',
+        'action',
+        'is_menu',
+        'sort_order',
     ];
 
     protected $casts = [
+        'is_menu' => 'boolean',
+        'sort_order' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

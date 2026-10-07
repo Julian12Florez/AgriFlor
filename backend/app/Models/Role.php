@@ -73,8 +73,12 @@ class Role extends Model
             return false;
         }
 
-        // Check if role has any permission for this module
-        return $this->permissions()->where('module', $module)->exists();
+        // El módulo se ve si el perfil tiene el permiso de MENÚ de ese módulo
+        // (uno por módulo, ver PermissionCatalog). Antes bastaba con tener
+        // CUALQUIER permiso del módulo: con los permisos de crear/editar/
+        // eliminar ya separados, eso haría aparecer en el menú una sección
+        // donde el perfil solo puede, por ejemplo, registrar algo por API.
+        return $this->permissions()->where('module', $module)->where('is_menu', true)->exists();
     }
 
     /**
@@ -86,7 +90,9 @@ class Role extends Model
             return ['all'];
         }
 
+        // Solo los módulos de los que tiene el permiso de menú (ver hasModuleAccess).
         $modules = $this->permissions()
+            ->where('is_menu', true)
             ->select('module')
             ->distinct()
             ->pluck('module')

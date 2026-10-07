@@ -70,6 +70,31 @@ Route::prefix('auth')->group(function () {
 // ============================================
 
 Route::middleware('auth:api')->group(function () {
+    /*
+    |----------------------------------------------------------------------
+    | CÓMO SE DECIDE EL ACCESO (desde el 7-oct-2026)
+    |----------------------------------------------------------------------
+    | Cada ruta de ESCRITURA pide un permiso: ->middleware('permission:<nombre>').
+    | Los permisos viven en App\Support\PermissionCatalog y quién los tiene se
+    | guarda en la base (role_permission): es lo que el administrador configura
+    | en la pantalla de Perfiles. Antes eran listas `role:admin,supervisor,...`
+    | escritas aquí.
+    |
+    | Los comentarios "(Admin, Purchasing...)" de cada bloque son los perfiles
+    | que tenían ese acceso el día del cambio, no una regla vigente.
+    |
+    | Siguen por NOMBRE de perfil, a propósito:
+    |   - role:auditor  (auditoría: ni el administrador la ve)
+    |   - role:admin    (mantenimiento: admin/clean-data, run-migrations...)
+    |
+    | Las LECTURAS siguen abiertas a cualquier usuario con sesión: las pantallas
+    | se cruzan entre módulos (Salidas lee ubicaciones, productos, empresas...).
+    | Lo que el perfil controla es qué pantallas abre y qué puede guardar.
+    |
+    | Una ruta de escritura nueva DEBE llevar su permission:, agregarse al
+    | catálogo y a tests/Fixtures/route_access_antes_de_perfiles.json
+    | (PermissionParityTest falla si aparece una ruta sin declarar).
+    */
 
     // ----------------------------------------
     // AUTH ROUTES
@@ -97,10 +122,8 @@ Route::middleware('auth:api')->group(function () {
     // ----------------------------------------
     // USER MANAGEMENT (Admin only)
     // ----------------------------------------
-    Route::middleware('role:admin')->group(function () {
-        Route::apiResource('users', UserController::class);
-        Route::patch('users/{id}/status', [UserController::class, 'updateStatus']);
-    });
+    Route::apiResource('users', UserController::class)->middleware('permission:manage_users');
+    Route::patch('users/{id}/status', [UserController::class, 'updateStatus'])->middleware('permission:manage_users');
 
     // ----------------------------------------
     // AUDITORÍA (quién hizo qué en el core) — SOLO LECTURA, SOLO rol 'auditor'
@@ -123,22 +146,18 @@ Route::middleware('auth:api')->group(function () {
     Route::get('products-for-outputs', [ProductController::class, 'getForOutputs']);
 
     // PRODUCTS - Write (Admin, Purchasing, Warehouse, Agronomist)
-    Route::middleware('role:admin,purchasing,warehouse,agronomist')->group(function () {
-        Route::post('products', [ProductController::class, 'store']);
-        Route::put('products/{product}', [ProductController::class, 'update']);
-        Route::delete('products/{product}', [ProductController::class, 'destroy']);
-    });
+    Route::post('products', [ProductController::class, 'store'])->middleware('permission:create_product');
+    Route::put('products/{product}', [ProductController::class, 'update'])->middleware('permission:edit_product');
+    Route::delete('products/{product}', [ProductController::class, 'destroy'])->middleware('permission:delete_product');
 
     // BRANDS - Read (All authenticated)
     Route::get('brands', [BrandController::class, 'index']);
     Route::get('brands/{brand}', [BrandController::class, 'show']);
 
     // BRANDS - Write (Admin, Purchasing)
-    Route::middleware('role:admin,purchasing')->group(function () {
-        Route::post('brands', [BrandController::class, 'store']);
-        Route::put('brands/{brand}', [BrandController::class, 'update']);
-        Route::delete('brands/{brand}', [BrandController::class, 'destroy']);
-    });
+    Route::post('brands', [BrandController::class, 'store'])->middleware('permission:create_master_data');
+    Route::put('brands/{brand}', [BrandController::class, 'update'])->middleware('permission:edit_master_data');
+    Route::delete('brands/{brand}', [BrandController::class, 'destroy'])->middleware('permission:delete_master_data');
 
     // COMPANIES - Read (All authenticated)
     // La lectura NO puede restringirse a admin: `company_id` es obligatorio al
@@ -150,36 +169,30 @@ Route::middleware('auth:api')->group(function () {
     Route::get('companies/{company}', [CompanyController::class, 'show']);
 
     // COMPANIES - Write (Admin)
-    Route::middleware('role:admin')->group(function () {
-        Route::post('companies', [CompanyController::class, 'store']);
-        Route::put('companies/{company}', [CompanyController::class, 'update']);
-        Route::post('companies/{company}/logo', [CompanyController::class, 'uploadLogo']);
-        Route::delete('companies/{company}/logo', [CompanyController::class, 'deleteLogo']);
-    });
+    Route::post('companies', [CompanyController::class, 'store'])->middleware('permission:manage_companies');
+    Route::put('companies/{company}', [CompanyController::class, 'update'])->middleware('permission:manage_companies');
+    Route::post('companies/{company}/logo', [CompanyController::class, 'uploadLogo'])->middleware('permission:manage_companies');
+    Route::delete('companies/{company}/logo', [CompanyController::class, 'deleteLogo'])->middleware('permission:manage_companies');
 
     // CATEGORIES - Read (All authenticated)
     Route::get('categories', [CategoryController::class, 'index']);
     Route::get('categories/{category}', [CategoryController::class, 'show']);
 
     // CATEGORIES - Write (Admin, Purchasing)
-    Route::middleware('role:admin,purchasing')->group(function () {
-        Route::post('categories', [CategoryController::class, 'store']);
-        Route::put('categories/{category}', [CategoryController::class, 'update']);
-        Route::delete('categories/{category}', [CategoryController::class, 'destroy']);
-    });
+    Route::post('categories', [CategoryController::class, 'store'])->middleware('permission:create_master_data');
+    Route::put('categories/{category}', [CategoryController::class, 'update'])->middleware('permission:edit_master_data');
+    Route::delete('categories/{category}', [CategoryController::class, 'destroy'])->middleware('permission:delete_master_data');
 
     // SUPPLIERS - Read (All authenticated)
     Route::get('suppliers', [SupplierController::class, 'index']);
     Route::get('suppliers/{supplier}', [SupplierController::class, 'show']);
 
     // SUPPLIERS - Write (Admin, Purchasing)
-    Route::middleware('role:admin,purchasing')->group(function () {
-        Route::post('suppliers', [SupplierController::class, 'store']);
-        Route::put('suppliers/{supplier}', [SupplierController::class, 'update']);
-        Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy']);
-        Route::post('suppliers/{id}/contacts', [SupplierController::class, 'addContact']);
-        Route::delete('suppliers/{id}/contacts/{contactId}', [SupplierController::class, 'removeContact']);
-    });
+    Route::post('suppliers', [SupplierController::class, 'store'])->middleware('permission:create_master_data');
+    Route::put('suppliers/{supplier}', [SupplierController::class, 'update'])->middleware('permission:edit_master_data');
+    Route::delete('suppliers/{supplier}', [SupplierController::class, 'destroy'])->middleware('permission:delete_master_data');
+    Route::post('suppliers/{id}/contacts', [SupplierController::class, 'addContact'])->middleware('permission:edit_master_data');
+    Route::delete('suppliers/{id}/contacts/{contactId}', [SupplierController::class, 'removeContact'])->middleware('permission:edit_master_data');
 
     // LOCATIONS - Read (All authenticated - needed for outputs/receptions)
     Route::get('locations', [LocationController::class, 'index']);
@@ -188,11 +201,9 @@ Route::middleware('auth:api')->group(function () {
     Route::get('locations/type/farms', [LocationController::class, 'farms']);
 
     // LOCATIONS - Write (Admin, Warehouse, Supervisor, Purchasing)
-    Route::middleware('role:admin,warehouse,supervisor,purchasing')->group(function () {
-        Route::post('locations', [LocationController::class, 'store']);
-        Route::put('locations/{location}', [LocationController::class, 'update']);
-        Route::delete('locations/{location}', [LocationController::class, 'destroy']);
-    });
+    Route::post('locations', [LocationController::class, 'store'])->middleware('permission:create_location');
+    Route::put('locations/{location}', [LocationController::class, 'update'])->middleware('permission:edit_location');
+    Route::delete('locations/{location}', [LocationController::class, 'destroy'])->middleware('permission:delete_location');
 
     // FARM LOTS - Read (All authenticated - needed for outputs/receptions)
     Route::get('farm-lots', [FarmLotController::class, 'index']);
@@ -200,70 +211,59 @@ Route::middleware('auth:api')->group(function () {
     Route::get('locations/{locationId}/farm-lots', [FarmLotController::class, 'getByLocation']);
 
     // FARM LOTS - Write (Admin, Warehouse)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('farm-lots', [FarmLotController::class, 'store']);
-        Route::put('farm-lots/{id}', [FarmLotController::class, 'update']);
-        Route::delete('farm-lots/{id}', [FarmLotController::class, 'destroy']);
-    });
+    Route::post('farm-lots', [FarmLotController::class, 'store'])->middleware('permission:create_farm_lot');
+    Route::put('farm-lots/{id}', [FarmLotController::class, 'update'])->middleware('permission:edit_farm_lot');
+    Route::delete('farm-lots/{id}', [FarmLotController::class, 'destroy'])->middleware('permission:delete_farm_lot');
 
     // OUTPUT TYPES (All authenticated users can view)
     Route::get('output-types', [OutputTypeController::class, 'index']);
     Route::get('output-types/{id}', [OutputTypeController::class, 'show']);
 
     // OUTPUT TYPES - Write operations (Admin only)
-    Route::middleware('role:admin')->group(function () {
-        Route::post('output-types', [OutputTypeController::class, 'store']);
-        Route::put('output-types/{id}', [OutputTypeController::class, 'update']);
-        Route::delete('output-types/{id}', [OutputTypeController::class, 'destroy']);
-    });
+    Route::post('output-types', [OutputTypeController::class, 'store'])->middleware('permission:manage_output_types');
+    Route::put('output-types/{id}', [OutputTypeController::class, 'update'])->middleware('permission:manage_output_types');
+    Route::delete('output-types/{id}', [OutputTypeController::class, 'destroy'])->middleware('permission:manage_output_types');
 
     // PACKAGING UNITS - Read (All authenticated)
     Route::get('packaging-units', [PackagingUnitController::class, 'index']);
     Route::get('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'show']);
 
     // PACKAGING UNITS - Write (Admin, Purchasing)
-    Route::middleware('role:admin,purchasing')->group(function () {
-        Route::post('packaging-units', [PackagingUnitController::class, 'store']);
-        Route::put('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'update']);
-        Route::delete('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'destroy']);
-    });
+    Route::post('packaging-units', [PackagingUnitController::class, 'store'])->middleware('permission:create_master_data');
+    Route::put('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'update'])->middleware('permission:edit_master_data');
+    Route::delete('packaging-units/{packaging_unit}', [PackagingUnitController::class, 'destroy'])->middleware('permission:delete_master_data');
 
     // BASE UNITS - Read (All authenticated)
     Route::get('base-units', [BaseUnitController::class, 'index']);
     Route::get('base-units/{base_unit}', [BaseUnitController::class, 'show']);
 
     // BASE UNITS - Write (Admin, Purchasing)
-    Route::middleware('role:admin,purchasing')->group(function () {
-        Route::post('base-units', [BaseUnitController::class, 'store']);
-        Route::put('base-units/{base_unit}', [BaseUnitController::class, 'update']);
-        Route::delete('base-units/{base_unit}', [BaseUnitController::class, 'destroy']);
-    });
+    Route::post('base-units', [BaseUnitController::class, 'store'])->middleware('permission:create_master_data');
+    Route::put('base-units/{base_unit}', [BaseUnitController::class, 'update'])->middleware('permission:edit_master_data');
+    Route::delete('base-units/{base_unit}', [BaseUnitController::class, 'destroy'])->middleware('permission:delete_master_data');
 
     // ----------------------------------------
     // TECHNICAL PROCESSES
     // ----------------------------------------
 
     // TECHNICAL RECIPES (Admin, Agronomist)
-    Route::middleware('role:admin,agronomist')->group(function () {
-        Route::apiResource('technical-recipes', TechnicalRecipeController::class);
-        Route::post('technical-recipes/{id}/duplicate', [TechnicalRecipeController::class, 'duplicate']);
-    });
+    Route::apiResource('technical-recipes', TechnicalRecipeController::class)->only(['index', 'show'])->middleware('permission:view_recipes');
+    Route::apiResource('technical-recipes', TechnicalRecipeController::class)->only(['store'])->middleware('permission:create_recipe');
+    Route::apiResource('technical-recipes', TechnicalRecipeController::class)->only(['update'])->middleware('permission:edit_recipe');
+    Route::apiResource('technical-recipes', TechnicalRecipeController::class)->only(['destroy'])->middleware('permission:delete_recipe');
+    Route::post('technical-recipes/{id}/duplicate', [TechnicalRecipeController::class, 'duplicate'])->middleware('permission:create_recipe');
 
     // TECHNICAL ORDERS (Admin, Agronomist, Supervisor - View only)
-    Route::middleware('role:admin,agronomist,supervisor')->group(function () {
-        Route::get('technical-orders', [TechnicalOrderController::class, 'index']);
-        Route::get('technical-orders/{id}', [TechnicalOrderController::class, 'show']);
-    });
+    Route::get('technical-orders', [TechnicalOrderController::class, 'index'])->middleware('permission:view_technical_orders');
+    Route::get('technical-orders/{id}', [TechnicalOrderController::class, 'show'])->middleware('permission:view_technical_orders');
 
     // TECHNICAL ORDERS - Write operations (Admin, Agronomist only)
-    Route::middleware('role:admin,agronomist')->group(function () {
-        Route::post('technical-orders', [TechnicalOrderController::class, 'store']);
-        Route::put('technical-orders/{id}', [TechnicalOrderController::class, 'update']);
-        Route::delete('technical-orders/{id}', [TechnicalOrderController::class, 'destroy']);
-        Route::post('technical-orders/{id}/approve', [TechnicalOrderController::class, 'approve']);
-        Route::post('technical-orders/{id}/complete', [TechnicalOrderController::class, 'complete']);
-        Route::post('technical-orders/{id}/cancel', [TechnicalOrderController::class, 'cancel']);
-    });
+    Route::post('technical-orders', [TechnicalOrderController::class, 'store'])->middleware('permission:create_technical_order');
+    Route::put('technical-orders/{id}', [TechnicalOrderController::class, 'update'])->middleware('permission:edit_technical_order');
+    Route::delete('technical-orders/{id}', [TechnicalOrderController::class, 'destroy'])->middleware('permission:delete_technical_order');
+    Route::post('technical-orders/{id}/approve', [TechnicalOrderController::class, 'approve'])->middleware('permission:process_technical_order');
+    Route::post('technical-orders/{id}/complete', [TechnicalOrderController::class, 'complete'])->middleware('permission:process_technical_order');
+    Route::post('technical-orders/{id}/cancel', [TechnicalOrderController::class, 'cancel'])->middleware('permission:process_technical_order');
 
     // ----------------------------------------
     // WAREHOUSE MANAGEMENT
@@ -275,49 +275,37 @@ Route::middleware('auth:api')->group(function () {
     Route::get('purchases/{id}/export-pdf', [PurchaseController::class, 'exportPdf']);
 
     // PURCHASES - Write operations (Admin, Purchasing, Warehouse)
-    Route::middleware('role:admin,purchasing,warehouse')->group(function () {
-        Route::post('purchases', [PurchaseController::class, 'store']);
-        Route::put('purchases/{id}', [PurchaseController::class, 'update']);
-        Route::delete('purchases/{id}', [PurchaseController::class, 'destroy']);
-        Route::post('purchases/{id}/attachments', [PurchaseController::class, 'addAttachment']);
-        Route::delete('purchases/{id}/attachments/{attachmentId}', [PurchaseController::class, 'removeAttachment']);
-        Route::put('purchases/{id}/cancel', [PurchaseController::class, 'cancel']);
-    });
+    Route::post('purchases', [PurchaseController::class, 'store'])->middleware('permission:create_purchase');
+    Route::put('purchases/{id}', [PurchaseController::class, 'update'])->middleware('permission:edit_purchase');
+    Route::delete('purchases/{id}', [PurchaseController::class, 'destroy'])->middleware('permission:delete_purchase');
+    Route::post('purchases/{id}/attachments', [PurchaseController::class, 'addAttachment'])->middleware('permission:edit_purchase');
+    Route::delete('purchases/{id}/attachments/{attachmentId}', [PurchaseController::class, 'removeAttachment'])->middleware('permission:edit_purchase');
+    Route::put('purchases/{id}/cancel', [PurchaseController::class, 'cancel'])->middleware('permission:edit_purchase');
 
     // PURCHASES - Eliminar revirtiendo inventario (también recibidas). Destructivo:
     // solo administrador, con motivo obligatorio que queda en la auditoría.
-    Route::middleware('role:admin')->group(function () {
-        Route::get('purchases/{id}/reversal-preview', [PurchaseController::class, 'reversalPreview']);
-        Route::post('purchases/{id}/reverse', [PurchaseController::class, 'reverse']);
-    });
+    Route::get('purchases/{id}/reversal-preview', [PurchaseController::class, 'reversalPreview'])->middleware('permission:reverse_purchase');
+    Route::post('purchases/{id}/reverse', [PurchaseController::class, 'reverse'])->middleware('permission:reverse_purchase');
 
     // PRODUCT OUTPUTS - Read (All roles - todos deben tener acceso a salidas)
-    Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
-        Route::post('product-outputs/validate-inventory', [ProductOutputController::class, 'validateInventory']);
-        Route::get('product-outputs', [ProductOutputController::class, 'index']);
-        Route::get('product-outputs/{id}/remision-pdf', [ProductOutputController::class, 'exportRemisionPdf']);
-        Route::get('product-outputs/{id}', [ProductOutputController::class, 'show']);
-    });
+    Route::post('product-outputs/validate-inventory', [ProductOutputController::class, 'validateInventory'])->middleware('permission:view_outputs');
+    Route::get('product-outputs', [ProductOutputController::class, 'index'])->middleware('permission:view_outputs');
+    Route::get('product-outputs/{id}/remision-pdf', [ProductOutputController::class, 'exportRemisionPdf'])->middleware('permission:view_outputs');
+    Route::get('product-outputs/{id}', [ProductOutputController::class, 'show'])->middleware('permission:view_outputs');
 
     // PRODUCT OUTPUTS - Write (All roles - todos deben tener acceso a salidas)
-    Route::middleware('role:admin,warehouse,supervisor,farm,purchasing,agronomist,financiero')->group(function () {
-        Route::post('product-outputs', [ProductOutputController::class, 'store']);
-        Route::put('product-outputs/{id}', [ProductOutputController::class, 'update']);
-        Route::delete('product-outputs/{id}', [ProductOutputController::class, 'destroy']);
-        Route::post('product-outputs/{id}/mark-in-transit', [ProductOutputController::class, 'markInTransit']);
-        Route::post('product-outputs/{id}/complete', [ProductOutputController::class, 'complete']);
-    });
+    Route::post('product-outputs', [ProductOutputController::class, 'store'])->middleware('permission:create_output');
+    Route::put('product-outputs/{id}', [ProductOutputController::class, 'update'])->middleware('permission:edit_output');
+    Route::delete('product-outputs/{id}', [ProductOutputController::class, 'destroy'])->middleware('permission:delete_output');
+    Route::post('product-outputs/{id}/mark-in-transit', [ProductOutputController::class, 'markInTransit'])->middleware('permission:edit_output');
+    Route::post('product-outputs/{id}/complete', [ProductOutputController::class, 'complete'])->middleware('permission:edit_output');
 
     // PRODUCT OUTPUTS - Approval (Admin, Supervisor only)
-    Route::middleware('role:admin,supervisor')->group(function () {
-        Route::post('product-outputs/{id}/approve', [ProductOutputController::class, 'approve']);
-    });
+    Route::post('product-outputs/{id}/approve', [ProductOutputController::class, 'approve'])->middleware('permission:approve_output');
 
     // PRODUCT OUTPUTS - Applications from consumption outputs (Admin, Warehouse, Agronomist)
-    Route::middleware('role:admin,warehouse,agronomist')->group(function () {
-        Route::post('product-outputs/{id}/register-application', [ProductOutputController::class, 'registerApplication']);
-        Route::get('product-outputs/{id}/applications', [ProductOutputController::class, 'getApplications']);
-    });
+    Route::post('product-outputs/{id}/register-application', [ProductOutputController::class, 'registerApplication'])->middleware('permission:register_application');
+    Route::get('product-outputs/{id}/applications', [ProductOutputController::class, 'getApplications'])->middleware('permission:register_application');
 
     // RECEPTIONS (All authenticated users can view)
     Route::get('receptions/available-sources', [ReceptionController::class, 'availableSources']);
@@ -328,16 +316,14 @@ Route::middleware('auth:api')->group(function () {
     Route::get('receptions/{id}/pending-products', [ReceptionController::class, 'getPendingProducts']);
 
     // RECEPTIONS - Write operations (All roles - todos deben tener acceso a recepciones)
-    Route::middleware('role:admin,warehouse,farm,supervisor,agronomist,purchasing,financiero')->group(function () {
-        Route::post('receptions', [ReceptionController::class, 'store']);
-        Route::post('receptions/direct-reception', [ReceptionController::class, 'createReceptionWithBatch']);
-        Route::post('receptions/{id}/batches', [ReceptionController::class, 'addBatch']);
-        Route::put('receptions/{id}/complete', [ReceptionController::class, 'complete']);
-        Route::put('receptions/{id}/cancel', [ReceptionController::class, 'cancel']);
-        Route::post('receptions/{id}/close-with-available', [ReceptionController::class, 'closeOutputReception']);
-        // Finaliza la recepción con lo ya recibido y libera el remanente (sin mover inventario)
-        Route::post('receptions/{id}/finalize', [ReceptionController::class, 'finalizeReception']);
-    });
+    Route::post('receptions', [ReceptionController::class, 'store'])->middleware('permission:create_reception');
+    Route::post('receptions/direct-reception', [ReceptionController::class, 'createReceptionWithBatch'])->middleware('permission:create_reception');
+    Route::post('receptions/{id}/batches', [ReceptionController::class, 'addBatch'])->middleware('permission:create_reception');
+    Route::put('receptions/{id}/complete', [ReceptionController::class, 'complete'])->middleware('permission:edit_reception');
+    Route::put('receptions/{id}/cancel', [ReceptionController::class, 'cancel'])->middleware('permission:edit_reception');
+    Route::post('receptions/{id}/close-with-available', [ReceptionController::class, 'closeOutputReception'])->middleware('permission:edit_reception');
+    // Finaliza la recepción con lo ya recibido y libera el remanente (sin mover inventario)
+    Route::post('receptions/{id}/finalize', [ReceptionController::class, 'finalizeReception'])->middleware('permission:edit_reception');
 
     // ----------------------------------------
     // INVENTORY MANAGEMENT
@@ -383,10 +369,8 @@ Route::middleware('auth:api')->group(function () {
     // (solo el solicitante, solo si está pending) vive en el controlador.
     Route::put('adjustments/{id}/cancel', [AdjustmentController::class, 'cancel']);
 
-    Route::middleware('role:admin')->group(function () {
-        Route::put('adjustments/{id}/approve', [AdjustmentController::class, 'approve']);
-        Route::put('adjustments/{id}/reject', [AdjustmentController::class, 'reject']);
-    });
+    Route::put('adjustments/{id}/approve', [AdjustmentController::class, 'approve'])->middleware('permission:approve_adjustment');
+    Route::put('adjustments/{id}/reject', [AdjustmentController::class, 'reject'])->middleware('permission:approve_adjustment');
 
     // ----------------------------------------
     // APPLICATIONS (Product Applications to Farm Lots)
@@ -397,15 +381,11 @@ Route::middleware('auth:api')->group(function () {
     Route::get('applications/{id}', [ApplicationController::class, 'show']);
 
     // APPLICATIONS - Write operations (Admin, Warehouse, Agronomist)
-    Route::middleware('role:admin,warehouse,agronomist')->group(function () {
-        Route::post('applications', [ApplicationController::class, 'store']);
-        Route::post('applications/{id}/cancel', [ApplicationController::class, 'cancel']);
-    });
+    Route::post('applications', [ApplicationController::class, 'store'])->middleware('permission:register_application');
+    Route::post('applications/{id}/cancel', [ApplicationController::class, 'cancel'])->middleware('permission:register_application');
 
     // APPLICATIONS - Approval (Admin, Warehouse only)
-    Route::middleware('role:admin,warehouse')->group(function () {
-        Route::post('applications/{id}/approve', [ApplicationController::class, 'approve']);
-    });
+    Route::post('applications/{id}/approve', [ApplicationController::class, 'approve'])->middleware('permission:approve_application');
 
     // ----------------------------------------
     // ALERTS & REPORTS
@@ -416,11 +396,9 @@ Route::middleware('auth:api')->group(function () {
     Route::get('alerts/{id}', [AlertController::class, 'show']);
 
     // ALERTS - Write operations (Admin, Supervisor, Warehouse, Financiero)
-    Route::middleware('role:admin,supervisor,warehouse,financiero')->group(function () {
-        Route::post('alerts', [AlertController::class, 'store']);
-        Route::put('alerts/{id}/resolve', [AlertController::class, 'resolve']);
-        Route::put('alerts/{id}/dismiss', [AlertController::class, 'dismiss']);
-    });
+    Route::post('alerts', [AlertController::class, 'store'])->middleware('permission:manage_alerts');
+    Route::put('alerts/{id}/resolve', [AlertController::class, 'resolve'])->middleware('permission:manage_alerts');
+    Route::put('alerts/{id}/dismiss', [AlertController::class, 'dismiss'])->middleware('permission:manage_alerts');
 
     // ----------------------------------------
     // REPORT EXPORTS (Permission-based)
@@ -473,59 +451,51 @@ Route::middleware('auth:api')->group(function () {
     Route::get('workers/simple', [WorkerController::class, 'listSimple']);
 
     // WORKERS - CRUD (Admin, Liquidador)
-    Route::middleware('role:admin,liquidador')->group(function () {
-        Route::get('workers', [WorkerController::class, 'index']);
-        Route::post('workers', [WorkerController::class, 'store']);
-        Route::get('workers/template', [WorkerController::class, 'downloadTemplate']);
-        Route::post('workers/preview', [WorkerController::class, 'preview']);
-        Route::post('workers/import', [WorkerController::class, 'processImport']);
-        Route::get('workers/{id}', [WorkerController::class, 'show']);
-        Route::put('workers/{id}', [WorkerController::class, 'update']);
-        Route::delete('workers/{id}', [WorkerController::class, 'destroy']);
-    });
+    Route::get('workers', [WorkerController::class, 'index'])->middleware('permission:view_liquidation');
+    Route::post('workers', [WorkerController::class, 'store'])->middleware('permission:create_liquidation');
+    Route::get('workers/template', [WorkerController::class, 'downloadTemplate'])->middleware('permission:view_liquidation');
+    Route::post('workers/preview', [WorkerController::class, 'preview'])->middleware('permission:create_liquidation');
+    Route::post('workers/import', [WorkerController::class, 'processImport'])->middleware('permission:create_liquidation');
+    Route::get('workers/{id}', [WorkerController::class, 'show'])->middleware('permission:view_liquidation');
+    Route::put('workers/{id}', [WorkerController::class, 'update'])->middleware('permission:edit_liquidation');
+    Route::delete('workers/{id}', [WorkerController::class, 'destroy'])->middleware('permission:delete_liquidation');
 
     // TASKS - Read (All authenticated - for dropdowns)
     Route::get('tasks/simple', [TaskController::class, 'listSimple']);
 
     // TASKS - CRUD (Admin, Liquidador)
-    Route::middleware('role:admin,liquidador')->group(function () {
-        Route::get('tasks', [TaskController::class, 'index']);
-        Route::post('tasks', [TaskController::class, 'store']);
-        Route::get('tasks/{id}', [TaskController::class, 'show']);
-        Route::put('tasks/{id}', [TaskController::class, 'update']);
-        Route::delete('tasks/{id}', [TaskController::class, 'destroy']);
-        Route::get('tasks/{id}/net-amount', [TaskController::class, 'getNetAmount']);
+    Route::get('tasks', [TaskController::class, 'index'])->middleware('permission:view_liquidation');
+    Route::post('tasks', [TaskController::class, 'store'])->middleware('permission:create_liquidation');
+    Route::get('tasks/{id}', [TaskController::class, 'show'])->middleware('permission:view_liquidation');
+    Route::put('tasks/{id}', [TaskController::class, 'update'])->middleware('permission:edit_liquidation');
+    Route::delete('tasks/{id}', [TaskController::class, 'destroy'])->middleware('permission:delete_liquidation');
+    Route::get('tasks/{id}/net-amount', [TaskController::class, 'getNetAmount'])->middleware('permission:view_liquidation');
 
-        // Task Deductions
-        Route::post('tasks/{id}/deductions', [TaskController::class, 'storeDeduction']);
-        Route::put('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'updateDeduction']);
-        Route::delete('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'destroyDeduction']);
-    });
+    // Task Deductions
+    Route::post('tasks/{id}/deductions', [TaskController::class, 'storeDeduction'])->middleware('permission:create_liquidation');
+    Route::put('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'updateDeduction'])->middleware('permission:edit_liquidation');
+    Route::delete('tasks/{id}/deductions/{deductionId}', [TaskController::class, 'destroyDeduction'])->middleware('permission:delete_liquidation');
 
     // DAILY ASSIGNMENTS (Admin, Liquidador)
-    Route::middleware('role:admin,liquidador')->group(function () {
-        Route::get('daily-assignments', [DailyAssignmentController::class, 'index']);
-        Route::post('daily-assignments', [DailyAssignmentController::class, 'store']);
-        Route::get('daily-assignments/template', [DailyAssignmentController::class, 'downloadTemplate']);
-        Route::post('daily-assignments/preview', [DailyAssignmentController::class, 'preview']);
-        Route::post('daily-assignments/process', [DailyAssignmentController::class, 'process']);
-    });
+    Route::get('daily-assignments', [DailyAssignmentController::class, 'index'])->middleware('permission:view_liquidation');
+    Route::post('daily-assignments', [DailyAssignmentController::class, 'store'])->middleware('permission:create_liquidation');
+    Route::get('daily-assignments/template', [DailyAssignmentController::class, 'downloadTemplate'])->middleware('permission:view_liquidation');
+    Route::post('daily-assignments/preview', [DailyAssignmentController::class, 'preview'])->middleware('permission:create_liquidation');
+    Route::post('daily-assignments/process', [DailyAssignmentController::class, 'process'])->middleware('permission:create_liquidation');
 
     // LIQUIDATION REPORTS (Admin, Liquidador, Supervisor, Financiero)
-    Route::middleware('role:admin,liquidador,supervisor,financiero')->group(function () {
-        Route::post('reports/liquidation', [LiquidationReportController::class, 'generate']);
-        Route::get('reports/liquidation/export-excel', [LiquidationReportController::class, 'exportExcel']);
-        Route::get('reports/liquidation/export-pdf', [LiquidationReportController::class, 'exportPdf']);
+    Route::post('reports/liquidation', [LiquidationReportController::class, 'generate'])->middleware('permission:view_liquidation_reports');
+    Route::get('reports/liquidation/export-excel', [LiquidationReportController::class, 'exportExcel'])->middleware('permission:view_liquidation_reports');
+    Route::get('reports/liquidation/export-pdf', [LiquidationReportController::class, 'exportPdf'])->middleware('permission:view_liquidation_reports');
 
-        // LIQUIDATION ANALYTICS REPORTS (FUN-001 to FUN-005)
-        Route::post('reports/analytics/labor-costs', [LiquidationAnalyticsController::class, 'laborCosts']);
-        Route::post('reports/analytics/worker-productivity', [LiquidationAnalyticsController::class, 'workerProductivity']);
-        Route::post('reports/analytics/task-analysis', [LiquidationAnalyticsController::class, 'taskAnalysis']);
-        Route::post('reports/analytics/deductions-breakdown', [LiquidationAnalyticsController::class, 'deductionsBreakdown']);
-        Route::post('reports/analytics/period-comparison', [LiquidationAnalyticsController::class, 'periodComparison']);
-        Route::get('reports/analytics/{type}/export-excel', [LiquidationAnalyticsController::class, 'exportExcel']);
-        Route::get('reports/analytics/{type}/export-pdf', [LiquidationAnalyticsController::class, 'exportPdf']);
-    });
+    // LIQUIDATION ANALYTICS REPORTS (FUN-001 to FUN-005)
+    Route::post('reports/analytics/labor-costs', [LiquidationAnalyticsController::class, 'laborCosts'])->middleware('permission:view_liquidation_reports');
+    Route::post('reports/analytics/worker-productivity', [LiquidationAnalyticsController::class, 'workerProductivity'])->middleware('permission:view_liquidation_reports');
+    Route::post('reports/analytics/task-analysis', [LiquidationAnalyticsController::class, 'taskAnalysis'])->middleware('permission:view_liquidation_reports');
+    Route::post('reports/analytics/deductions-breakdown', [LiquidationAnalyticsController::class, 'deductionsBreakdown'])->middleware('permission:view_liquidation_reports');
+    Route::post('reports/analytics/period-comparison', [LiquidationAnalyticsController::class, 'periodComparison'])->middleware('permission:view_liquidation_reports');
+    Route::get('reports/analytics/{type}/export-excel', [LiquidationAnalyticsController::class, 'exportExcel'])->middleware('permission:view_liquidation_reports');
+    Route::get('reports/analytics/{type}/export-pdf', [LiquidationAnalyticsController::class, 'exportPdf'])->middleware('permission:view_liquidation_reports');
 
     // ═══════════════════════════════════════════════════════════════
     // PERFORMANCE MODULE (Rendimiento de Tareas Agricolas)
@@ -533,11 +503,9 @@ Route::middleware('auth:api')->group(function () {
 
     // Task Categories
     Route::get('performance/task-categories', [TaskCategoryController::class, 'index']);
-    Route::middleware('role:admin,supervisor')->group(function () {
-        Route::post('performance/task-categories', [TaskCategoryController::class, 'store']);
-        Route::put('performance/task-categories/{id}', [TaskCategoryController::class, 'update']);
-        Route::delete('performance/task-categories/{id}', [TaskCategoryController::class, 'destroy']);
-    });
+    Route::post('performance/task-categories', [TaskCategoryController::class, 'store'])->middleware('permission:create_task_catalog');
+    Route::put('performance/task-categories/{id}', [TaskCategoryController::class, 'update'])->middleware('permission:edit_task_catalog');
+    Route::delete('performance/task-categories/{id}', [TaskCategoryController::class, 'destroy'])->middleware('permission:delete_task_catalog');
 
     // Worker Availability
     Route::get('performance/worker-availability', [TaskScheduleController::class, 'workerAvailability']);
@@ -562,41 +530,29 @@ Route::middleware('auth:api')->group(function () {
     Route::post('performance/schedules/estimate-ad-hoc', [TaskScheduleController::class, 'estimateAdHoc']);
 
     // Task Catalog - Write (admin, supervisor)
-    Route::middleware('role:admin,supervisor')->group(function () {
-        Route::post('performance/task-catalog', [TaskCatalogController::class, 'store']);
-        Route::put('performance/task-catalog/{id}', [TaskCatalogController::class, 'update']);
-        Route::patch('performance/task-catalog/{id}/toggle', [TaskCatalogController::class, 'toggleActive']);
-    });
+    Route::post('performance/task-catalog', [TaskCatalogController::class, 'store'])->middleware('permission:create_task_catalog');
+    Route::put('performance/task-catalog/{id}', [TaskCatalogController::class, 'update'])->middleware('permission:edit_task_catalog');
+    Route::patch('performance/task-catalog/{id}/toggle', [TaskCatalogController::class, 'toggleActive'])->middleware('permission:edit_task_catalog');
 
     // Performance Settings - Write (admin only)
-    Route::middleware('role:admin')->group(function () {
-        Route::put('performance/settings', [PerformanceSettingsController::class, 'update']);
-    });
+    Route::put('performance/settings', [PerformanceSettingsController::class, 'update'])->middleware('permission:manage_performance_settings');
 
     // Schedules - Write (admin, supervisor)
-    Route::middleware('role:admin,supervisor')->group(function () {
-        Route::post('performance/schedules', [TaskScheduleController::class, 'store']);
-        Route::put('performance/schedules/{id}', [TaskScheduleController::class, 'update']);
-        Route::post('performance/schedules/{id}/cancel', [TaskScheduleController::class, 'cancel']);
-    });
+    Route::post('performance/schedules', [TaskScheduleController::class, 'store'])->middleware('permission:create_schedule');
+    Route::put('performance/schedules/{id}', [TaskScheduleController::class, 'update'])->middleware('permission:edit_schedule');
+    Route::post('performance/schedules/{id}/cancel', [TaskScheduleController::class, 'cancel'])->middleware('permission:edit_schedule');
 
     // Daily Performance Report (read all)
     Route::get('performance/schedules/{id}/daily-performance', [TaskScheduleController::class, 'dailyPerformance']);
 
     // Daily Logs - Write (admin, supervisor, farm_operator)
-    Route::middleware('role:admin,supervisor,farm_operator')->group(function () {
-        Route::post('performance/schedules/{id}/logs', [TaskScheduleController::class, 'storeLog']);
-    });
+    Route::post('performance/schedules/{id}/logs', [TaskScheduleController::class, 'storeLog'])->middleware('permission:register_task_log');
 
     // Finalize manual (admin, supervisor)
-    Route::middleware('role:admin,supervisor')->group(function () {
-        Route::post('performance/schedules/{id}/finalize', [TaskScheduleController::class, 'finalize']);
-    });
+    Route::post('performance/schedules/{id}/finalize', [TaskScheduleController::class, 'finalize'])->middleware('permission:finalize_schedule');
 
     // Daily Logs - Delete (admin only)
-    Route::middleware('role:admin')->group(function () {
-        Route::delete('performance/logs/{id}', [TaskScheduleController::class, 'deleteLog']);
-    });
+    Route::delete('performance/logs/{id}', [TaskScheduleController::class, 'deleteLog'])->middleware('permission:delete_task_log');
 
     // Performance Reports (all authenticated)
     Route::get('performance/reports/by-task', [PerformanceReportController::class, 'performanceByTask']);
