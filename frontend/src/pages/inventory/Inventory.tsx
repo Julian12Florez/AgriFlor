@@ -7,6 +7,7 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, locationsApi, reportExportsApi } from '../../services/api';
 import { formatCurrency, formatQuantity } from '../../utils/formatters';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -86,6 +87,9 @@ interface ProductKardexData {
 }
 
 const Inventory: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('export_reports');
   const [searchText, setSearchText] = useState('');
   const [locationFilter, setLocationFilter] = useState<string | undefined>();
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
@@ -566,14 +570,16 @@ const Inventory: React.FC = () => {
             </Select>
             <CategoryFilterSelect value={categoryFilter} onChange={setCategoryFilter} style={{ width: 200 }} />
           </Space>
-          <Space>
-            <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
-              Exportar Excel
-            </Button>
-            <Button icon={<FilePdfOutlined />} onClick={handleExportPdf}>
-              Exportar PDF
-            </Button>
-          </Space>
+          {puedeExportar && (
+            <Space>
+              <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
+                Exportar Excel
+              </Button>
+              <Button icon={<FilePdfOutlined />} onClick={handleExportPdf}>
+                Exportar PDF
+              </Button>
+            </Space>
+          )}
         </div>
 
         <ResponsiveTable

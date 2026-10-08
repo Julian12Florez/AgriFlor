@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Badge, Descriptions, Divider, InputNumber } from 'antd';
+import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, Badge, Descriptions, Divider, InputNumber, ConfigProvider } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, EnvironmentOutlined, HomeOutlined, BankOutlined, MinusCircleOutlined, PlusCircleOutlined } from '@ant-design/icons';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import type { ColumnsType } from 'antd/es/table';
@@ -7,12 +7,23 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { conOpcionActual } from '../../utils/opcionActual';
 import { locationsApi, farmLotsApi, usersApi, handleApiError } from '../../services/api';
 import type { Location } from '../../data/types';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 
 const { Search } = Input;
 const { Option } = Select;
 
 const Locations: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  // Ubicaciones y lotes de finca tienen permisos aparte.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_location');
+  const puedeEditar = hasPermission('edit_location');
+  const puedeEliminar = hasPermission('delete_location');
+  const puedeCrearLote = hasPermission('create_farm_lot');
+  const puedeEditarLote = hasPermission('edit_farm_lot');
+  const puedeEliminarLote = hasPermission('delete_farm_lot');
   const [isMobile, setIsMobile] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
@@ -220,7 +231,10 @@ const Locations: React.FC = () => {
           };
 
           if (lot.id) {
-            // Actualizar lote existente
+            // Actualizar lote existente. Sin permiso de editar lotes, sus campos
+            // salen bloqueados (no pudo cambiarlos): no se reenvían, porque el
+            // API los rechazaría y dejaría la finca a medio guardar.
+            if (!puedeEditarLote) continue;
             await farmLotsApi.update(lot.id, lotData);
           } else {
             // Crear nuevo lote
@@ -243,7 +257,7 @@ const Locations: React.FC = () => {
   // Backend handles filtering, so no need to filter locally
   const filteredLocations = locations;
 
-  const mobileColumns: ColumnsType<Location> = [
+  const mobileColumns: ColumnsType<Location> = conColumnaAcciones<Location>([
     {
       title: 'Ubicación',
       key: 'location',
@@ -281,26 +295,30 @@ const Locations: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            size="small"
-          />
-          <Popconfirm
-            title="¿Eliminar?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+              size="small"
+            />
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
-  const desktopColumns: ColumnsType<Location> = [
+  const desktopColumns: ColumnsType<Location> = conColumnaAcciones<Location>([
     {
       title: 'Ubicación',
       key: 'location',
@@ -378,28 +396,32 @@ const Locations: React.FC = () => {
       width: 150,
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta ubicación?"
-            description="Esta acción no se puede deshacer"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              Eliminar
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Editar
             </Button>
-          </Popconfirm>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta ubicación?"
+              description="Esta acción no se puede deshacer"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   const expandedRowRender = (record: Location) => (
     <Descriptions size="small" column={1}>
@@ -428,17 +450,19 @@ const Locations: React.FC = () => {
             Administra las ubicaciones físicas del sistema
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingLocation(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Ubicación
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingLocation(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Ubicación
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -649,162 +673,177 @@ const Locations: React.FC = () => {
                   <Form.List name="lots">
                     {(fields, { add, remove }) => (
                       <>
-                        {fields.map(({ key, name, ...restField }) => (
-                          <Card key={key} size="small" style={{ marginBottom: 16, backgroundColor: '#f9f9f9' }}>
-                            <Row gutter={16}>
-                              <Col span={12}>
+                        {fields.map(({ key, name, ...restField }) => {
+                          // Un lote ya guardado tiene id; uno recién agregado, no.
+                          const loteGuardado = !!getFieldValue(['lots', name, 'id']);
+                          return (
+                            // Sin permiso de editar lotes, los ya guardados se ven pero no se cambian.
+                            <ConfigProvider key={key} componentDisabled={loteGuardado && !puedeEditarLote}>
+                              <Card size="small" style={{ marginBottom: 16, backgroundColor: '#f9f9f9' }}>
+                                <Row gutter={16}>
+                                  <Col span={12}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'name']}
+                                      label="Nombre del Lote"
+                                      rules={[{ required: true, message: 'Nombre requerido' }]}
+                                    >
+                                      <Input placeholder="Ej: Lote A" />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={6}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'area']}
+                                      label="Área"
+                                    >
+                                      <InputNumber
+                                        min={0}
+                                        precision={2}
+                                        style={{ width: '100%' }}
+                                        placeholder="0.00"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={6}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'area_unit']}
+                                      label="Unidad"
+                                      initialValue="hectares"
+                                    >
+                                      <Select>
+                                        <Option value="hectares">Hectáreas</Option>
+                                        <Option value="m2">m²</Option>
+                                        <Option value="acres">Acres</Option>
+                                      </Select>
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                                <Divider orientation="left" plain style={{ fontSize: 12, color: '#888', margin: '8px 0' }}>
+                                  Capacidades del Lote (para módulo de Rendimiento)
+                                </Divider>
+                                <Row gutter={16}>
+                                  <Col span={6}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'total_trees']}
+                                      label="Total de Árboles"
+                                      tooltip="Cantidad total de árboles del lote. Se usa para tareas como Podas, Plateo, Abonar."
+                                    >
+                                      <InputNumber
+                                        min={0}
+                                        precision={0}
+                                        style={{ width: '100%' }}
+                                        placeholder="Ej: 300"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={6}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'area_hectares']}
+                                      label="Hectáreas"
+                                      tooltip="Área en hectáreas. Se usa para tareas como Guadaña, Fumigación, Herbicida."
+                                    >
+                                      <InputNumber
+                                        min={0}
+                                        precision={2}
+                                        style={{ width: '100%' }}
+                                        placeholder="Ej: 2.50"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={6}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'total_cubic_meters']}
+                                      label="Metros Cúbicos (m³)"
+                                      tooltip="Volumen para aplicaciones de riego y drench."
+                                    >
+                                      <InputNumber
+                                        min={0}
+                                        precision={2}
+                                        style={{ width: '100%' }}
+                                        placeholder="Ej: 50.00"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={6}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'total_linear_meters']}
+                                      label="Metros Lineales"
+                                      tooltip="Longitud para tareas como Vías, Cercos, Drenajes."
+                                    >
+                                      <InputNumber
+                                        min={0}
+                                        precision={2}
+                                        style={{ width: '100%' }}
+                                        placeholder="Ej: 200.00"
+                                      />
+                                    </Form.Item>
+                                  </Col>
+                                </Row>
+                                <Row gutter={16}>
+                                  <Col span={20}>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'description']}
+                                      label="Descripción"
+                                    >
+                                      <Input.TextArea rows={2} placeholder="Descripción del lote..." />
+                                    </Form.Item>
+                                  </Col>
+                                  <Col span={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
+                                    {/* Quitar un lote recién agregado (sin guardar) siempre se puede; uno ya guardado pide eliminar lotes. */}
+                                    {(!loteGuardado || puedeEliminarLote) && (
+                                      // Activo aunque los campos del lote estén bloqueados (eliminar no es editar).
+                                      <ConfigProvider componentDisabled={false}>
+                                        <Form.Item>
+                                          <Button
+                                            danger
+                                            icon={<MinusCircleOutlined />}
+                                            onClick={() => remove(name)}
+                                          >
+                                            Eliminar
+                                          </Button>
+                                        </Form.Item>
+                                      </ConfigProvider>
+                                    )}
+                                  </Col>
+                                </Row>
                                 <Form.Item
                                   {...restField}
-                                  name={[name, 'name']}
-                                  label="Nombre del Lote"
-                                  rules={[{ required: true, message: 'Nombre requerido' }]}
+                                  name={[name, 'status']}
+                                  hidden
+                                  initialValue="active"
                                 >
-                                  <Input placeholder="Ej: Lote A" />
+                                  <Input />
                                 </Form.Item>
-                              </Col>
-                              <Col span={6}>
                                 <Form.Item
                                   {...restField}
-                                  name={[name, 'area']}
-                                  label="Área"
+                                  name={[name, 'id']}
+                                  hidden
                                 >
-                                  <InputNumber
-                                    min={0}
-                                    precision={2}
-                                    style={{ width: '100%' }}
-                                    placeholder="0.00"
-                                  />
+                                  <Input />
                                 </Form.Item>
-                              </Col>
-                              <Col span={6}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'area_unit']}
-                                  label="Unidad"
-                                  initialValue="hectares"
-                                >
-                                  <Select>
-                                    <Option value="hectares">Hectáreas</Option>
-                                    <Option value="m2">m²</Option>
-                                    <Option value="acres">Acres</Option>
-                                  </Select>
-                                </Form.Item>
-                              </Col>
-                            </Row>
-                            <Divider orientation="left" plain style={{ fontSize: 12, color: '#888', margin: '8px 0' }}>
-                              Capacidades del Lote (para módulo de Rendimiento)
-                            </Divider>
-                            <Row gutter={16}>
-                              <Col span={6}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'total_trees']}
-                                  label="Total de Árboles"
-                                  tooltip="Cantidad total de árboles del lote. Se usa para tareas como Podas, Plateo, Abonar."
-                                >
-                                  <InputNumber
-                                    min={0}
-                                    precision={0}
-                                    style={{ width: '100%' }}
-                                    placeholder="Ej: 300"
-                                  />
-                                </Form.Item>
-                              </Col>
-                              <Col span={6}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'area_hectares']}
-                                  label="Hectáreas"
-                                  tooltip="Área en hectáreas. Se usa para tareas como Guadaña, Fumigación, Herbicida."
-                                >
-                                  <InputNumber
-                                    min={0}
-                                    precision={2}
-                                    style={{ width: '100%' }}
-                                    placeholder="Ej: 2.50"
-                                  />
-                                </Form.Item>
-                              </Col>
-                              <Col span={6}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'total_cubic_meters']}
-                                  label="Metros Cúbicos (m³)"
-                                  tooltip="Volumen para aplicaciones de riego y drench."
-                                >
-                                  <InputNumber
-                                    min={0}
-                                    precision={2}
-                                    style={{ width: '100%' }}
-                                    placeholder="Ej: 50.00"
-                                  />
-                                </Form.Item>
-                              </Col>
-                              <Col span={6}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'total_linear_meters']}
-                                  label="Metros Lineales"
-                                  tooltip="Longitud para tareas como Vías, Cercos, Drenajes."
-                                >
-                                  <InputNumber
-                                    min={0}
-                                    precision={2}
-                                    style={{ width: '100%' }}
-                                    placeholder="Ej: 200.00"
-                                  />
-                                </Form.Item>
-                              </Col>
-                            </Row>
-                            <Row gutter={16}>
-                              <Col span={20}>
-                                <Form.Item
-                                  {...restField}
-                                  name={[name, 'description']}
-                                  label="Descripción"
-                                >
-                                  <Input.TextArea rows={2} placeholder="Descripción del lote..." />
-                                </Form.Item>
-                              </Col>
-                              <Col span={4} style={{ display: 'flex', alignItems: 'flex-end' }}>
-                                <Form.Item>
-                                  <Button
-                                    danger
-                                    icon={<MinusCircleOutlined />}
-                                    onClick={() => remove(name)}
-                                  >
-                                    Eliminar
-                                  </Button>
-                                </Form.Item>
-                              </Col>
-                            </Row>
-                            <Form.Item
-                              {...restField}
-                              name={[name, 'status']}
-                              hidden
-                              initialValue="active"
+                              </Card>
+                            </ConfigProvider>
+                          );
+                        })}
+                        {puedeCrearLote && (
+                          <Form.Item>
+                            <Button
+                              type="dashed"
+                              onClick={() => add()}
+                              block
+                              icon={<PlusCircleOutlined />}
                             >
-                              <Input />
-                            </Form.Item>
-                            <Form.Item
-                              {...restField}
-                              name={[name, 'id']}
-                              hidden
-                            >
-                              <Input />
-                            </Form.Item>
-                          </Card>
-                        ))}
-                        <Form.Item>
-                          <Button
-                            type="dashed"
-                            onClick={() => add()}
-                            block
-                            icon={<PlusCircleOutlined />}
-                          >
-                            Agregar Lote
-                          </Button>
-                        </Form.Item>
+                              Agregar Lote
+                            </Button>
+                          </Form.Item>
+                        )}
                       </>
                     )}
                   </Form.List>

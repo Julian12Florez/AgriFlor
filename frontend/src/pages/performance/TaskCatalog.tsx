@@ -9,6 +9,8 @@ import {
   CheckCircleOutlined, CloseCircleOutlined
 } from '@ant-design/icons';
 import { taskCatalogApi, taskCategoryApi, handleApiError } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -34,6 +36,11 @@ const TaskCatalog = () => {
   const [showOverrides, setShowOverrides] = useState(false);
   const [filters, setFilters] = useState<Record<string, any>>({ per_page: 50 });
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  // Activar/desactivar es editar; las categorías usan los mismos permisos.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_task_catalog');
+  const puedeEditar = hasPermission('edit_task_catalog');
 
   const { data, isLoading } = useQuery({
     queryKey: ['taskCatalog', filters],
@@ -128,7 +135,7 @@ const TaskCatalog = () => {
   const tasks = data?.data || [];
   const categories: any[] = (categoriesData as any)?.data || [];
 
-  const columns = [
+  const columns = conColumnaAcciones<any>([
     {
       title: 'Código',
       dataIndex: 'code',
@@ -208,7 +215,7 @@ const TaskCatalog = () => {
         </Space>
       ),
     },
-  ];
+  ], puedeEditar);
 
   return (
     <div style={{ padding: 24 }}>
@@ -217,9 +224,11 @@ const TaskCatalog = () => {
           <Title level={3} style={{ margin: 0 }}>Catálogo de Tareas Agrícolas</Title>
           <Text type="secondary">Define las labores y sus rendimientos de referencia</Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          Nueva Tarea
-        </Button>
+        {puedeCrear && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            Nueva Tarea
+          </Button>
+        )}
       </div>
 
       <Card size="small" style={{ marginBottom: 16 }}>
@@ -307,7 +316,7 @@ const TaskCatalog = () => {
           </Row>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="category_id" label={<Space>Categoría <Button type="link" size="small" onClick={() => setCatModal(true)}>+ Nueva</Button></Space>}>
+              <Form.Item name="category_id" label={<Space>Categoría {puedeCrear && <Button type="link" size="small" onClick={() => setCatModal(true)}>+ Nueva</Button>}</Space>}>
                 <Select placeholder="Seleccionar" allowClear showSearch optionFilterProp="children">
                   {categories.map((cat: any) => (
                     <Option key={cat.id} value={cat.id}>

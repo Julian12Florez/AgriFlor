@@ -4,6 +4,7 @@ import { FileExcelOutlined, FilePdfOutlined, SearchOutlined, DollarOutlined, Tea
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { liquidationAnalyticsApi, workersApi, tasksApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 import { formatCurrency } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import {
@@ -26,6 +27,9 @@ const { Option } = Select;
 const COLORS = ['#2E7D32', '#1565C0', '#E65100', '#7B1FA2', '#C62828', '#00838F', '#F9A825', '#4E342E'];
 
 const LaborCostsReport: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('view_liquidation_reports');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   const [groupBy, setGroupBy] = useState<string>('monthly');
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>();
@@ -263,7 +267,7 @@ const LaborCostsReport: React.FC = () => {
             </Space>
           </Col>
         </Row>
-        {reportData && (
+        {reportData && puedeExportar && (
           <div style={{ marginTop: 16 }}>
             <Space wrap>
               <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} style={{ color: '#217346' }}>

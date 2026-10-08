@@ -11,6 +11,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { taskScheduleApi, taskCatalogApi, locationsApi, farmLotsApi, workerAvailabilityApi, handleApiError } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Option } = Select;
 const { Title, Text } = Typography;
@@ -55,6 +56,12 @@ const ScheduleList = () => {
   const [lots, setLots] = useState<any[]>([]);
   const [filters, setFilters] = useState<Record<string, any>>({ per_page: 20 });
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  // Cancelar es editar la programación; "Ver" queda para todos.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_schedule');
+  const puedeCancelar = hasPermission('edit_schedule');
+  const puedeFinalizar = hasPermission('finalize_schedule');
 
   const { data, isLoading } = useQuery({
     queryKey: ['schedules', filters],
@@ -235,7 +242,7 @@ const ScheduleList = () => {
           <Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(record)}>
             Ver
           </Button>
-          {record.status === 'en_progreso' && (
+          {puedeFinalizar && record.status === 'en_progreso' && (
             <Button
               size="small"
               type="primary"
@@ -244,7 +251,7 @@ const ScheduleList = () => {
               Finalizar
             </Button>
           )}
-          {(record.status === 'planificada' || record.status === 'en_progreso') && (
+          {puedeCancelar && (record.status === 'planificada' || record.status === 'en_progreso') && (
             <Button
               size="small"
               danger
@@ -266,9 +273,11 @@ const ScheduleList = () => {
           <Title level={3} style={{ margin: 0 }}>Programación de Tareas</Title>
           <Text type="secondary">Planifica y da seguimiento a las labores agrícolas</Text>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateModal(true)}>
-          Nueva Programación
-        </Button>
+        {puedeCrear && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsCreateModal(true)}>
+            Nueva Programación
+          </Button>
+        )}
       </div>
 
       <Card size="small" style={{ marginBottom: 16 }}>

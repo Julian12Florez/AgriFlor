@@ -13,6 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, productsApi, locationsApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 import dayjs, { Dayjs } from 'dayjs';
 import { buildMovementTypeParams } from '../../utils/movementFilters';
 import {
@@ -84,6 +85,9 @@ interface ReportData {
 }
 
 const ConsolidatedMovementsReport: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('export_reports');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
@@ -276,7 +280,7 @@ const ConsolidatedMovementsReport: React.FC = () => {
               Limpiar Filtros
             </Button>
           </Col>
-          {shouldFetch && report && (
+          {shouldFetch && report && puedeExportar && (
             <>
               <Col>
                 <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>

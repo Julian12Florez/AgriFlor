@@ -6,6 +6,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recipesApi, productsApi, brandsApi, handleApiError } from '../../services/api';
 import type { Recipe, RecipeProduct } from '../../data/types';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 
 
 const { Search } = Input;
@@ -14,6 +16,11 @@ const { TabPane } = Tabs;
 
 const Recipes: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_recipe');
+  const puedeEditar = hasPermission('edit_recipe');
+  const puedeEliminar = hasPermission('delete_recipe');
   const [isMobile, setIsMobile] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
@@ -163,7 +170,7 @@ const Recipes: React.FC = () => {
   // Backend handles filtering, so no need to filter locally
   const filteredRecipes = recipes;
 
-  const mobileColumns: ColumnsType<Recipe> = [
+  const mobileColumns: ColumnsType<Recipe> = conColumnaAcciones<Recipe>([
     {
       title: 'Receta',
       key: 'recipe',
@@ -198,26 +205,30 @@ const Recipes: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            size="small"
-          />
-          <Popconfirm
-            title="¿Eliminar?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+              size="small"
+            />
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
-  const desktopColumns: ColumnsType<Recipe> = [
+  const desktopColumns: ColumnsType<Recipe> = conColumnaAcciones<Recipe>([
     {
       title: 'Receta',
       key: 'recipe',
@@ -297,28 +308,32 @@ const Recipes: React.FC = () => {
       key: 'actions',
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta receta?"
-            description="Esta acción no se puede deshacer"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              Eliminar
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Editar
             </Button>
-          </Popconfirm>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta receta?"
+              description="Esta acción no se puede deshacer"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   const renderFormContent = () => (
     <Form
@@ -629,17 +644,19 @@ const Recipes: React.FC = () => {
             Administra las fórmulas predefinidas para aplicaciones agrícolas
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingRecipe(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Receta
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingRecipe(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Receta
+          </Button>
+        )}
       </div>
 
       <Card>

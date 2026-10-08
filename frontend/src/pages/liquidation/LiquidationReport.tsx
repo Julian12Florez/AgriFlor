@@ -5,12 +5,16 @@ import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { liquidationReportsApi, workersApi, tasksApi } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
+import usePermissions from '../../hooks/usePermissions';
 import dayjs from 'dayjs';
 
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 const LiquidationReport: React.FC = () => {
+  // Exportar a Excel/PDF solo con el permiso de informes de liquidación.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('view_liquidation_reports');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | undefined>();
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>();
@@ -206,7 +210,7 @@ const LiquidationReport: React.FC = () => {
             </Space>
           </Col>
         </Row>
-        {reportData && (
+        {reportData && puedeExportar && (
           <div style={{ marginTop: 16 }}>
             <Space wrap>
               <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} style={{ color: '#217346' }}>

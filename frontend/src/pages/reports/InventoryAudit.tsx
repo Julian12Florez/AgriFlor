@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
 import { inventoryApi, productsApi, locationsApi, usersApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 import dayjs, { Dayjs } from 'dayjs';
 import { buildMovementTypeParams, matchesMovementTypeFilter } from '../../utils/movementFilters';
 
@@ -36,6 +37,9 @@ interface AuditEntry {
 }
 
 const InventoryAudit: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('export_reports');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
   const [productId, setProductId] = useState<string | undefined>(undefined);
@@ -521,7 +525,7 @@ const InventoryAudit: React.FC = () => {
               Limpiar Filtros
             </Button>
           </Col>
-          {shouldFetch && movements.length > 0 && (
+          {shouldFetch && movements.length > 0 && puedeExportar && (
             <>
               <Col>
                 <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>

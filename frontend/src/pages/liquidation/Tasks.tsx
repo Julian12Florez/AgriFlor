@@ -6,12 +6,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import ResponsiveTable from '../../components/ResponsiveTable';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 
 const { Search } = Input;
 const { Option } = Select;
 
 const Tasks: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  // Las deducciones siguen los mismos permisos (agregar = crear, etc.); verlas
+  // es consulta y queda para todos.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_liquidation');
+  const puedeEditar = hasPermission('edit_liquidation');
+  const puedeEliminar = hasPermission('delete_liquidation');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isDeductionsModalVisible, setIsDeductionsModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<any | null>(null);
@@ -224,7 +233,7 @@ const Tasks: React.FC = () => {
     }
   };
 
-  const deductionColumns: ColumnsType<any> = [
+  const deductionColumns: ColumnsType<any> = conColumnaAcciones<any>([
     {
       title: 'Nombre',
       key: 'deductionName',
@@ -239,7 +248,8 @@ const Tasks: React.FC = () => {
     {
       title: 'Activa',
       key: 'isActive',
-      render: (_, record) => (
+      // Sin permiso de editar, el interruptor se cambia por la etiqueta del estado.
+      render: (_, record) => puedeEditar ? (
         <Switch
           checked={record.isActive ?? record.is_active}
           size="small"
@@ -251,6 +261,10 @@ const Tasks: React.FC = () => {
             });
           }}
         />
+      ) : (
+        <Tag color={(record.isActive ?? record.is_active) ? 'green' : 'default'}>
+          {(record.isActive ?? record.is_active) ? 'Activa' : 'Inactiva'}
+        </Tag>
       ),
     },
     {
@@ -259,31 +273,35 @@ const Tasks: React.FC = () => {
       width: 120,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditingDeduction(record);
-              deductionForm.setFieldsValue({
-                deductionName: record.deductionName || record.deduction_name,
-                percentage: record.percentage,
-                isActive: record.isActive ?? record.is_active,
-              });
-            }}
-          />
-          <Popconfirm
-            title="¿Eliminar esta deducción?"
-            onConfirm={() => deleteDeductionMutation.mutate({ taskId: selectedTask.id, deductionId: record.id })}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger size="small" icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => {
+                setEditingDeduction(record);
+                deductionForm.setFieldsValue({
+                  deductionName: record.deductionName || record.deduction_name,
+                  percentage: record.percentage,
+                  isActive: record.isActive ?? record.is_active,
+                });
+              }}
+            />
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar esta deducción?"
+              onConfirm={() => deleteDeductionMutation.mutate({ taskId: selectedTask.id, deductionId: record.id })}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger size="small" icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   const mobileColumns: ColumnsType<any> = [
     {
@@ -321,7 +339,9 @@ const Tasks: React.FC = () => {
       render: (_, record) => (
         <Space size="small">
           <Button type="link" icon={<DollarOutlined />} onClick={() => openDeductions(record)} size="small" />
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} size="small" />
+          {puedeEditar && (
+            <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} size="small" />
+          )}
         </Space>
       ),
     },
@@ -388,17 +408,21 @@ const Tasks: React.FC = () => {
           <Button type="link" icon={<DollarOutlined />} onClick={() => openDeductions(record)}>
             Deducciones
           </Button>
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta tarea?"
-            onConfirm={() => deleteMutation.mutate(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+              Editar
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta tarea?"
+              onConfirm={() => deleteMutation.mutate(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -411,17 +435,19 @@ const Tasks: React.FC = () => {
           <h1 style={{ margin: 0, color: '#2E7D32' }}>Gestión de Tareas</h1>
           <p style={{ color: '#666', margin: 0 }}>Administra las tareas laborales y sus deducciones</p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingTask(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Tarea
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingTask(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Tarea
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -566,6 +592,9 @@ const Tasks: React.FC = () => {
               scroll={{ x: 'max-content' }}
             />
 
+            {/* El formulario sirve para agregar (crear) y para editar la deducción elegida */}
+            {(puedeCrear || editingDeduction) && (
+            <>
             <Divider />
 
             <Form form={deductionForm} layout="inline" onFinish={handleDeductionSave} style={{ marginTop: 12 }}>
@@ -598,6 +627,8 @@ const Tasks: React.FC = () => {
                 )}
               </Form.Item>
             </Form>
+            </>
+            )}
           </>
         )}
       </Modal>

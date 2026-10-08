@@ -3,12 +3,16 @@ import { Card, List, Badge, Tag, Button, Space, Select, Alert, Row, Col, Statist
 import { BellOutlined, WarningOutlined, ExclamationCircleOutlined, InfoCircleOutlined, CheckCircleOutlined, CloseOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { alertsApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Option } = Select;
 const { TabPane } = Tabs;
 
 const Alerts: React.FC = () => {
   const queryClient = useQueryClient();
+  // Resolver/descartar alertas: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeGestionar = hasPermission('manage_alerts');
   const [filterType, setFilterType] = useState<string | undefined>();
   const [filterSeverity, setFilterSeverity] = useState<string | undefined>();
   const [filterStatus] = useState<string>('active');
@@ -195,7 +199,7 @@ const Alerts: React.FC = () => {
               dataSource={filteredAlerts.filter(a => a.status === 'active')}
               renderItem={(alert) => (
                 <List.Item
-                  actions={[
+                  actions={puedeGestionar ? [
                     <Button
                       type="link"
                       size="small"
@@ -211,7 +215,7 @@ const Alerts: React.FC = () => {
                     >
                       Descartar
                     </Button>
-                  ]}
+                  ] : []}
                 >
                   <List.Item.Meta
                     avatar={

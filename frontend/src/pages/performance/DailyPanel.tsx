@@ -12,6 +12,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { taskScheduleApi, taskCatalogApi, locationsApi, farmLotsApi, handleApiError } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -37,6 +38,12 @@ const DailyPanel = () => {
   const [adHocForm] = Form.useForm();
   const [adHocLots, setAdHocLots] = useState<any[]>([]);
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  // "Tarea No Programada" crea una programación (ad-hoc): es create_schedule.
+  const { hasPermission } = usePermissions();
+  const puedeCrearProgramacion = hasPermission('create_schedule');
+  const puedeRegistrarAvance = hasPermission('register_task_log');
+  const puedeFinalizar = hasPermission('finalize_schedule');
 
   const { data: locationsData } = useQuery({
     queryKey: ['farmLocations'],
@@ -166,14 +173,16 @@ const DailyPanel = () => {
               <Option key={loc.id} value={loc.id}>{loc.name}</Option>
             ))}
           </Select>
-          <Button
-            type="dashed"
-            icon={<ThunderboltOutlined />}
-            style={{ color: '#fa8c16' }}
-            onClick={() => setAdHocModal(true)}
-          >
-            Tarea No Programada
-          </Button>
+          {puedeCrearProgramacion && (
+            <Button
+              type="dashed"
+              icon={<ThunderboltOutlined />}
+              style={{ color: '#fa8c16' }}
+              onClick={() => setAdHocModal(true)}
+            >
+              Tarea No Programada
+            </Button>
+          )}
         </Space>
       </Card>
 
@@ -220,14 +229,14 @@ const DailyPanel = () => {
                       size="small"
                       style={{ borderLeft: `4px solid ${hasLog ? '#52c41a' : '#1890ff'}` }}
                       actions={[
-                        hasLog ? (
+                        ...(hasLog ? [(
                           <Text type="success" key="done"><CheckCircleOutlined /> Registrado hoy</Text>
-                        ) : (
+                        )] : puedeRegistrarAvance ? [(
                           <Button key="log" type="link" onClick={() => setLogModal(item)}>
                             Registrar Avance
                           </Button>
-                        ),
-                        ...(s.status === 'en_progreso' ? [(
+                        )] : []),
+                        ...(puedeFinalizar && s.status === 'en_progreso' ? [(
                           <Button key="finalize" type="link" style={{ color: '#52c41a' }} onClick={() => setFinalizeModal(s)}>
                             <TrophyOutlined /> Finalizar
                           </Button>

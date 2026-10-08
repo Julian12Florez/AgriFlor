@@ -133,6 +133,34 @@ Queda para la parte 3: ocultar en cada pantalla los botones Crear/Editar/
 Eliminar según `hasPermission`. Hoy un perfil sin el permiso ve el botón y el
 API le responde 403.
 
+## Decisiones del cliente del 7-oct-2026 (commit 2671ec0, desplegado)
+
+- **Auditor**: perfil único e invisible para todos (usuarios, selectores,
+  Perfiles). Crear un perfil llamado "Auditor" no delata al existente.
+- **Solicitar y cancelar ajustes**: permiso `request_adjustment`, nace
+  apagado; solo el administrador lo tiene y lo habilita por perfil. Se eliminó
+  `adjust_inventory` (reservado, no protegía nada).
+- **Bodeguero**: sin crear/editar/eliminar compras (nunca creó una).
+- **Operario de Finca**: puede registrar avance diario en sus fincas.
+
+## Parte 3 — botones según permiso
+
+Cada botón de acción del frontend se oculta si el perfil no tiene el permiso
+de esa acción (crear → `create_*`, editar → `edit_*`, eliminar → `delete_*`,
+acciones especiales → su permiso; exportar → `export_reports`). Si no queda
+ninguna acción, la columna "Acciones" desaparece (`utils/columnasPorPermiso.ts`).
+
+Excepciones deliberadas:
+- Salidas y Recepción: sin permiso de editar/crear, el botón no desaparece,
+  abre el documento en modo consulta (no se pierde el acceso al detalle).
+- Lotes de finca: sin `edit_farm_lot` los lotes guardados salen bloqueados y no
+  se reenvían al guardar la finca (antes: finca guardada y 403 por cada lote).
+- Dashboard: los accesos rápidos piden el permiso Y el acceso al módulo.
+- Configuración de Rendimiento: sin permiso, formulario de solo lectura.
+
+Verificado con `.dumps/botones_por_perfil_clic_a_clic.py`: 6 perfiles más un
+perfil temporal con permisos sueltos, 460 de 460 comprobaciones.
+
 ## Hallazgos para decidir después (no se tocan en la parte 1)
 
 - `warehouse` puede crear/editar/eliminar compras por API sin ver el menú Compras.

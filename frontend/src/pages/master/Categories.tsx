@@ -5,6 +5,8 @@ import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { categoriesApi, handleApiError } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 
 const { Search } = Input;
 const { Option } = Select;
@@ -22,6 +24,11 @@ interface Category {
 
 const Categories: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_master_data');
+  const puedeEditar = hasPermission('edit_master_data');
+  const puedeEliminar = hasPermission('delete_master_data');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -122,7 +129,7 @@ const Categories: React.FC = () => {
     }
   };
 
-  const mobileColumns: ColumnsType<Category> = [
+  const mobileColumns: ColumnsType<Category> = conColumnaAcciones<Category>([
     {
       title: 'Categoría',
       key: 'category',
@@ -152,36 +159,40 @@ const Categories: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            size="small"
-          />
-          <Popconfirm
-            title="¿Eliminar?"
-            description={record.productsCount && record.productsCount > 0
-              ? "Esta categoría tiene productos asociados"
-              : "Esta acción no se puede deshacer"}
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-            disabled={record.productsCount !== undefined && record.productsCount > 0}
-          >
+          {puedeEditar && (
             <Button
               type="link"
-              danger
-              icon={<DeleteOutlined />}
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
               size="small"
-              disabled={record.productsCount !== undefined && record.productsCount > 0}
             />
-          </Popconfirm>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar?"
+              description={record.productsCount && record.productsCount > 0
+                ? "Esta categoría tiene productos asociados"
+                : "Esta acción no se puede deshacer"}
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+              disabled={record.productsCount !== undefined && record.productsCount > 0}
+            >
+              <Button
+                type="link"
+                danger
+                icon={<DeleteOutlined />}
+                size="small"
+                disabled={record.productsCount !== undefined && record.productsCount > 0}
+              />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
-  const desktopColumns: ColumnsType<Category> = [
+  const desktopColumns: ColumnsType<Category> = conColumnaAcciones<Category>([
     {
       title: 'Nombre',
       dataIndex: 'name',
@@ -226,36 +237,40 @@ const Categories: React.FC = () => {
       width: 150,
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta categoría?"
-            description={record.productsCount && record.productsCount > 0
-              ? "Esta categoría tiene productos asociados y no puede eliminarse"
-              : "Esta acción no se puede deshacer"}
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-            disabled={record.productsCount !== undefined && record.productsCount > 0}
-          >
+          {puedeEditar && (
             <Button
               type="link"
-              danger
-              icon={<DeleteOutlined />}
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Editar
+            </Button>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta categoría?"
+              description={record.productsCount && record.productsCount > 0
+                ? "Esta categoría tiene productos asociados y no puede eliminarse"
+                : "Esta acción no se puede deshacer"}
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
               disabled={record.productsCount !== undefined && record.productsCount > 0}
             >
-              Eliminar
-            </Button>
-          </Popconfirm>
+              <Button
+                type="link"
+                danger
+                icon={<DeleteOutlined />}
+                disabled={record.productsCount !== undefined && record.productsCount > 0}
+              >
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   const expandedRowRender = (record: Category) => (
     <Descriptions size="small" column={1}>
@@ -280,17 +295,19 @@ const Categories: React.FC = () => {
             Administra las categorías de productos químicos agrícolas
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingCategory(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Categoría
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingCategory(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Categoría
+          </Button>
+        )}
       </div>
 
       <Card>

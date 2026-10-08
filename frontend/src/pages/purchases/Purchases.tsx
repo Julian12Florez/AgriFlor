@@ -89,6 +89,9 @@ const Purchases: React.FC = () => {
   // (se marca en Administración → Perfiles). Antes era por nombre de perfil.
   const { hasPermission } = usePermissions();
   const puedeEliminarCompras = hasPermission('reverse_purchase');
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const puedeCrear = hasPermission('create_purchase');
+  const puedeEditar = hasPermission('edit_purchase'); // incluye cancelar la orden
   const [searchText, setSearchText] = useState('');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | undefined>();
@@ -336,7 +339,7 @@ const Purchases: React.FC = () => {
           >
             PDF
           </Button>
-          {record.status === 'pending' && !record.hasReceptionStarted && (
+          {puedeEditar && record.status === 'pending' && !record.hasReceptionStarted && (
             <Popconfirm
               title="¿Cancelar orden?"
               description="Esta acción no se puede deshacer"
@@ -484,7 +487,7 @@ const Purchases: React.FC = () => {
           >
             Descargar
           </Button>
-          {record.status === 'pending' && !record.hasReceptionStarted && (
+          {puedeEditar && record.status === 'pending' && !record.hasReceptionStarted && (
             <Popconfirm
               title="¿Cancelar orden de compra?"
               description="Esta acción no se puede deshacer"
@@ -688,19 +691,21 @@ const Purchases: React.FC = () => {
             Gestión de órdenes de compra con generación de PDF
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            // Empresa emisora preseleccionada (la marcada por defecto).
-            if (defaultCompanyId) {
-              form.setFieldValue('companyId', defaultCompanyId);
-            }
-            setIsNewPurchaseModalVisible(true);
-          }}
-        >
-          Nueva Compra
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              // Empresa emisora preseleccionada (la marcada por defecto).
+              if (defaultCompanyId) {
+                form.setFieldValue('companyId', defaultCompanyId);
+              }
+              setIsNewPurchaseModalVisible(true);
+            }}
+          >
+            Nueva Compra
+          </Button>
+        )}
       </div>
 
       <Card>

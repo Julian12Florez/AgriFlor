@@ -16,6 +16,7 @@ import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { adjustmentsApi, handleApiError } from '../../services/api';
 import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 import { formatQuantity, formatCurrency } from '../../utils/formatters';
 import type { Adjustment } from '../../types/index';
 import AdjustmentRequestModal from './AdjustmentRequestModal';
@@ -141,6 +142,9 @@ const Adjustments: React.FC = () => {
   // Administración → Perfiles). Antes era "solo el perfil admin" por nombre.
   const { user, hasPermission } = usePermissions();
   const isAdminRole = hasPermission('approve_adjustment');
+  // Solicitar un ajuste y cancelar la solicitud propia: permiso aparte (por
+  // defecto solo el administrador lo tiene).
+  const puedeSolicitar = hasPermission('request_adjustment');
 
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -217,7 +221,7 @@ const Adjustments: React.FC = () => {
   });
 
   const renderActions = (record: Adjustment) => {
-    const isOwnPending = record.status === 'pending' && record.responsible_user === user?.id;
+    const isOwnPending = puedeSolicitar && record.status === 'pending' && record.responsible_user === user?.id;
     const canApproveReject = isAdminRole && record.status === 'pending';
 
     if (!canApproveReject && !isOwnPending) return null;
@@ -275,7 +279,7 @@ const Adjustments: React.FC = () => {
     );
   };
 
-  const mobileColumns: ColumnsType<Adjustment> = [
+  const mobileColumns: ColumnsType<Adjustment> = conColumnaAcciones<Adjustment>([
     {
       title: 'Ajuste',
       key: 'adjustment',
@@ -316,9 +320,9 @@ const Adjustments: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => renderActions(record),
     },
-  ];
+  ], isAdminRole || puedeSolicitar);
 
-  const desktopColumns: ColumnsType<Adjustment> = [
+  const desktopColumns: ColumnsType<Adjustment> = conColumnaAcciones<Adjustment>([
     {
       title: 'N° Ajuste',
       key: 'adjustment_number',
@@ -411,7 +415,7 @@ const Adjustments: React.FC = () => {
       width: 200,
       render: (_, record) => renderActions(record) || <span style={{ color: '#bbb' }}>—</span>,
     },
-  ];
+  ], isAdminRole || puedeSolicitar);
 
   const expandedRowRender = (record: Adjustment) => {
     const quantityDisplay = getQuantityDisplay(record);
@@ -463,9 +467,11 @@ const Adjustments: React.FC = () => {
             Solicitudes de entrada, salida y traslado con motivo y aprobación
           </p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsRequestModalOpen(true)}>
-          Nueva Solicitud
-        </Button>
+        {puedeSolicitar && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsRequestModalOpen(true)}>
+            Nueva Solicitud
+          </Button>
+        )}
       </div>
 
       <Alert

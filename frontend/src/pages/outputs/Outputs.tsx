@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, Input, Space, Card, Tag, Popconfirm, message, Modal, Form, Row, Col, Select, DatePicker, InputNumber, Badge, Descriptions, Divider, List, Typography, Drawer } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ExportOutlined, EnvironmentOutlined, CheckCircleOutlined, ClockCircleOutlined, InboxOutlined, MinusCircleOutlined, PlusCircleOutlined, PrinterOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, EyeOutlined, DeleteOutlined, ExportOutlined, EnvironmentOutlined, CheckCircleOutlined, ClockCircleOutlined, InboxOutlined, MinusCircleOutlined, PlusCircleOutlined, PrinterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
 import dayjs from 'dayjs';
@@ -104,8 +104,12 @@ const Outputs: React.FC = () => {
 
   // Aislamiento por ubicación: el responsable solo puede elegir como ORIGEN de la salida
   // una de las ubicaciones que tiene asignadas. Los roles globales pueden elegir cualquiera.
-  const { user, canViewAllLocations: puedeVerTodasLasUbicaciones } = usePermissions();
+  const { user, canViewAllLocations: puedeVerTodasLasUbicaciones, hasPermission } = usePermissions();
   const canViewAllLocations = puedeVerTodasLasUbicaciones();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const puedeCrear = hasPermission('create_output');
+  const puedeEditar = hasPermission('edit_output');
+  const puedeEliminar = hasPermission('delete_output');
   const availableProducts = productsData?.data || [];
   const availableOrders = ordersData?.data || [];
   const availableUsers = usersData?.data || [];
@@ -286,7 +290,8 @@ const Outputs: React.FC = () => {
     setEditingOutput(record);
 
     // Check if output is in a state that prevents editing
-    const canEdit = record.status === 'pending';
+    // (sin el permiso edit_output se abre solo para ver: sin botón "Actualizar Salida")
+    const canEdit = puedeEditar && record.status === 'pending';
     setIsReadOnly(!canEdit);
 
     // Load products for the origin location
@@ -643,11 +648,13 @@ const Outputs: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
+          {/* Sin permiso de editar, el mismo botón abre la salida solo para ver */}
           <Button
             type="link"
-            icon={<EditOutlined />}
+            icon={puedeEditar ? <EditOutlined /> : <EyeOutlined />}
             onClick={() => handleEdit(record)}
             size="small"
+            title={puedeEditar ? 'Editar' : 'Ver'}
           />
           <Button
             type="link"
@@ -657,14 +664,16 @@ const Outputs: React.FC = () => {
             size="small"
             title="Imprimir remisión"
           />
-          <Popconfirm
-            title="¿Eliminar?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -763,13 +772,24 @@ const Outputs: React.FC = () => {
       width: 280,
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Editar
-          </Button>
+          {/* Sin permiso de editar, el mismo botón abre la salida solo para ver */}
+          {puedeEditar ? (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Editar
+            </Button>
+          ) : (
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Ver
+            </Button>
+          )}
           <Button
             type="link"
             icon={<PrinterOutlined />}
@@ -778,17 +798,19 @@ const Outputs: React.FC = () => {
           >
             Remisión
           </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta salida?"
-            description="Esta acción no se puede deshacer"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              Eliminar
-            </Button>
-          </Popconfirm>
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta salida?"
+              description="Esta acción no se puede deshacer"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -846,7 +868,9 @@ const Outputs: React.FC = () => {
       {isReadOnly && (
         <div style={{ marginBottom: 16 }}>
           <Tag color="warning" style={{ padding: '8px 12px', fontSize: '14px', width: '100%', textAlign: 'center' }}>
-            ⚠️ Esta salida ya tiene recepción iniciada o completada y no puede ser editada
+            {puedeEditar
+              ? '⚠️ Esta salida ya tiene recepción iniciada o completada y no puede ser editada'
+              : 'Su perfil no tiene permiso para editar salidas: solo puede consultarla'}
           </Tag>
         </div>
       )}
@@ -1624,26 +1648,28 @@ const Outputs: React.FC = () => {
             Control de salidas de inventario para aplicaciones en campo
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingOutput(null);
-            setSelectedOriginLocationId(undefined);
-            setSelectedDestinationLocationId(undefined);
-            setSelectedOutputTypeId(undefined);
-            setProductsForOutputs([]);
-            setAvailableFarmLots([]);
-            form.resetFields();
-            // Empresa emisora preseleccionada (la marcada por defecto).
-            if (defaultCompanyId) {
-              form.setFieldValue('companyId', defaultCompanyId);
-            }
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Salida
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingOutput(null);
+              setSelectedOriginLocationId(undefined);
+              setSelectedDestinationLocationId(undefined);
+              setSelectedOutputTypeId(undefined);
+              setProductsForOutputs([]);
+              setAvailableFarmLots([]);
+              form.resetFields();
+              // Empresa emisora preseleccionada (la marcada por defecto).
+              if (defaultCompanyId) {
+                form.setFieldValue('companyId', defaultCompanyId);
+              }
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Salida
+          </Button>
+        )}
       </div>
 
       <Card>

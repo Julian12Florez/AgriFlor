@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { receptionsApi, productsApi, purchasesApi, locationsApi, outputsApi, usersApi, handleApiError } from '../../services/api';
 import type { Reception, ReceptionItem, ReceptionBatch, ReceptionBatchItem, Product, PackagingUnit } from '../../data/types';
 import { formatCurrency, formatQuantity, formatPercentage } from '../../utils/formatters';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Text, Title } = Typography;
 const { Search } = Input;
@@ -18,6 +19,10 @@ const { Step } = Steps;
 const ReceptionPage: React.FC = () => {
   const [isMobile, setIsMobile] = useState(false);
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_reception'); // crear recepción y agregar recepciones parciales
+  const puedeFinalizar = hasPermission('edit_reception'); // completar, cancelar y finalizar
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isNewBatchModalVisible, setIsNewBatchModalVisible] = useState(false);
@@ -930,7 +935,8 @@ const ReceptionPage: React.FC = () => {
           icon={<EyeOutlined />}
           onClick={() => handleViewAvailableSource(record)}
         >
-          {record.reception ? 'Ver Detalles' : 'Crear Recepción'}
+          {/* Sin permiso de crear, el botón solo abre el detalle de la fuente */}
+          {record.reception || !puedeCrear ? 'Ver Detalles' : 'Crear Recepción'}
         </Button>
       ),
     },
@@ -1129,33 +1135,39 @@ const ReceptionPage: React.FC = () => {
           ))}
         </Timeline>
 
-        {selectedReception.status !== 'completed' && selectedReception.status !== 'cancelled' && (
+        {selectedReception.status !== 'completed' && selectedReception.status !== 'cancelled' && (puedeCrear || puedeFinalizar) && (
           <div style={{ textAlign: 'center', marginTop: 24 }}>
             <Space wrap>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={handleNewPartialReception}
-                size="large"
-              >
-                Nueva Recepción Parcial
-              </Button>
-              <Popconfirm
-                title={finalizeTitle}
-                description={finalizeDescription}
-                okText="Sí, finalizar y liberar"
-                cancelText="Cancelar"
-                okButtonProps={{ danger: true }}
-                onConfirm={() => doFinalize()}
-              >
-                <Button danger size="large" loading={finalizeMutation.isPending}>
-                  Finalizar recepción
+              {puedeCrear && (
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={handleNewPartialReception}
+                  size="large"
+                >
+                  Nueva Recepción Parcial
                 </Button>
-              </Popconfirm>
+              )}
+              {puedeFinalizar && (
+                <Popconfirm
+                  title={finalizeTitle}
+                  description={finalizeDescription}
+                  okText="Sí, finalizar y liberar"
+                  cancelText="Cancelar"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => doFinalize()}
+                >
+                  <Button danger size="large" loading={finalizeMutation.isPending}>
+                    Finalizar recepción
+                  </Button>
+                </Popconfirm>
+              )}
             </Space>
-            <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
-              "Finalizar recepción" cierra con la cantidad ya recibida y libera el remanente pendiente, sin recibir ni descontar más stock.
-            </div>
+            {puedeFinalizar && (
+              <div style={{ marginTop: 8, fontSize: 12, color: '#888' }}>
+                "Finalizar recepción" cierra con la cantidad ya recibida y libera el remanente pendiente, sin recibir ni descontar más stock.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2324,18 +2336,26 @@ const ReceptionPage: React.FC = () => {
                       );
                     }
 
+                    // Sin permiso de crear ni de finalizar, el modal queda solo informativo.
+                    const puedeFinalizarEsta = puedeFinalizar && !!selectedSource.reception?.id;
+                    if (!puedeCrear && !puedeFinalizarEsta) {
+                      return null;
+                    }
+
                     return (
                       <div style={{ textAlign: 'center', marginTop: 24 }}>
                         <Space wrap>
-                          <Button
-                            type="primary"
-                            icon={selectedSource.reception ? <PlusOutlined /> : <PlusOutlined />}
-                            size="large"
-                            onClick={handleOpenReceptionFromSource}
-                          >
-                            {selectedSource.reception ? 'Nueva Recepción Parcial' : 'Crear Recepción'}
-                          </Button>
-                          {selectedSource.reception?.id && (
+                          {puedeCrear && (
+                            <Button
+                              type="primary"
+                              icon={selectedSource.reception ? <PlusOutlined /> : <PlusOutlined />}
+                              size="large"
+                              onClick={handleOpenReceptionFromSource}
+                            >
+                              {selectedSource.reception ? 'Nueva Recepción Parcial' : 'Crear Recepción'}
+                            </Button>
+                          )}
+                          {puedeFinalizarEsta && (
                             <Popconfirm
                               title={finalizeTitle}
                               description={finalizeDescription}
@@ -2351,12 +2371,12 @@ const ReceptionPage: React.FC = () => {
                           )}
                         </Space>
                         <div style={{ marginTop: 8, fontSize: 12, color: '#666' }}>
-                          {selectedSource.reception
+                          {puedeCrear && (selectedSource.reception
                             ? 'Agregar un nuevo lote de recepción a esta orden'
                             : 'Se abrirá el formulario para recepcionar productos'
-                          }
-                          {selectedSource.reception?.id && (
-                            <span> · "Finalizar recepción" cierra con lo recibido y libera el remanente pendiente.</span>
+                          )}
+                          {puedeFinalizarEsta && (
+                            <span>{puedeCrear ? ' · ' : ''}"Finalizar recepción" cierra con lo recibido y libera el remanente pendiente.</span>
                           )}
                         </div>
                       </div>

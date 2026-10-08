@@ -14,6 +14,7 @@ import ResponsiveTable from '../../components/ResponsiveTable';
 import { useQuery } from '@tanstack/react-query';
 import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, productsApi, locationsApi, brandsApi, reportExportsApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 import dayjs, { Dayjs } from 'dayjs';
 
 const { RangePicker } = DatePicker;
@@ -62,6 +63,9 @@ const getCategoryLabel = (category: string): string => {
 };
 
 const InventoryKardex: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('export_reports');
   const [dateRange, setDateRange] = useState<[Dayjs | null, Dayjs | null] | null>(null);
   const [productId, setProductId] = useState<string | undefined>(undefined);
   // El kardex es de UN producto: la categoría acota la lista de productos a elegir.
@@ -419,16 +423,20 @@ const InventoryKardex: React.FC = () => {
           </Col>
           {shouldFetch && kardex.length > 0 && (
             <>
-              <Col>
-                <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
-                  Exportar Excel
-                </Button>
-              </Col>
-              <Col>
-                <Button icon={<FilePdfOutlined />} onClick={handleExportPDF}>
-                  Exportar PDF
-                </Button>
-              </Col>
+              {puedeExportar && (
+                <>
+                  <Col>
+                    <Button icon={<FileExcelOutlined />} onClick={handleExportExcel}>
+                      Exportar Excel
+                    </Button>
+                  </Col>
+                  <Col>
+                    <Button icon={<FilePdfOutlined />} onClick={handleExportPDF}>
+                      Exportar PDF
+                    </Button>
+                  </Col>
+                </>
+              )}
               <Col>
                 <Button icon={<PrinterOutlined />} onClick={handlePrint}>
                   Imprimir

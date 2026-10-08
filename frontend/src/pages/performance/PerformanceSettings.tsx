@@ -4,12 +4,17 @@ import {
 } from 'antd';
 import { SettingOutlined, SaveOutlined } from '@ant-design/icons';
 import { performanceSettingsApi, handleApiError } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Title, Text, Paragraph } = Typography;
 
 const PerformanceSettings = () => {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  // Sin manage_performance_settings se ve la configuración pero no se cambia:
+  // no hay botón Guardar y los campos quedan de solo lectura.
+  const { hasPermission } = usePermissions();
+  const puedeGuardar = hasPermission('manage_performance_settings');
 
   const { data, isLoading } = useQuery({
     queryKey: ['performanceSettings'],
@@ -43,6 +48,7 @@ const PerformanceSettings = () => {
         <Form
           form={form}
           layout="vertical"
+          disabled={!puedeGuardar}
           initialValues={{
             global_sobrepaso_pct: settings?.globalSobrepasoPct ? Number(settings.globalSobrepasoPct) : 130,
             global_alto_pct: settings?.globalAltoPct ? Number(settings.globalAltoPct) : 100,
@@ -114,17 +120,19 @@ const PerformanceSettings = () => {
             </Col>
           </Row>
 
-          <div style={{ textAlign: 'right', marginTop: 24 }}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              icon={<SaveOutlined />}
-              loading={updateMutation.isPending}
-              size="large"
-            >
-              Guardar Configuración
-            </Button>
-          </div>
+          {puedeGuardar && (
+            <div style={{ textAlign: 'right', marginTop: 24 }}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                icon={<SaveOutlined />}
+                loading={updateMutation.isPending}
+                size="large"
+              >
+                Guardar Configuración
+              </Button>
+            </div>
+          )}
         </Form>
       </Card>
     </div>

@@ -4,6 +4,7 @@ import { FileExcelOutlined, FilePdfOutlined, SearchOutlined, TeamOutlined, Troph
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation } from '@tanstack/react-query';
 import { liquidationAnalyticsApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 import { formatCurrency } from '../../utils/formatters';
 import dayjs from 'dayjs';
 import {
@@ -20,6 +21,9 @@ const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 const WorkerProductivityReport: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('view_liquidation_reports');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sortBy, setSortBy] = useState<string>('total_neto');
@@ -263,7 +267,7 @@ const WorkerProductivityReport: React.FC = () => {
             </Space>
           </Col>
         </Row>
-        {reportData && (
+        {reportData && puedeExportar && (
           <div style={{ marginTop: 16 }}>
             <Space wrap>
               <Button icon={<FileExcelOutlined />} onClick={handleExportExcel} style={{ color: '#217346' }}>

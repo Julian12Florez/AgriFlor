@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { dashboardApi } from '../services/api';
+import usePermissions from '../hooks/usePermissions';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/es';
@@ -19,6 +20,12 @@ dayjs.locale('es');
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
+  // Accesos rápidos de creación: solo si el perfil puede crear eso Y abrir la
+  // pantalla a la que lleva (si no, el clic terminaría en "acceso denegado").
+  const { hasPermission, hasModuleAccess } = usePermissions();
+  const puedeCrearOrden = hasPermission('create_technical_order') && hasModuleAccess('technical');
+  const puedeCrearCompra = hasPermission('create_purchase') && hasModuleAccess('purchases');
+  const puedeCrearRecepcion = hasPermission('create_reception') && hasModuleAccess('reception');
 
   const handleQuickAction = (path: string) => {
     navigate(path);
@@ -204,39 +211,45 @@ const Dashboard: React.FC = () => {
         <Col span={24}>
           <Card title="Acciones Rápidas">
             <Row gutter={[8, 8]}>
-              <Col xs={12} sm={12} md={6} lg={6}>
-                <Card
-                  hoverable
-                  style={{ textAlign: 'center', cursor: 'pointer', minHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onClick={() => handleQuickAction('/technical/orders')}
-                  bodyStyle={{ padding: '16px 8px' }}
-                >
-                  <ExperimentOutlined style={{ fontSize: 24, color: '#4CAF50', marginBottom: 8, display: 'block' }} />
-                  <div style={{ fontSize: '12px', lineHeight: '1.2' }}>Nueva Orden Técnica</div>
-                </Card>
-              </Col>
-              <Col xs={12} sm={12} md={6} lg={6}>
-                <Card
-                  hoverable
-                  style={{ textAlign: 'center', cursor: 'pointer', minHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onClick={() => handleQuickAction('/purchases')}
-                  bodyStyle={{ padding: '16px 8px' }}
-                >
-                  <ShoppingOutlined style={{ fontSize: 24, color: '#2196F3', marginBottom: 8, display: 'block' }} />
-                  <div style={{ fontSize: '12px', lineHeight: '1.2' }}>Registrar Compra</div>
-                </Card>
-              </Col>
-              <Col xs={12} sm={12} md={6} lg={6}>
-                <Card
-                  hoverable
-                  style={{ textAlign: 'center', cursor: 'pointer', minHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                  onClick={() => handleQuickAction('/reception')}
-                  bodyStyle={{ padding: '16px 8px' }}
-                >
-                  <DatabaseOutlined style={{ fontSize: 24, color: '#FF9800', marginBottom: 8, display: 'block' }} />
-                  <div style={{ fontSize: '12px', lineHeight: '1.2' }}>Entrada a Bodega</div>
-                </Card>
-              </Col>
+              {puedeCrearOrden && (
+                <Col xs={12} sm={12} md={6} lg={6}>
+                  <Card
+                    hoverable
+                    style={{ textAlign: 'center', cursor: 'pointer', minHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={() => handleQuickAction('/technical/orders')}
+                    bodyStyle={{ padding: '16px 8px' }}
+                  >
+                    <ExperimentOutlined style={{ fontSize: 24, color: '#4CAF50', marginBottom: 8, display: 'block' }} />
+                    <div style={{ fontSize: '12px', lineHeight: '1.2' }}>Nueva Orden Técnica</div>
+                  </Card>
+                </Col>
+              )}
+              {puedeCrearCompra && (
+                <Col xs={12} sm={12} md={6} lg={6}>
+                  <Card
+                    hoverable
+                    style={{ textAlign: 'center', cursor: 'pointer', minHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={() => handleQuickAction('/purchases')}
+                    bodyStyle={{ padding: '16px 8px' }}
+                  >
+                    <ShoppingOutlined style={{ fontSize: 24, color: '#2196F3', marginBottom: 8, display: 'block' }} />
+                    <div style={{ fontSize: '12px', lineHeight: '1.2' }}>Registrar Compra</div>
+                  </Card>
+                </Col>
+              )}
+              {puedeCrearRecepcion && (
+                <Col xs={12} sm={12} md={6} lg={6}>
+                  <Card
+                    hoverable
+                    style={{ textAlign: 'center', cursor: 'pointer', minHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    onClick={() => handleQuickAction('/reception')}
+                    bodyStyle={{ padding: '16px 8px' }}
+                  >
+                    <DatabaseOutlined style={{ fontSize: 24, color: '#FF9800', marginBottom: 8, display: 'block' }} />
+                    <div style={{ fontSize: '12px', lineHeight: '1.2' }}>Entrada a Bodega</div>
+                  </Card>
+                </Col>
+              )}
               <Col xs={12} sm={12} md={6} lg={6}>
                 <Card
                   hoverable

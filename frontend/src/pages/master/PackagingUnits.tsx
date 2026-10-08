@@ -4,6 +4,8 @@ import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { packagingUnitsApi, baseUnitsApi, handleApiError } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 import ResponsiveTable from '../../components/ResponsiveTable';
 
 const { Text } = Typography;
@@ -20,6 +22,11 @@ interface PackagingUnit {
 
 const PackagingUnits: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_master_data');
+  const puedeEditar = hasPermission('edit_master_data');
+  const puedeEliminar = hasPermission('delete_master_data');
   const [isMobile, setIsMobile] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingUnit, setEditingUnit] = useState<PackagingUnit | null>(null);
@@ -141,7 +148,7 @@ const PackagingUnits: React.FC = () => {
     }
   };
 
-  const mobileColumns: ColumnsType<PackagingUnit> = [
+  const mobileColumns: ColumnsType<PackagingUnit> = conColumnaAcciones<PackagingUnit>([
     {
       title: 'Unidad de Empaque',
       key: 'unit',
@@ -163,26 +170,30 @@ const PackagingUnits: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            size="small"
-          />
-          <Popconfirm
-            title="¿Eliminar?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+              size="small"
+            />
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
-  const desktopColumns: ColumnsType<PackagingUnit> = [
+  const desktopColumns: ColumnsType<PackagingUnit> = conColumnaAcciones<PackagingUnit>([
     {
       title: 'Nombre',
       dataIndex: 'name',
@@ -217,27 +228,31 @@ const PackagingUnits: React.FC = () => {
       width: 150,
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta unidad de empaque?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              Eliminar
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Editar
             </Button>
-          </Popconfirm>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta unidad de empaque?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   return (
     <div>
@@ -248,17 +263,19 @@ const PackagingUnits: React.FC = () => {
             Gestiona las unidades de empaque disponibles para productos
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingUnit(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Unidad
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingUnit(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Unidad
+          </Button>
+        )}
       </div>
 
       <Card>

@@ -7,6 +7,8 @@ import dayjs from 'dayjs';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordersApi, recipesApi, productsApi, brandsApi, locationsApi, handleApiError } from '../../services/api';
 import type { TechnicalOrder } from '../../data/types';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 
 // Interfaces importadas desde types.ts
 
@@ -17,6 +19,11 @@ const { Step } = Steps;
 
 const Orders: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_technical_order');
+  const puedeEditar = hasPermission('edit_technical_order');
+  const puedeEliminar = hasPermission('delete_technical_order');
   const [isMobile, setIsMobile] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingOrder, setEditingOrder] = useState<TechnicalOrder | null>(null);
@@ -248,7 +255,7 @@ const Orders: React.FC = () => {
   // Backend handles filtering, so no need to filter locally
   const filteredOrders = orders;
 
-  const mobileColumns: ColumnsType<TechnicalOrder> = [
+  const mobileColumns: ColumnsType<TechnicalOrder> = conColumnaAcciones<TechnicalOrder>([
     {
       title: 'Orden Técnica',
       key: 'order',
@@ -274,26 +281,30 @@ const Orders: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-            size="small"
-          />
-          <Popconfirm
-            title="¿Eliminar?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+              size="small"
+            />
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar?"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
-  const desktopColumns: ColumnsType<TechnicalOrder> = [
+  const desktopColumns: ColumnsType<TechnicalOrder> = conColumnaAcciones<TechnicalOrder>([
     {
       title: 'Orden',
       key: 'order',
@@ -401,28 +412,32 @@ const Orders: React.FC = () => {
       width: 150,
       render: (_, record) => (
         <Space size="middle">
-          <Button
-            type="link"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar esta orden?"
-            description="Esta acción no se puede deshacer"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              Eliminar
+          {puedeEditar && (
+            <Button
+              type="link"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            >
+              Editar
             </Button>
-          </Popconfirm>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar esta orden?"
+              description="Esta acción no se puede deshacer"
+              onConfirm={() => handleDelete(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   const expandedRowRender = (record: TechnicalOrder) => (
     <Descriptions size="small" column={1}>
@@ -722,17 +737,19 @@ const Orders: React.FC = () => {
             Programa y gestiona las aplicaciones agronómicas
           </p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingOrder(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nueva Orden
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingOrder(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nueva Orden
+          </Button>
+        )}
       </div>
 
       <Card>

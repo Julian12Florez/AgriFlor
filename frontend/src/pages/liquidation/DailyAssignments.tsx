@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { dailyAssignmentsApi, workersApi, tasksApi } from '../../services/api';
 import { formatCurrency } from '../../utils/formatters';
 import ResponsiveTable from '../../components/ResponsiveTable';
+import usePermissions from '../../hooks/usePermissions';
 import type { UploadFile } from 'antd/es/upload/interface';
 import dayjs from 'dayjs';
 
@@ -14,6 +15,10 @@ const { Search } = Input;
 
 const DailyAssignments: React.FC = () => {
   const queryClient = useQueryClient();
+  // Asignar a mano y la carga masiva (plantilla, vista previa, procesar) son
+  // crear asignaciones: solo con create_liquidation. El historial lo ven todos.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_liquidation');
   const [selectedDate, setSelectedDate] = useState<dayjs.Dayjs | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [previewData, setPreviewData] = useState<any | null>(null);
@@ -264,6 +269,7 @@ const DailyAssignments: React.FC = () => {
       </div>
 
       {/* Manual Assignment Section */}
+      {puedeCrear && (
       <Card title="Asignación Manual" style={{ marginBottom: 16 }}>
         <Row gutter={[16, 16]} align="bottom">
           <Col xs={24} sm={12} md={6}>
@@ -355,8 +361,10 @@ const DailyAssignments: React.FC = () => {
           </Row>
         )}
       </Card>
+      )}
 
       {/* Upload Section */}
+      {puedeCrear && (
       <Card
         title="Carga Masiva desde Excel"
         style={{ marginBottom: 16 }}
@@ -409,9 +417,10 @@ const DailyAssignments: React.FC = () => {
           </Col>
         </Row>
       </Card>
+      )}
 
       {/* Preview Section */}
-      {previewData && (
+      {puedeCrear && previewData && (
         <Card title="Vista Previa" style={{ marginBottom: 16 }}>
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
             <Col xs={12} sm={6}>

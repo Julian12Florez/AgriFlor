@@ -11,6 +11,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import CategoryFilterSelect from '../../components/CategoryFilterSelect';
 import { inventoryApi, locationsApi, reportExportsApi } from '../../services/api';
+import usePermissions from '../../hooks/usePermissions';
 import dayjs, { Dayjs } from 'dayjs';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -34,6 +35,9 @@ interface ProductListingRow {
 }
 
 const ProductListingReport: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('export_reports');
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
   const [locationId, setLocationId] = useState<string | undefined>(undefined);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
@@ -156,9 +160,11 @@ const ProductListingReport: React.FC = () => {
           </Col>
           <Col xs={24} sm={6} md={9}>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} style={{ marginRight: 8 }}>Actualizar</Button>
-            <Button type="primary" icon={<FileExcelOutlined />} onClick={handleExport} loading={exporting} style={{ background: '#2E7D32' }}>
-              Exportar Excel
-            </Button>
+            {puedeExportar && (
+              <Button type="primary" icon={<FileExcelOutlined />} onClick={handleExport} loading={exporting} style={{ background: '#2E7D32' }}>
+                Exportar Excel
+              </Button>
+            )}
           </Col>
         </Row>
       </Card>

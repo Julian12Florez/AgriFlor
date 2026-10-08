@@ -6,6 +6,8 @@ import type { UploadFile } from 'antd/es/upload/interface';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { workersApi } from '../../services/api';
 import ResponsiveTable from '../../components/ResponsiveTable';
+import usePermissions from '../../hooks/usePermissions';
+import { conColumnaAcciones } from '../../utils/columnasPorPermiso';
 import dayjs from 'dayjs';
 
 const { Search } = Input;
@@ -13,6 +15,12 @@ const { Option } = Select;
 
 const Workers: React.FC = () => {
   const queryClient = useQueryClient();
+  // Cada botón se muestra solo si el perfil tiene el permiso de esa acción.
+  // La carga masiva (plantilla, vista previa, importar) es parte de crear.
+  const { hasPermission } = usePermissions();
+  const puedeCrear = hasPermission('create_liquidation');
+  const puedeEditar = hasPermission('edit_liquidation');
+  const puedeEliminar = hasPermission('delete_liquidation');
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingWorker, setEditingWorker] = useState<any | null>(null);
   const [form] = Form.useForm();
@@ -220,7 +228,7 @@ const Workers: React.FC = () => {
     },
   ];
 
-  const mobileColumns: ColumnsType<any> = [
+  const mobileColumns: ColumnsType<any> = conColumnaAcciones<any>([
     {
       title: 'Trabajador',
       key: 'worker',
@@ -254,21 +262,25 @@ const Workers: React.FC = () => {
       fixed: 'right' as const,
       render: (_, record) => (
         <Space size="small">
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} size="small" />
-          <Popconfirm
-            title="¿Eliminar este trabajador?"
-            onConfirm={() => deleteMutation.mutate(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />} size="small" />
-          </Popconfirm>
+          {puedeEditar && (
+            <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)} size="small" />
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Eliminar este trabajador?"
+              onConfirm={() => deleteMutation.mutate(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />} size="small" />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
-  const desktopColumns: ColumnsType<any> = [
+  const desktopColumns: ColumnsType<any> = conColumnaAcciones<any>([
     {
       title: 'Código',
       key: 'workerCode',
@@ -317,23 +329,27 @@ const Workers: React.FC = () => {
       width: 150,
       render: (_, record) => (
         <Space size="middle">
-          <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
-            Editar
-          </Button>
-          <Popconfirm
-            title="¿Está seguro de eliminar este trabajador?"
-            onConfirm={() => deleteMutation.mutate(record.id)}
-            okText="Sí"
-            cancelText="No"
-          >
-            <Button type="link" danger icon={<DeleteOutlined />}>
-              Eliminar
+          {puedeEditar && (
+            <Button type="link" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
+              Editar
             </Button>
-          </Popconfirm>
+          )}
+          {puedeEliminar && (
+            <Popconfirm
+              title="¿Está seguro de eliminar este trabajador?"
+              onConfirm={() => deleteMutation.mutate(record.id)}
+              okText="Sí"
+              cancelText="No"
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                Eliminar
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ];
+  ], puedeEditar || puedeEliminar);
 
   return (
     <div>
@@ -342,20 +358,23 @@ const Workers: React.FC = () => {
           <h1 style={{ margin: 0, color: '#2E7D32' }}>Gestión de Trabajadores</h1>
           <p style={{ color: '#666', margin: 0 }}>Administra los trabajadores del campo</p>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            setEditingWorker(null);
-            form.resetFields();
-            setIsModalVisible(true);
-          }}
-        >
-          Nuevo Trabajador
-        </Button>
+        {puedeCrear && (
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => {
+              setEditingWorker(null);
+              form.resetFields();
+              setIsModalVisible(true);
+            }}
+          >
+            Nuevo Trabajador
+          </Button>
+        )}
       </div>
 
-      {/* Bulk Upload Section */}
+      {/* Bulk Upload Section: es crear trabajadores, solo con create_liquidation */}
+      {puedeCrear && (
       <Card
         title="Carga Masiva desde Excel"
         style={{ marginBottom: 16 }}
@@ -398,9 +417,10 @@ const Workers: React.FC = () => {
           </Col>
         </Row>
       </Card>
+      )}
 
       {/* Preview Section */}
-      {previewData && (
+      {puedeCrear && previewData && (
         <Card title="Vista Previa de Importación" style={{ marginBottom: 16 }}>
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
             <Col xs={8} sm={6}>

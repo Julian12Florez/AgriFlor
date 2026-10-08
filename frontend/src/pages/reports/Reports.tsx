@@ -3,11 +3,15 @@ import { Card, Row, Col, Select, DatePicker, Button, Statistic, Progress, Descri
 import { BarChartOutlined, FileExcelOutlined, FilePdfOutlined, PrinterOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import ResponsiveTable from '../../components/ResponsiveTable';
+import usePermissions from '../../hooks/usePermissions';
 
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
 const Reports: React.FC = () => {
+  // Exportar a Excel/PDF: el mismo permiso que pide el backend.
+  const { hasPermission } = usePermissions();
+  const puedeExportar = hasPermission('export_reports');
   const [reportType, setReportType] = useState<string>('inventory');
   const [dateRange, setDateRange] = useState<any>(null);
 
@@ -204,8 +208,8 @@ const Reports: React.FC = () => {
           <Col span={10}>
             <Button.Group>
               <Button icon={<BarChartOutlined />}>Ver Reporte</Button>
-              <Button icon={<FileExcelOutlined />}>Excel</Button>
-              <Button icon={<FilePdfOutlined />}>PDF</Button>
+              {puedeExportar && <Button icon={<FileExcelOutlined />}>Excel</Button>}
+              {puedeExportar && <Button icon={<FilePdfOutlined />}>PDF</Button>}
               <Button icon={<PrinterOutlined />}>Imprimir</Button>
             </Button.Group>
           </Col>
