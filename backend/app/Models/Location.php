@@ -5,11 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
-use OwenIt\Auditing\Auditable;
+use App\Models\Concerns\Auditado;
 
 class Location extends Model implements AuditableContract
 {
-    use HasUuids, Auditable;
+    use HasUuids, Auditado;
 
     protected $table = 'locations';
 
@@ -104,11 +104,11 @@ class Location extends Model implements AuditableContract
         return $this->hasMany(Reception::class, 'destination_location_id');
     }
 
-    // Technical orders assigned to this farm (many-to-many)
+    // Technical orders assigned to this farm (many-to-many). Sin withTimestamps():
+    // `technical_order_farms` solo tiene `created_at` (ver TechnicalOrder::farms()).
     public function technicalOrders()
     {
         return $this->belongsToMany(TechnicalOrder::class, 'technical_order_farms', 'farm_id', 'technical_order_id')
-            ->withTimestamps()
             ->using(TechnicalOrderFarm::class);
     }
 

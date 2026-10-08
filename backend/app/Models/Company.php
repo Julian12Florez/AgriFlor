@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
-use OwenIt\Auditing\Auditable;
+use App\Models\Concerns\Auditado;
 
 /**
  * Empresa emisora de documentos (orden de compra, remisión).
@@ -17,7 +17,7 @@ use OwenIt\Auditing\Auditable;
  */
 class Company extends Model implements AuditableContract
 {
-    use HasUuids, Auditable;
+    use HasUuids, Auditado;
 
     protected $table = 'companies';
 
@@ -47,12 +47,45 @@ class Company extends Model implements AuditableContract
         'logo_base64',
     ];
 
+    /**
+     * El logo tampoco se copia a la auditoría: cientos de KB de base64 en
+     * `audits.new_values` (TEXT, 64 KB) hacían fallar con 500 la subida de
+     * cualquier logo de más de ~48 KB, y no le dicen nada a un humano. Queda
+     * constancia de que cambió (ver cambiosExtraDeAuditoria).
+     */
+    protected $auditExclude = [
+        'logo_base64',
+    ];
+
     protected $casts = [
         'is_default' => 'boolean',
         'status' => 'string',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    /**
+     * "Logo: Sin logo → Logo nuevo" en lugar de la imagen.
+     *
+     * @return array{0: array<string, string>, 1: array<string, string>}
+     */
+    protected function cambiosExtraDeAuditoria(): array
+    {
+        if ($this->auditEvent === 'created') {
+            // `logo_mime` va siempre con el logo, y sí se lee al completar la
+            // foto (el base64 no se carga para eso).
+            return [[], ($this->logo_base64 || $this->logo_mime) ? ['logo' => 'Cargado'] : []];
+        }
+
+        if ($this->auditEvent === 'updated' && $this->isDirty('logo_base64')) {
+            return [
+                ['logo' => $this->getRawOriginal('logo_base64') ? 'Logo anterior' : 'Sin logo'],
+                ['logo' => $this->logo_base64 ? 'Logo nuevo' : 'Sin logo'],
+            ];
+        }
+
+        return [[], []];
+    }
 
     // Scopes
 

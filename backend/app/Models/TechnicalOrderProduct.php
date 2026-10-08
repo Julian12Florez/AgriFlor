@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\LineaDeDocumento;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 class TechnicalOrderProduct extends Model
 {
-    use HasUuids;
+    use HasUuids, LineaDeDocumento;
+
+    /** Sus cambios se ven en la foto de auditoría de este documento: [alias, columna]. */
+    public const DOCUMENTO_AUDITADO = ['technical_order', 'technical_order_id'];
 
     protected $table = 'technical_order_products';
 

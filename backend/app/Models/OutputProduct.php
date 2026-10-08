@@ -2,12 +2,16 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\LineaDeDocumento;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 class OutputProduct extends Model
 {
-    use HasUuids;
+    use HasUuids, LineaDeDocumento;
+
+    /** Sus cambios se ven en la foto de auditoría de este documento: [alias, columna]. */
+    public const DOCUMENTO_AUDITADO = ['output', 'output_id'];
 
     protected $table = 'output_products';
 

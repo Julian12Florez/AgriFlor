@@ -7,6 +7,15 @@ import { auditsApi } from '../../services/api';
 const { Title, Paragraph, Text } = Typography;
 const { RangePicker } = DatePicker;
 
+type Cambio = { label: string; from: string | null; to: string | null };
+
+// Qué significan las líneas según la acción: lo que se creó, cómo quedó o lo que tenía.
+const lineCaption: Record<string, string> = {
+  created: 'Productos',
+  updated: 'Productos después del cambio',
+  deleted: 'Productos que tenía',
+};
+
 const eventColor: Record<string, string> = {
   created: 'green',
   updated: 'blue',
@@ -42,30 +51,62 @@ export default function AuditLog() {
   const models = filtersData?.data?.models || [];
   const events = filtersData?.data?.events || [];
 
-  // Renderiza la acción de forma humana: resumen + cambios ya resueltos
-  // (nombres en vez de IDs, etiquetas en español) que envía el backend.
+  // Renderiza la acción de forma humana con lo que envía el backend, ya en
+  // palabras (nombres en vez de IDs, etiquetas en español):
+  //  - document/details/lines: la foto del documento TAL COMO ERA en el momento
+  //    de la acción (los registros viejos no la tienen y traen solo summary);
+  //  - lineChanges: qué productos se agregaron, quitaron o cambiaron;
+  //  - changes: los cambios campo a campo.
+  // Un producto quitado se muestra tachado, sin "→ ∅"; un campo que se vació, sí.
+  const renderCambio = (esLinea: boolean) => (c: Cambio, i: number) => (
+    <span key={i} style={{ fontSize: 12 }}>
+      <strong>{c.label}:</strong>{' '}
+      {c.from !== null && c.from !== '' ? (
+        <><Text delete type="secondary">{c.from}</Text>{esLinea && c.to === null ? null : ' → '}</>
+      ) : null}
+      {esLinea && c.to === null ? null : <Text type="success">{c.to ?? '∅'}</Text>}
+    </span>
+  );
+
   const renderChanges = (record: any) => {
-    const changes: Array<{ label: string; from: string | null; to: string | null }> = record.changes || [];
+    const changes: Cambio[] = record.changes || [];
+    const lineChanges: Cambio[] = record.lineChanges || [];
+    const lines: string[] = record.lines || [];
+    const details: Array<{ label: string | null; value: string }> = record.details || [];
     return (
       <Space direction="vertical" size={2} style={{ width: '100%' }}>
-        {record.summary && (
-          <Text strong style={{ fontSize: 13 }}>{record.summary}</Text>
+        {record.document ? (
+          <span>
+            <Text strong style={{ fontSize: 13 }}>{record.document}</Text>
+            {details.length > 0 && (
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {' · ' + details.map((d) => (d.label ? `${d.label}: ${d.value}` : d.value)).join(' · ')}
+              </Text>
+            )}
+          </span>
+        ) : (
+          record.summary && <Text strong style={{ fontSize: 13 }}>{record.summary}</Text>
+        )}
+        {lines.length > 0 && (
+          <div style={{ fontSize: 12 }}>
+            <Text type="secondary" style={{ fontSize: 12 }}>{lineCaption[record.event] || 'Productos'}:</Text>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {lines.map((l, i) => <li key={i}>{l}</li>)}
+            </ul>
+          </div>
         )}
         {record.event === 'deleted' && <Text type="danger">Registro eliminado</Text>}
-        {record.event !== 'deleted' && changes.length > 0 && (
+        {lineChanges.length > 0 && (
           <Space direction="vertical" size={0}>
-            {changes.map((c, i) => (
-              <span key={i} style={{ fontSize: 12 }}>
-                <strong>{c.label}:</strong>{' '}
-                {c.from !== null && c.from !== '' ? (
-                  <><Text delete type="secondary">{c.from}</Text> → </>
-                ) : null}
-                <Text type="success">{c.to ?? '∅'}</Text>
-              </span>
-            ))}
+            {lineChanges.map(renderCambio(true))}
           </Space>
         )}
-        {!record.summary && record.event !== 'deleted' && changes.length === 0 && (
+        {record.event !== 'deleted' && changes.length > 0 && (
+          <Space direction="vertical" size={0}>
+            {changes.map(renderCambio(false))}
+          </Space>
+        )}
+        {!record.summary && record.event !== 'deleted' && changes.length === 0 && lineChanges.length === 0 && (
           <Text type="secondary">—</Text>
         )}
       </Space>
@@ -116,13 +157,15 @@ export default function AuditLog() {
     <div>
       <Title level={3} style={{ color: '#389e0d' }}>Auditoría</Title>
       <Paragraph type="secondary">
-        Registro de quién creó, editó o eliminó información clave del sistema (productos, compras, salidas, recepciones, marcas, ubicaciones, proveedores).
+        Registro de quién creó, editó o eliminó información del sistema y cuándo: compras, salidas, recepciones, ajustes,
+        datos maestros, recetas y órdenes técnicas, rendimiento, alertas y liquidación. Cada documento se muestra con sus
+        productos y cantidades tal como estaban en el momento de la acción.
       </Paragraph>
 
       <Card style={{ marginBottom: 16 }}>
         <Space wrap>
           <Select
-            allowClear placeholder="Filtrar por entidad" style={{ width: 200 }}
+            allowClear showSearch optionFilterProp="label" placeholder="Filtrar por entidad" style={{ width: 240 }}
             value={model} onChange={(v) => { setModel(v); setPage(1); }}
             options={models.map((m: any) => ({ value: m.value, label: m.label }))}
           />

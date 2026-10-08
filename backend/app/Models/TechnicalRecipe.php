@@ -3,13 +3,22 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Models\Concerns\Auditado;
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-class TechnicalRecipe extends Model
+class TechnicalRecipe extends Model implements AuditableContract
 {
-    use HasUuids;
+    use HasUuids, Auditado;
 
     protected $table = 'technical_recipes';
+
+    /**
+     * La tabla solo tiene `created_at` (con valor por defecto). Sin esto, crear
+     * o editar una receta intentaba escribir `updated_at` y respondía 500: por
+     * eso en producción no había ni una receta.
+     */
+    const UPDATED_AT = null;
 
     protected $fillable = [
         'name',

@@ -2,14 +2,18 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditado;
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
 /**
  * Singleton: solo existe un registro con id=1 que contiene los umbrales
  * globales del modulo de Rendimiento.
  */
-class PerformanceSettings extends Model
+class PerformanceSettings extends Model implements AuditableContract
 {
+    use Auditado;
+
     protected $table = 'performance_settings';
 
     protected $fillable = [

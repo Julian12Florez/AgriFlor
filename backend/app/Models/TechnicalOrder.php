@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use App\Models\Concerns\Auditado;
 use Illuminate\Database\Eloquent\Model;
+use OwenIt\Auditing\Contracts\Auditable as AuditableContract;
 
-class TechnicalOrder extends Model
+class TechnicalOrder extends Model implements AuditableContract
 {
-    use HasUuids;
+    use HasUuids, Auditado;
 
     protected $table = 'technical_orders';
 
@@ -81,10 +83,12 @@ class TechnicalOrder extends Model
     }
 
     // Farms assigned to this order (many-to-many)
+    // Sin withTimestamps(): `technical_order_farms` solo tiene `created_at`
+    // (con valor por defecto). Pedir las marcas de tiempo escribía `updated_at`
+    // al asociar las fincas y la orden no se podía crear (500).
     public function farms()
     {
         return $this->belongsToMany(Location::class, 'technical_order_farms', 'technical_order_id', 'farm_id')
-            ->withTimestamps()
             ->using(TechnicalOrderFarm::class);
     }
 

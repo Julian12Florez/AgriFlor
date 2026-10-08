@@ -34,8 +34,12 @@ class TechnicalRecipeResource extends JsonResource
                         'unit' => $recipeProduct->unit,
                         'applicationRate' => $recipeProduct->application_rate,
                         'observations' => $recipeProduct->observations,
-                        'product' => new ProductResource($recipeProduct->whenLoaded('product')),
-                        'brand' => new BrandResource($recipeProduct->whenLoaded('brand')),
+                        // whenLoaded() es de los Resources, no de los modelos: llamarlo
+                        // sobre la línea respondía 500 al crear o editar una receta.
+                        'product' => $recipeProduct->relationLoaded('product') && $recipeProduct->product
+                            ? new ProductResource($recipeProduct->product) : null,
+                        'brand' => $recipeProduct->relationLoaded('brand') && $recipeProduct->brand
+                            ? new BrandResource($recipeProduct->brand) : null,
                     ];
                 });
             }),
