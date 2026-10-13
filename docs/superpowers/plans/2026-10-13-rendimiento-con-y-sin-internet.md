@@ -124,7 +124,7 @@ Ambiente aislado en el mismo servidor: **frontend** `https://staging.agriflor.pa
 
 ### Tarea 0.1: Base y backend de pruebas
 
-**Archivos (servidor):** `/opt/agriflor-staging/docker-compose.yml`, `/opt/agriflor-staging/.env`, `/opt/agriflor-staging/repo` (clon del repositorio, rama `staging`).
+**Archivos (servidor):** `/opt/agriflor/staging/docker-compose.yml`, `/opt/agriflor/staging/.env`, `/opt/agriflor/staging/repo` (clon del repositorio, rama `staging`). (El usuario `deploy` no puede escribir en `/opt`; por eso va dentro de `/opt/agriflor`.)
 
 - [ ] **Paso 1:** Respaldar `nginx.conf` y `docker-compose.yml` de producción (`cp … …bak-staging-$(date +%Y%m%d%H%M%S)`).
 - [ ] **Paso 2:** Crear base y usuario:
@@ -134,7 +134,7 @@ CREATE USER 'agriflor_staging'@'%' IDENTIFIED BY '<clave generada con openssl ra
 GRANT ALL PRIVILEGES ON agriflor_staging.* TO 'agriflor_staging'@'%';
 ```
 - [ ] **Paso 3:** Cargar la copia: `mysqldump --single-transaction agriflor | mysql agriflor_staging` (dentro de `agriflor-mysql`).
-- [ ] **Paso 4:** Crear rama `staging` desde `main`, clonar en `/opt/agriflor-staging/repo` y escribir el compose con un único servicio:
+- [ ] **Paso 4:** Crear rama `staging` desde `main`, clonar en `/opt/agriflor/staging/repo` y escribir el compose con un único servicio:
 ```yaml
 services:
   backend-staging:
@@ -178,7 +178,7 @@ networks:
 
 **Archivo:** `.github/workflows/deploy-staging.yml` (nuevo; no toca `deploy.yml`).
 
-- [ ] **Paso 1:** Workflow en `push` a `staging`: (a) frontend: `npx vite build` con `VITE_API_URL=https://agriflor-api.duckdns.org/staging/api` y `wrangler pages deploy frontend/dist --project-name agriflor --branch staging`; (b) backend: SSH → `cd /opt/agriflor-staging/repo && git fetch origin staging && git reset --hard origin/staging && cd .. && docker compose build backend-staging && docker compose up -d backend-staging && docker exec agriflor-staging-backend php artisan migrate --force && … config:cache && … route:cache`.
+- [ ] **Paso 1:** Workflow en `push` a `staging`: (a) frontend: `npx vite build` con `VITE_API_URL=https://agriflor-api.duckdns.org/staging/api` y `wrangler pages deploy frontend/dist --project-name agriflor --branch staging`; (b) backend: SSH → `cd /opt/agriflor/staging/repo && git fetch origin staging && git reset --hard origin/staging && cd .. && docker compose build backend-staging && docker compose up -d backend-staging && docker exec agriflor-staging-backend php artisan migrate --force && … config:cache && … route:cache`.
 - [ ] **Paso 2 (verificación):** push vacío a `staging` → el workflow termina en verde; `https://staging.agriflor.pages.dev` abre el login y entra con `admin@agriflor.com`.
 
 ### Tarea 0.4: Motor de Safari para pruebas locales

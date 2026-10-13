@@ -1,0 +1,100 @@
+name: Deploy AgriFlor PRUEBAS (staging)
+
+# Ambiente de PRUEBAS: se despliega con cada push a la rama `staging`.
+#   Frontend: https://staging.agriflor.pages.dev
+#   API:      https://agriflor-api.duckdns.org/staging/api
+#   Base:     agriflor_staging (copia de producción, en el mismo MySQL)
+# Comparte el servidor con producción pero no sus datos ni sus secretos
+# (/opt/agriflor/staging/.env). Producción sigue en deploy.yml (rama main).
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # Mismo freno que producción: nombres que no existen revientan en ejecución.
+      - name: Nombres inexistentes (ReferenceError en ejecución)
+        working-directory: frontend
+        run: |
+          set +e
+          npx tsc --noEmit -p tsconfig.app.json --pretty false > /tmp/tsc.log 2>&1
+          if grep -E "TS2304|TS2552" /tmp/tsc.log; then
+            echo "::error::Hay referencias a nombres que no existen: revientan en ejecución."
+            exit 1
+          fi
+          echo "Sin nombres inexistentes."
+
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://agriflor-api.duckdns.org/staging/api
+        run: npx vite build
+
+      - name: Deploy to Cloudflare Pages (rama staging)
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/dist --project-name agriflor --branch staging
+
+  deploy-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/agriflor/staging/repo
+            git fetch origin staging
+            git reset --hard origin/staging
+            cd /opt/agriflor/staging
+            docker compose build backend-staging
+            docker compose up -d backend-staging
+            echo "Esperando a que el backend de pruebas arranque..."
+            for i in $(seq 1 40); do
+              if curl -sf -o /dev/null https://agriflor-api.duckdns.org/staging/up; then
+                echo "Backend de pruebas arriba (intento $i)"; break
+              fi
+              sleep 3
+            done
+            docker exec agriflor-staging-backend php artisan migrate --force
+            docker exec agriflor-staging-backend php artisan config:cache
+            docker exec agriflor-staging-backend php artisan route:cache
+            echo "Deploy de pruebas OK"
+
+  verify:
+    needs: [deploy-frontend, deploy-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify
+        run: |
+          sleep 5
+          F=$(curl -s -o /dev/null -w "%{http_code}" https://staging.agriflor.pages.dev)
+          B=$(curl -s -o /dev/null -w "%{http_code}" https://agriflor-api.duckdns.org/staging/up)
+          P=$(curl -s -o /dev/null -w "%{http_code}" https://agriflor-api.duckdns.org/up)
+          echo "Frontend pruebas: $F · Backend pruebas: $B · Backend producción: $P"
+          [ "$F" = "200" ] && [ "$B" = "200" ] && [ "$P" = "200" ]
