@@ -1,6 +1,6 @@
 # Rendimiento con y sin internet — diseño
 
-Fecha: 2026-10-13 · Estado: **propuesto, pendiente de aprobación del cliente**.
+Fecha: 2026-10-13 · Estado: **aprobado por el cliente (13-oct-2026)** · Plan: `docs/superpowers/plans/2026-10-13-rendimiento-con-y-sin-internet.md`.
 
 ## 1. Objetivo
 
@@ -29,6 +29,9 @@ tarde. Este diseño permite que nazca donde ocurre.
 | 6 | Crear tareas del catálogo en campo | **No**: en campo se elige del catálogo; lo nuevo va como tarea no programada |
 | 7 | Instalación | **Desde el navegador** (app instalable / PWA), sin tiendas |
 | 8 | Fotos y ubicación | **Sí, desde el inicio del diseño** |
+| 9 | Informes sin señal | **Opción A**: última versión descargada, con aviso |
+| 10 | PIN para abrir la app | **No** (basta el bloqueo del teléfono) |
+| 11 | Ambiente de pruebas | **En el mismo servidor** (API en `/staging/`, frontend en `staging.agriflor.pages.dev`) |
 
 ## 3. Por qué solo el módulo de tareas
 
@@ -55,7 +58,8 @@ servidor rechaza algo, el error aparece en el momento.
 | **Programación** | ✅ Ver y crear programaciones; finalizar. La disponibilidad de trabajadores se calcula en el teléfono. **Cancelar** pide señal (decisión 4). |
 | **Mi finca** (recuadro nuevo dentro de Registro Diario) | ✅ Editar número de trabajadores y crear/editar lotes. |
 | **Catálogo de tareas** | 👁 Solo consulta. Crear o editar tareas del catálogo pide señal (decisión 6). |
-| **Configuración e Informes de rendimiento** | ❌ Solo con señal (son de oficina y los calcula el servidor). |
+| **Informes de rendimiento** | 👁 **Última versión descargada** (decisión 13-oct, opción A), con el aviso "Datos al 13/10 6:00 a. m. · no incluye lo pendiente de envío". Si una pestaña nunca se descargó: "Disponible cuando haya conexión". |
+| **Configuración de rendimiento** | ❌ Solo con señal. |
 | **Resto del sistema** | ❌ Muestra "Esta sección necesita conexión"; los botones de guardar quedan desactivados. |
 
 En todas las pantallas de Rendimiento, una franja fija indica el estado:
@@ -120,8 +124,9 @@ Diario, solo con las fincas a cargo del usuario.
   sincronización, y el dispositivo; la auditoría muestra "capturado sin conexión
   el 10/10 6:15 a. m., sincronizado el 10/10 6:40 p. m.".
 - **Reloj del teléfono.** Si la fecha de captura queda en el futuro respecto del
-  servidor, o más de 3 días antes de la última descarga, la operación vuelve con
-  problema "revise la fecha del teléfono".
+  servidor, o es anterior a la última descarga de datos del teléfono (con un día
+  de margen), la operación vuelve con problema "revise la fecha del teléfono".
+  No hay tope de días sin señal: quien pase más de 2 días no pierde lo capturado.
 
 **Por operación** (las marcas "sobrecupo" y "sospechoso" aplican solo a lo
 capturado sin señal; con señal se comporta como hoy)
@@ -183,7 +188,7 @@ muestra solo si el perfil tiene su permiso, y el servidor lo vuelve a validar.
 
 Compras, salidas, recepciones, ajustes e inventario sin internet; trabajadores con
 nombre (liquidación); cancelar tareas y crear tareas del catálogo sin señal;
-informes de rendimiento sin señal; publicación en App Store / Play Store.
+informes de rendimiento recalculados sin señal (se muestra la última versión descargada); PIN de la app; publicación en App Store / Play Store.
 
 ## 13. Prerrequisitos
 
@@ -210,10 +215,11 @@ informes de rendimiento sin señal; publicación en App Store / Play Store.
 ## 15. Entregas
 
 1. **Base + Registro Diario**: app instalable, copia local, cola, franja de
-   estado, Pendientes de envío, sesión sin señal; Registro Diario completo y en
-   formato celular.
-2. **Programación**: crear, tareas no programadas, disponibilidad local, formato
-   celular.
+   estado, Pendientes de envío, sesión sin señal; en Registro Diario, registrar
+   avance y finalizar, en formato celular.
+2. **Programación, tareas no programadas e informes**: crear programaciones y
+   tareas no programadas, disponibilidad local, formato celular; informes con la
+   última versión descargada.
 3. **Mi finca**: trabajadores y lotes.
 4. **Fotos y ubicación.**
 
